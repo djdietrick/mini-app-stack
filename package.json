@@ -1,0 +1,16 @@
+{
+  "name": "mini-app-stack",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Monorepo of small self-hosted microservices and their shared data infrastructure.",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "infra:up": "docker compose -p mini-app-stack up -d",
+    "infra:down": "docker compose -p mini-app-stack down",
+    "infra:logs": "docker compose -p mini-app-stack logs -f",
+    "infra:reset": "docker compose -p mini-app-stack down -v"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

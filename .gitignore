@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Caches
+.turbo/
+.vite/
+.cache/
+coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Editor / agent local state (keep shared settings, ignore local overrides)
+.vscode/*.local
+.vscode/settings.local.json
+.idea/
+.claude/settings.local.json
+
+# Docker volumes mounted into the repo
+data/
+volumes/
