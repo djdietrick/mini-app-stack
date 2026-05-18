@@ -77,7 +77,7 @@ services:
       dockerfile: apps/auth/Dockerfile
     <<: *default-restart
     environment:
-      AUTH_PORT: 3000
+      AUTH_PORT: 3100
       DATABASE_URL: postgres://auth_writer:${APP_AUTH_PASSWORD:?set APP_AUTH_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-appstack}
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-stack_session}
       AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
@@ -85,12 +85,12 @@ services:
       AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-2592000}
       AUTH_VERIFY_SECRET: ${AUTH_VERIFY_SECRET:?set AUTH_VERIFY_SECRET in .env}
     ports:
-      - "${AUTH_PORT:-3000}:3000"
+      - "${AUTH_PORT:-3100}:3100"
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/health"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -102,14 +102,14 @@ services:
       dockerfile: apps/crate/Dockerfile
     <<: *default-restart
     environment:
-      CRATE_PORT: 3001
+      CRATE_PORT: 3101
       DATABASE_URL: postgres://crate:${APP_CRATE_PASSWORD:?set APP_CRATE_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-appstack}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
-      AUTH_URL: http://auth:3000
+      AUTH_URL: http://auth:3100
       AUTH_VERIFY_SECRET: ${AUTH_VERIFY_SECRET:?set AUTH_VERIFY_SECRET in .env}
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-stack_session}
     ports:
-      - "${CRATE_PORT:-3001}:3001"
+      - "${CRATE_PORT:-3101}:3101"
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,7 +118,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:3101/api/health"]
       interval: 15s
       timeout: 5s
       retries: 5
