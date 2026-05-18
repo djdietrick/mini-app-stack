@@ -126,7 +126,7 @@ export function Recommendation() {
 
       <div
         key={pick.id}
-        className="relative flex flex-col items-center text-center gap-6 py-6 animate-pickIn"
+        className="relative flex flex-col items-center text-center gap-3 sm:gap-6 py-2 sm:py-6 animate-pickIn"
       >
         {pick.artwork_url ? (
           <img
@@ -135,10 +135,10 @@ export function Recommendation() {
             crossOrigin="anonymous"
             alt=""
             onLoad={handleImgLoad}
-            className="w-72 h-72 sm:w-96 sm:h-96 rounded-lg shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)] object-cover"
+            className="w-56 h-56 sm:w-96 sm:h-96 rounded-lg shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)] object-cover"
           />
         ) : (
-          <div className="w-72 h-72 sm:w-96 sm:h-96 rounded-lg bg-neutral-900" />
+          <div className="w-56 h-56 sm:w-96 sm:h-96 rounded-lg bg-neutral-900" />
         )}
 
         <div>
@@ -157,7 +157,7 @@ export function Recommendation() {
           )}
         </div>
 
-        <div className="w-full max-w-sm flex flex-col gap-3">
+        <div className="w-full max-w-sm flex flex-col gap-3 pb-[env(safe-area-inset-bottom)] sm:pb-0">
           <button
             onClick={markAndPickAnother}
             disabled={acting}
@@ -246,7 +246,7 @@ function AmbientBackdrop(props: { artworkUrl: string | null; tintCss: string; re
 function SkeletonHero() {
   return (
     <div className="flex flex-col items-center text-center gap-6 py-6 animate-pulse">
-      <div className="w-72 h-72 sm:w-96 sm:h-96 rounded-lg bg-neutral-900" />
+      <div className="w-56 h-56 sm:w-96 sm:h-96 rounded-lg bg-neutral-900" />
       <div className="space-y-2">
         <div className="h-8 w-64 bg-neutral-900 rounded" />
         <div className="h-5 w-40 bg-neutral-900 rounded mx-auto" />
