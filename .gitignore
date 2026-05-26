@@ -40,3 +40,6 @@ Thumbs.db
 # Docker volumes mounted into the repo
 data/
 volumes/
+
+# Local database dumps
+backups/

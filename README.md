@@ -37,6 +37,23 @@ docker compose ps
 
 The Postgres and Mongo init scripts only run when their data volume is empty. To re-run them after editing, either reset (`pnpm infra:reset` — destroys data) or apply the SQL/JS manually.
 
+To add a new app to a live Postgres without resetting, run the equivalent of `infra/postgres/init/10-app-schemas.sh` by hand (substituting the new app name):
+
+```bash
+set -a; . ./.env; set +a
+docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<SQL
+CREATE ROLE <name> LOGIN PASSWORD '${APP_<NAME>_PASSWORD}';
+CREATE SCHEMA IF NOT EXISTS <name> AUTHORIZATION <name>;
+GRANT CONNECT ON DATABASE "${POSTGRES_DB}" TO <name>;
+GRANT USAGE ON SCHEMA shared TO <name>;
+GRANT SELECT, REFERENCES ON ALL TABLES IN SCHEMA shared TO <name>;
+ALTER DEFAULT PRIVILEGES FOR ROLE shared_admin IN SCHEMA shared GRANT SELECT, REFERENCES ON TABLES TO <name>;
+ALTER ROLE <name> SET search_path = <name>, shared, public;
+SQL
+```
+
+Take a backup first with `docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backups/appstack-$(date +%F).sql`.
+
 ### Adding a new app to the data layer
 
 1. **Postgres** — add the app name to the `APPS=()` array in [infra/postgres/init/10-app-schemas.sh](infra/postgres/init/10-app-schemas.sh#L17). Add `APP_<NAME>_PASSWORD` to `.env` and pass it through to the `postgres` service env in `docker-compose.yml`. The script grants the app role read access to the `shared` schema automatically.
@@ -89,6 +106,12 @@ const redis = createRedisClient({
   keyPrefix: "notes:",
 });
 ```
+
+## Apps
+
+- [apps/auth](apps/auth/) — shared identity service (port `3100`). Owns writes to `shared.users`, `shared.user_credentials`, `shared.sessions`.
+- [apps/crate](apps/crate/) — music queue / rating app backed by the iTunes search API (port `3101`).
+- [apps/pantry](apps/pantry/) — kitchen inventory + grocery list builder (port `3102`). Items track quantity, size, and a 3-state status (stocked / low / out); tags are typed (`store` / `section` / `general`); grocery lists are generated on demand from low/out items, checked off at the store, and reconciled back into inventory on finish.
 
 ## Scripts
 

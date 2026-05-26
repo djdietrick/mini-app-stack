@@ -19,6 +19,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-appstack}
       APP_CRATE_PASSWORD: ${APP_CRATE_PASSWORD:?set APP_CRATE_PASSWORD in .env}
+      APP_PANTRY_PASSWORD: ${APP_PANTRY_PASSWORD:?set APP_PANTRY_PASSWORD in .env}
       APP_AUTH_PASSWORD: ${APP_AUTH_PASSWORD:?set APP_AUTH_PASSWORD in .env}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -119,6 +120,31 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3101/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [appnet]
+
+  pantry:
+    build:
+      context: .
+      dockerfile: apps/pantry/Dockerfile
+    <<: *default-restart
+    environment:
+      PANTRY_PORT: 3102
+      DATABASE_URL: postgres://pantry:${APP_PANTRY_PASSWORD:?set APP_PANTRY_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-appstack}
+      AUTH_URL: http://auth:3100
+      AUTH_VERIFY_SECRET: ${AUTH_VERIFY_SECRET:?set AUTH_VERIFY_SECRET in .env}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-stack_session}
+    ports:
+      - "${PANTRY_PORT:-3102}:3102"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3102/api/health"]
       interval: 15s
       timeout: 5s
       retries: 5

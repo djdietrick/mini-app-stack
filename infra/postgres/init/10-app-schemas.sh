@@ -13,7 +13,7 @@
 # then re-create the postgres volume (or run the equivalent SQL manually).
 set -euo pipefail
 
-APPS=(crate)
+APPS=(crate pantry)
 
 psql_exec() {
   psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -c "$1"

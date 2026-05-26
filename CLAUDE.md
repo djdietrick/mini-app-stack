@@ -29,7 +29,7 @@ Workspace install: `pnpm install` at the root. Adding a dependency to a specific
 
 The stack is deliberately *not* "one DB per app." There is one shared database per engine, and apps share a single user identity. This is the core architectural decision; most other things follow from it.
 
-- **Postgres** — single database `appstack`. Each app gets its own schema (`notes`, `timer`, …) plus a dedicated login role that owns it. A separate `shared` schema holds cross-app tables. App roles get **read-only** access to `shared` and have `search_path = <app>, shared, public`, so unqualified table references resolve naturally.
+- **Postgres** — single database `appstack`. Each app gets its own schema (`crate`, `pantry`, …) plus a dedicated login role that owns it. A separate `shared` schema holds cross-app tables. App roles get **read-only** access to `shared` and have `search_path = <app>, shared, public`, so unqualified table references resolve naturally.
 - **Mongo** — single database `appstack`. All apps connect as one user (`appstack`) and namespace via collection prefixes (`notes_items`, `timer_sessions`). The `createMongoClient` helper applies the prefix automatically.
 - **Redis** — single instance. Apps namespace via `keyPrefix` and/or logical db index (0–15).
 
@@ -54,7 +54,7 @@ The Postgres init runs in lexicographic order:
 2. `05-shared-schema.sql` — creates `shared_admin` role and the `shared.*` tables.
 3. `10-app-schemas.sh` — iterates over the `APPS=()` bash array, creating each app's schema + role and granting read access to `shared`.
 
-To add a new app to the data layer: append its name to `APPS=()` in `10-app-schemas.sh`, add `APP_<NAME>_PASSWORD` to `.env`, and pass it through to the `postgres` service in `docker-compose.yml`. Then reset (or apply manually for an existing volume).
+To add a new app to the data layer: append its name to `APPS=()` in `10-app-schemas.sh`, add `APP_<NAME>_PASSWORD` to `.env` (and `.env.example`), and pass it through to the `postgres` service in `docker-compose.yml`. Then reset (destructive) or — for a live database with existing data — run the role/schema/grant SQL by hand against the running container (back up first with `pg_dump`); see README "Adding a new app" for the exact snippet.
 
 ### Shared TS clients
 
@@ -105,4 +105,15 @@ The cookie is HttpOnly + SameSite=Lax. In production, set `AUTH_COOKIE_SECURE=tr
 - **Package manager**: pnpm (declared in `packageManager`). Node ≥ 20.
 - **Module system**: ESM throughout (`"type": "module"`). TS imports use `.js` extensions for relative paths so the same source works after compilation.
 - **Env handling**: `.env` at the repo root drives `docker-compose.yml`. Required vars use the `${VAR:?message}` form so compose fails fast if they're missing.
-- **No app currently exists** — `apps/` is empty. When scaffolding the first one, follow the shared-everything pattern above and depend on `@stack/db-clients`.
+- When scaffolding a new app, follow the shared-everything pattern above and depend on `@stack/db-clients`. Existing apps (`apps/crate`, `apps/pantry`) are good references — each is a Fastify backend + Vite/React SPA, proxies `/auth/*` to `apps/auth`, and runs SQL migrations from `migrations/*.sql` on boot via `src/migrate.ts`.
+
+### apps/pantry
+
+Kitchen inventory + grocery lists. Runs as the `pantry` Postgres role on port `3102`.
+
+- Data model (`pantry` schema):
+  - `items` — name, quantity, size, status (`stocked`/`low`/`out`), notes; unique per `(user_id, name)`.
+  - `tags` — typed by `kind` (`store`/`section`/`general`); joined via `item_tags`.
+  - `grocery_lists` + `grocery_list_items` — list items snapshot `name_snapshot` and optionally reference an `items.id` (nullable so ad-hoc untracked entries are supported).
+- Key endpoint: `POST /lists/:id/finish` accepts `{ updates: [{ listItemId, quantity }] }`, defaults missing quantities to 1, writes each linked `items.quantity` and flips its status to `stocked`, then marks the list completed. This is the only path that mutates inventory from list activity — checking items off during shopping only toggles `checked_off`.
+- UX is mobile-first: flat filterable Pantry screen with inline 3-state status toggle; list builder pre-selects everything that's not `stocked` and groups results Out → Low → Other; Shopping view groups items by their first `section` tag for in-store flow.
