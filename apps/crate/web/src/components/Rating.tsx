@@ -59,13 +59,13 @@ export function RatingModal(props: {
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className="w-full max-w-sm rounded-xl bg-neutral-900 border border-neutral-800 shadow-2xl p-6"
+        className="w-full max-w-sm rounded-2xl glass-strong shadow-2xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-sm text-neutral-400">Rate this album</div>
@@ -109,7 +109,7 @@ export function RatingModal(props: {
               type="button"
               disabled={saving}
               onClick={onClose}
-              className="px-3 py-1.5 rounded-md text-sm text-neutral-300 hover:bg-neutral-800 transition disabled:opacity-50"
+              className="px-3 py-1.5 rounded-full text-sm text-neutral-300 hover:bg-white/5 transition disabled:opacity-50"
             >
               {dismissLabel ?? "Cancel"}
             </button>
@@ -117,7 +117,7 @@ export function RatingModal(props: {
               type="button"
               disabled={saving || value == null}
               onClick={() => save(value)}
-              className="px-3 py-1.5 rounded-md text-sm font-medium bg-amber-500 text-neutral-950 hover:bg-amber-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-themed px-4 py-1.5 rounded-full text-sm font-medium disabled:cursor-not-allowed"
             >
               Save
             </button>

@@ -106,7 +106,7 @@ export function Queue() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter queue by title or artist…"
-          className="flex-1 min-w-[12rem] px-3 py-2 rounded-md bg-neutral-900 border border-neutral-800 focus:outline-none focus:border-neutral-600"
+          className="glass flex-1 min-w-[12rem] px-4 py-2 rounded-full focus:outline-none focus:border-[rgba(var(--c1-rgb),0.40)]"
         />
         {(genreOptions.length > 0 || genre) && (
           <GenrePicker value={genre} options={genreOptions} onChange={changeGenre} />
@@ -128,18 +128,18 @@ export function Queue() {
                 key={r.id}
                 onClick={() => setOpenId((cur) => (cur === r.id ? null : r.id))}
                 className={
-                  "group relative flex gap-3 p-3 rounded-lg bg-neutral-900 border border-neutral-800 transition cursor-pointer overflow-hidden " +
-                  "hover:border-neutral-700 hover:shadow-lg hover:shadow-black/40"
+                  "group relative flex gap-3 p-3 rounded-2xl glass transition cursor-pointer overflow-hidden " +
+                  "hover:bg-white/[0.08] hover:shadow-lg hover:shadow-black/40"
                 }
               >
                 {r.artwork_url ? (
                   <img
                     src={r.artwork_url}
                     alt=""
-                    className="w-16 h-16 rounded object-cover flex-shrink-0"
+                    className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
                   />
                 ) : (
-                  <div className="w-16 h-16 rounded bg-neutral-800 flex-shrink-0" />
+                  <div className="w-16 h-16 rounded-lg bg-white/5 flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{r.title}</div>
@@ -152,8 +152,8 @@ export function Queue() {
 
                 <div
                   className={
-                    "absolute inset-0 flex items-center justify-center gap-3 rounded-lg " +
-                    "bg-neutral-950/70 backdrop-blur-sm transition-opacity duration-150 " +
+                    "absolute inset-0 flex items-center justify-center gap-3 rounded-2xl " +
+                    "bg-black/40 backdrop-blur-md transition-opacity duration-150 " +
                     (isOpen
                       ? "opacity-100"
                       : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto")
@@ -162,7 +162,7 @@ export function Queue() {
                 >
                   <ActionCircle
                     label="Mark listened"
-                    tone="emerald"
+                    tone="primary"
                     disabled={isBusy}
                     onClick={() => act(r, "listened")}
                   >
@@ -172,7 +172,7 @@ export function Queue() {
                   </ActionCircle>
                   <ActionCircle
                     label="Skip"
-                    tone="neutral"
+                    tone="ghost"
                     disabled={isBusy}
                     onClick={() => act(r, "skip")}
                   >
@@ -183,7 +183,7 @@ export function Queue() {
                   </ActionCircle>
                   <ActionCircle
                     label="Remove"
-                    tone="red"
+                    tone="danger"
                     disabled={isBusy}
                     onClick={() => act(r, "remove")}
                   >
@@ -197,7 +197,7 @@ export function Queue() {
                   {r.apple_music_url && (
                     <ActionCircle
                       label="Open in Apple Music"
-                      tone="pink"
+                      tone="external"
                       href={r.apple_music_url}
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -234,17 +234,17 @@ export function Queue() {
   );
 }
 
-type Tone = "emerald" | "neutral" | "red" | "pink";
+type Tone = "primary" | "ghost" | "danger" | "external";
 
 const toneClasses: Record<Tone, string> = {
-  emerald:
-    "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30 hover:bg-emerald-500/25 hover:text-emerald-200",
-  neutral:
-    "bg-neutral-100/10 text-neutral-200 ring-neutral-300/20 hover:bg-neutral-100/20 hover:text-neutral-50",
-  red:
+  primary:
+    "bg-[rgba(var(--c2-rgb),0.18)] text-[var(--c2-ink)] ring-[rgba(var(--c2-rgb),0.40)] hover:bg-[rgba(var(--c2-rgb),0.30)]",
+  ghost:
+    "bg-white/10 text-neutral-100 ring-white/15 hover:bg-white/20",
+  danger:
     "bg-red-500/15 text-red-300 ring-red-400/30 hover:bg-red-500/25 hover:text-red-200",
-  pink:
-    "bg-pink-500/15 text-pink-300 ring-pink-400/30 hover:bg-pink-500/25 hover:text-pink-200",
+  external:
+    "bg-[rgba(var(--c3-rgb),0.18)] text-[var(--c3-ink)] ring-[rgba(var(--c3-rgb),0.40)] hover:bg-[rgba(var(--c3-rgb),0.30)]",
 };
 
 function ActionCircle(props: {

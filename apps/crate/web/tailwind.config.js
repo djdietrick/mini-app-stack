@@ -11,6 +11,13 @@ export default {
   ],
   theme: {
     extend: {
+      colors: {
+        sunset: {
+          amber: "#fbbf24",
+          coral: "#fb7185",
+          mauve: "#c084fc",
+        },
+      },
       keyframes: {
         pickIn: {
           "0%": { opacity: "0", transform: "scale(0.97)" },

@@ -11,15 +11,15 @@ export function AlbumRow(props: {
 }) {
   const { album, entry, isPending, showArtist = true, onAdd, onRequeue } = props;
   return (
-    <li className="flex gap-3 p-3 rounded-md bg-neutral-900 border border-neutral-800">
+    <li className="flex gap-3 p-3 rounded-2xl glass">
       {album.artworkUrl ? (
         <img
           src={album.artworkUrl}
           alt=""
-          className="w-16 h-16 rounded object-cover flex-shrink-0"
+          className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
         />
       ) : (
-        <div className="w-16 h-16 rounded bg-neutral-800 flex-shrink-0" />
+        <div className="w-16 h-16 rounded-lg bg-white/5 flex-shrink-0" />
       )}
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{album.title}</div>
@@ -61,7 +61,7 @@ function ResultAction(props: {
       <button
         onClick={onAdd}
         disabled={isPending}
-        className="px-3 py-1 rounded text-sm bg-neutral-100 text-neutral-900 disabled:opacity-50"
+        className="btn-themed px-3 py-1 rounded-full text-sm disabled:opacity-50"
       >
         {isPending ? "…" : "Add"}
       </button>
@@ -70,7 +70,7 @@ function ResultAction(props: {
 
   if (entry.status === "queued") {
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs text-emerald-300 bg-emerald-500/10 ring-1 ring-emerald-400/30">
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs chip-queued">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="20 6 9 17 4 12" />
         </svg>
@@ -81,7 +81,7 @@ function ResultAction(props: {
 
   if (entry.status === "listened") {
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs text-sky-300 bg-sky-500/10 ring-1 ring-sky-400/30">
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs chip-listened">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 18V5l12-2v13" />
           <circle cx="6" cy="18" r="3" />
@@ -94,7 +94,7 @@ function ResultAction(props: {
 
   return (
     <div className="flex items-center gap-2">
-      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs text-neutral-400 bg-neutral-500/10 ring-1 ring-neutral-400/20">
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs chip-skipped">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polygon points="5 4 15 12 5 20 5 4" />
           <line x1="19" y1="5" x2="19" y2="19" />
@@ -107,7 +107,7 @@ function ResultAction(props: {
         disabled={isPending}
         aria-label="Re-add to queue"
         title="Re-add to queue"
-        className="inline-flex items-center justify-center w-7 h-7 rounded-full text-emerald-300 bg-emerald-500/10 ring-1 ring-emerald-400/30 hover:bg-emerald-500/20 transition disabled:opacity-50"
+        className="inline-flex items-center justify-center w-7 h-7 rounded-full chip-queued hover:brightness-125 transition disabled:opacity-50"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8" />

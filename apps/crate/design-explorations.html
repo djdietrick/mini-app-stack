@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crate — Sunset Glass color variants</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg-0: #07070b;
+        --bg-1: #0c0c12;
+        --bg-2: #14141c;
+        --ink-0: #f5f5fa;
+        --ink-1: #b9b9c6;
+        --ink-2: #7a7a8c;
+        --line: rgba(255,255,255,0.08);
+        --line-strong: rgba(255,255,255,0.14);
+      }
+      html, body {
+        background: var(--bg-0);
+        color: var(--ink-0);
+        font-family: 'Inter', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        font-feature-settings: "ss01", "cv11";
+      }
+      .mono { font-family: 'JetBrains Mono', monospace; }
+
+      /* ===== Generic glass primitives ===== */
+      .glass {
+        background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+        border: 1px solid var(--line);
+        backdrop-filter: blur(18px) saturate(140%);
+        -webkit-backdrop-filter: blur(18px) saturate(140%);
+      }
+      .glass-strong {
+        background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03));
+        border: 1px solid var(--line-strong);
+        backdrop-filter: blur(24px) saturate(160%);
+        -webkit-backdrop-filter: blur(24px) saturate(160%);
+      }
+      .hairline {
+        background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
+        height: 1px;
+      }
+
+      /* ===========================================================
+         Each section sets its own --c1/--c2/--c3 palette CSS vars,
+         and shared classes (.themed-bg, .themed-ring, .btn-themed,
+         .text-themed, .chip-q, etc.) read from those vars so the
+         exact same Sunset Glass layout re-skins per section.
+         =========================================================== */
+
+      .themed-bg {
+        position: absolute; inset: -20%;
+        background:
+          radial-gradient(60% 40% at 50% 0%,  rgba(var(--c1-rgb), 0.30), transparent 60%),
+          radial-gradient(50% 35% at 10% 80%, rgba(var(--c2-rgb), 0.30), transparent 60%),
+          radial-gradient(50% 35% at 95% 70%, rgba(var(--c3-rgb), 0.30), transparent 60%);
+        filter: blur(30px);
+        pointer-events: none;
+      }
+      .themed-ring {
+        background: conic-gradient(from 200deg, var(--c1), var(--c2), var(--c3), var(--c1));
+      }
+      .btn-themed {
+        background: linear-gradient(135deg, rgba(var(--c1-rgb), 0.22), rgba(var(--c2-rgb), 0.24));
+        border: 1px solid rgba(var(--c2-rgb), 0.50);
+        box-shadow: 0 10px 40px -15px rgba(var(--c2-rgb), 0.55);
+        color: #fff;
+      }
+      .btn-themed:hover { filter: brightness(1.10); }
+      .text-themed {
+        background: linear-gradient(90deg, var(--c1), var(--c2), var(--c3));
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      .ring-themed { box-shadow: 0 0 0 1px rgba(var(--c2-rgb), 0.35) inset; }
+      .ghost-themed-c1 { color: var(--c1-ink); }
+      .ghost-themed-c1:hover { background: rgba(var(--c1-rgb), 0.10); }
+      .ghost-themed-c3 { color: var(--c3-ink); }
+      .ghost-themed-c3:hover { background: rgba(var(--c3-rgb), 0.10); }
+
+      .chip-q { background: rgba(var(--c1-rgb),0.15); border: 1px solid rgba(var(--c1-rgb),0.40); color: var(--c1-ink); }
+      .chip-l { background: rgba(var(--c2-rgb),0.15); border: 1px solid rgba(var(--c2-rgb),0.40); color: var(--c2-ink); }
+      .chip-s { background: rgba(var(--c3-rgb),0.15); border: 1px solid rgba(var(--c3-rgb),0.40); color: var(--c3-ink); }
+
+      .art-1 { background: linear-gradient(135deg, var(--c1), var(--c2) 50%, var(--c3) 100%); }
+      .art-2 { background: linear-gradient(135deg, var(--c1), var(--c3));  }
+      .art-3 { background: linear-gradient(135deg, var(--c2), var(--c3));  }
+      .art-4 { background: linear-gradient(135deg, var(--c3), var(--c1));  }
+
+      /* Section palettes — define --c1/--c2/--c3 + ink variants per direction */
+
+      /* Original Sunset: amber → coral → mauve */
+      .palette-sunset {
+        --c1: #fbbf24; --c1-rgb: 251,191,36;  --c1-ink: #fde68a;
+        --c2: #fb7185; --c2-rgb: 251,113,133; --c2-ink: #fecdd3;
+        --c3: #c084fc; --c3-rgb: 192,132,252; --c3-ink: #e9d5ff;
+      }
+      /* Neon: cyan → violet → pink (colors from original direction A) */
+      .palette-neon {
+        --c1: #22d3ee; --c1-rgb: 34,211,238;  --c1-ink: #a5f3fc;
+        --c2: #a78bfa; --c2-rgb: 167,139,250; --c2-ink: #ddd6fe;
+        --c3: #f472b6; --c3-rgb: 244,114,182; --c3-ink: #fbcfe8;
+      }
+      /* Blue-green: sky → teal → emerald */
+      .palette-bluegreen {
+        --c1: #38bdf8; --c1-rgb: 56,189,248;  --c1-ink: #bae6fd;
+        --c2: #14b8a6; --c2-rgb: 20,184,166;  --c2-ink: #99f6e4;
+        --c3: #34d399; --c3-rgb: 52,211,153;  --c3-ink: #a7f3d0;
+      }
+
+      section { scroll-margin-top: 80px; }
+    </style>
+  </head>
+  <body class="min-h-screen">
+
+    <!-- ===== Header ===== -->
+    <header class="sticky top-0 z-30 glass-strong">
+      <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg palette-sunset themed-ring p-[2px]">
+            <div class="w-full h-full rounded-md bg-[var(--bg-0)] grid place-items-center text-xs font-bold">C</div>
+          </div>
+          <div>
+            <div class="text-sm font-semibold tracking-tight">Crate — Sunset Glass</div>
+            <div class="text-[11px] text-[var(--ink-2)] -mt-0.5">color variants</div>
+          </div>
+        </div>
+        <nav class="hidden md:flex items-center gap-1 text-sm">
+          <a href="#sunset"    class="px-3 py-1.5 rounded-md hover:bg-white/5 text-[var(--ink-1)]">1 · Sunset (warm)</a>
+          <a href="#neon"      class="px-3 py-1.5 rounded-md hover:bg-white/5 text-[var(--ink-1)]">2 · Neon</a>
+          <a href="#bluegreen" class="px-3 py-1.5 rounded-md hover:bg-white/5 text-[var(--ink-1)]">3 · Blue-green</a>
+          <a href="#compare"   class="ml-2 px-3 py-1.5 rounded-md bg-white text-black font-medium">Side-by-side</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- ===== Intro ===== -->
+    <section class="max-w-6xl mx-auto px-6 pt-10 pb-4">
+      <h1 class="text-4xl sm:text-5xl font-bold tracking-tight">
+        Same <span class="palette-sunset text-themed">Sunset Glass</span> layout, three palettes.
+      </h1>
+      <p class="text-[var(--ink-1)] mt-3 max-w-2xl">
+        Identical components and typography — only the three accent colors change per
+        section. Scroll to compare in context, or jump to the side-by-side at the bottom.
+      </p>
+    </section>
+
+    <!-- ============================================================
+         Reusable demo block: rendered once per palette section. The
+         outer wrapper class is what swaps the palette.
+         ============================================================ -->
+
+    <!-- ===== 1 · ORIGINAL SUNSET ===== -->
+    <section id="sunset" class="palette-sunset relative overflow-hidden">
+      <div class="themed-bg"></div>
+      <div class="relative max-w-6xl mx-auto px-6 py-14">
+        <div class="flex items-baseline gap-3 mb-2">
+          <span class="text-xs mono text-[var(--ink-2)]">VARIANT 1</span>
+          <h2 class="text-2xl sm:text-3xl font-semibold">Warm sunset · amber → coral → mauve</h2>
+        </div>
+        <p class="text-[var(--ink-1)] mb-8 max-w-2xl">Cozy, late golden hour. The original direction.</p>
+
+        <!-- Inline demo block (duplicated per section so palette inheritance is clean) -->
+        <div class="grid lg:grid-cols-[1fr_1.2fr] gap-6">
+          <!-- Hero artwork card -->
+          <div class="glass rounded-3xl p-6 relative overflow-hidden">
+            <div class="absolute inset-0 opacity-60" style="background: radial-gradient(60% 50% at 50% 0%, rgba(var(--c2-rgb),0.25), transparent 60%);"></div>
+            <div class="relative">
+              <div class="relative mx-auto w-fit">
+                <div class="absolute -inset-2 rounded-3xl themed-ring blur-xl opacity-50"></div>
+                <div class="relative w-60 h-60 sm:w-72 sm:h-72 rounded-2xl overflow-hidden shadow-2xl mx-auto art-1">
+                  <div class="w-full h-full backdrop-blur-xl" style="background: radial-gradient(60% 60% at 30% 30%, rgba(255,255,255,0.25), transparent 60%);"></div>
+                </div>
+              </div>
+              <div class="text-center mt-6">
+                <div class="text-xs mono text-[var(--ink-2)]">YOUR NEXT LISTEN</div>
+                <h3 class="text-3xl font-bold tracking-tight text-themed mt-1">Channel Orange</h3>
+                <p class="text-[var(--ink-1)]">Frank Ocean · 2012 · R&amp;B</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="glass rounded-3xl p-6">
+              <div class="text-xs mono text-[var(--ink-2)]">ACTIONS</div>
+              <div class="mt-3 space-y-3">
+                <button class="btn-themed w-full rounded-2xl px-5 py-3.5 font-medium transition flex items-center justify-between">
+                  <span>Mark listened &amp; pick another</span>
+                  <span>→</span>
+                </button>
+                <div class="grid grid-cols-2 gap-3">
+                  <button class="glass rounded-2xl px-4 py-3 text-sm ghost-themed-c1 transition flex items-center justify-center gap-2">↻ Skip</button>
+                  <button class="glass rounded-2xl px-4 py-3 text-sm ghost-themed-c3 transition flex items-center justify-center gap-2">♪ Apple Music</button>
+                </div>
+              </div>
+              <div class="hairline my-5"></div>
+              <div class="text-xs mono text-[var(--ink-2)] mb-2">RATE WHEN DONE</div>
+              <div class="flex gap-1 text-2xl text-amber-300">★ ★ ★ ★ <span class="text-[var(--ink-2)]">★</span></div>
+            </div>
+
+            <div class="glass rounded-3xl p-6">
+              <div class="flex items-center justify-between">
+                <div class="text-xs mono text-[var(--ink-2)]">RECENTLY LISTENED</div>
+                <a class="text-xs text-themed">View all →</a>
+              </div>
+              <ul class="mt-3 space-y-3">
+                <li class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg art-3"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">Melodrama <span class="text-[var(--ink-2)]">· Lorde</span></div>
+                    <div class="text-xs text-[var(--ink-2)]">2 days ago · ★★★★★</div>
+                  </div>
+                </li>
+                <li class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg art-2"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">Blonde <span class="text-[var(--ink-2)]">· Frank Ocean</span></div>
+                    <div class="text-xs text-[var(--ink-2)]">4 days ago · ★★★★☆</div>
+                  </div>
+                </li>
+                <li class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg art-4"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">Currents <span class="text-[var(--ink-2)]">· Tame Impala</span></div>
+                    <div class="text-xs text-[var(--ink-2)]">1 week ago · ★★★★☆</div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Queue grid -->
+        <div class="mt-10">
+          <div class="flex items-end justify-between mb-4">
+            <div>
+              <h3 class="text-xl font-semibold">Your queue</h3>
+              <p class="text-sm text-[var(--ink-2)]">42 albums, ready when you are.</p>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <button class="chip-q rounded-full px-3 py-1.5">All</button>
+              <button class="glass rounded-full px-3 py-1.5">Queued</button>
+              <button class="glass rounded-full px-3 py-1.5">Skipped</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-1"></div>
+              <div class="text-sm font-medium truncate">For Emma, Forever Ago</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">Bon Iver</div>
+            </article>
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-2"></div>
+              <div class="text-sm font-medium truncate">Discovery</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">Daft Punk</div>
+            </article>
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-3"></div>
+              <div class="text-sm font-medium truncate">Magdalene</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">FKA twigs</div>
+            </article>
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-4"></div>
+              <div class="text-sm font-medium truncate">A Seat at the Table</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">Solange</div>
+            </article>
+          </div>
+        </div>
+
+        <!-- Status chips & buttons sample -->
+        <div class="mt-10 glass rounded-2xl p-5 flex flex-wrap items-center gap-3">
+          <span class="text-xs mono text-[var(--ink-2)] mr-2">CHIPS</span>
+          <span class="chip-q px-2.5 py-1 rounded-full text-xs">✓ In queue</span>
+          <span class="chip-l px-2.5 py-1 rounded-full text-xs">Listened</span>
+          <span class="chip-s px-2.5 py-1 rounded-full text-xs">Skipped</span>
+          <span class="ml-auto text-xs mono text-[var(--ink-2)]">BUTTONS</span>
+          <button class="btn-themed px-4 py-2 rounded-full text-sm">Pick another</button>
+          <button class="glass px-4 py-2 rounded-full text-sm ghost-themed-c1">Skip</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 2 · NEON ===== -->
+    <section id="neon" class="palette-neon relative overflow-hidden border-t border-white/5">
+      <div class="themed-bg"></div>
+      <div class="relative max-w-6xl mx-auto px-6 py-14">
+        <div class="flex items-baseline gap-3 mb-2">
+          <span class="text-xs mono text-[var(--ink-2)]">VARIANT 2</span>
+          <h2 class="text-2xl sm:text-3xl font-semibold">Neon · cyan → violet → pink</h2>
+        </div>
+        <p class="text-[var(--ink-1)] mb-8 max-w-2xl">Cooler and more electric, but the same soft glass surface.</p>
+
+        <div class="grid lg:grid-cols-[1fr_1.2fr] gap-6">
+          <div class="glass rounded-3xl p-6 relative overflow-hidden">
+            <div class="absolute inset-0 opacity-60" style="background: radial-gradient(60% 50% at 50% 0%, rgba(var(--c2-rgb),0.25), transparent 60%);"></div>
+            <div class="relative">
+              <div class="relative mx-auto w-fit">
+                <div class="absolute -inset-2 rounded-3xl themed-ring blur-xl opacity-50"></div>
+                <div class="relative w-60 h-60 sm:w-72 sm:h-72 rounded-2xl overflow-hidden shadow-2xl mx-auto art-1">
+                  <div class="w-full h-full backdrop-blur-xl" style="background: radial-gradient(60% 60% at 30% 30%, rgba(255,255,255,0.25), transparent 60%);"></div>
+                </div>
+              </div>
+              <div class="text-center mt-6">
+                <div class="text-xs mono text-[var(--ink-2)]">YOUR NEXT LISTEN</div>
+                <h3 class="text-3xl font-bold tracking-tight text-themed mt-1">In Rainbows</h3>
+                <p class="text-[var(--ink-1)]">Radiohead · 2007 · Alternative</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="glass rounded-3xl p-6">
+              <div class="text-xs mono text-[var(--ink-2)]">ACTIONS</div>
+              <div class="mt-3 space-y-3">
+                <button class="btn-themed w-full rounded-2xl px-5 py-3.5 font-medium transition flex items-center justify-between">
+                  <span>Mark listened &amp; pick another</span>
+                  <span>→</span>
+                </button>
+                <div class="grid grid-cols-2 gap-3">
+                  <button class="glass rounded-2xl px-4 py-3 text-sm ghost-themed-c1 transition flex items-center justify-center gap-2">↻ Skip</button>
+                  <button class="glass rounded-2xl px-4 py-3 text-sm ghost-themed-c3 transition flex items-center justify-center gap-2">♪ Apple Music</button>
+                </div>
+              </div>
+              <div class="hairline my-5"></div>
+              <div class="text-xs mono text-[var(--ink-2)] mb-2">RATE WHEN DONE</div>
+              <div class="flex gap-1 text-2xl text-amber-300">★ ★ ★ ★ <span class="text-[var(--ink-2)]">★</span></div>
+            </div>
+
+            <div class="glass rounded-3xl p-6">
+              <div class="flex items-center justify-between">
+                <div class="text-xs mono text-[var(--ink-2)]">RECENTLY LISTENED</div>
+                <a class="text-xs text-themed">View all →</a>
+              </div>
+              <ul class="mt-3 space-y-3">
+                <li class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg art-3"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">DAMN. <span class="text-[var(--ink-2)]">· Kendrick Lamar</span></div>
+                    <div class="text-xs text-[var(--ink-2)]">2 days ago · ★★★★★</div>
+                  </div>
+                </li>
+                <li class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg art-2"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">Discovery <span class="text-[var(--ink-2)]">· Daft Punk</span></div>
+                    <div class="text-xs text-[var(--ink-2)]">4 days ago · ★★★★☆</div>
+                  </div>
+                </li>
+                <li class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg art-4"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">Magdalene <span class="text-[var(--ink-2)]">· FKA twigs</span></div>
+                    <div class="text-xs text-[var(--ink-2)]">1 week ago · ★★★★☆</div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-10">
+          <div class="flex items-end justify-between mb-4">
+            <div>
+              <h3 class="text-xl font-semibold">Your queue</h3>
+              <p class="text-sm text-[var(--ink-2)]">42 albums, ready when you are.</p>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <button class="chip-q rounded-full px-3 py-1.5">All</button>
+              <button class="glass rounded-full px-3 py-1.5">Queued</button>
+              <button class="glass rounded-full px-3 py-1.5">Skipped</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-1"></div>
+              <div class="text-sm font-medium truncate">To Pimp a Butterfly</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">Kendrick Lamar</div>
+            </article>
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-2"></div>
+              <div class="text-sm font-medium truncate">Currents</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">Tame Impala</div>
+            </article>
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-3"></div>
+              <div class="text-sm font-medium truncate">Schlagenheim</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">black midi</div>
+            </article>
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-4"></div>
+              <div class="text-sm font-medium truncate">Blonde</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">Frank Ocean</div>
+            </article>
+          </div>
+        </div>
+
+        <div class="mt-10 glass rounded-2xl p-5 flex flex-wrap items-center gap-3">
+          <span class="text-xs mono text-[var(--ink-2)] mr-2">CHIPS</span>
+          <span class="chip-q px-2.5 py-1 rounded-full text-xs">✓ In queue</span>
+          <span class="chip-l px-2.5 py-1 rounded-full text-xs">Listened</span>
+          <span class="chip-s px-2.5 py-1 rounded-full text-xs">Skipped</span>
+          <span class="ml-auto text-xs mono text-[var(--ink-2)]">BUTTONS</span>
+          <button class="btn-themed px-4 py-2 rounded-full text-sm">Pick another</button>
+          <button class="glass px-4 py-2 rounded-full text-sm ghost-themed-c1">Skip</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 3 · BLUE-GREEN ===== -->
+    <section id="bluegreen" class="palette-bluegreen relative overflow-hidden border-t border-white/5">
+      <div class="themed-bg"></div>
+      <div class="relative max-w-6xl mx-auto px-6 py-14">
+        <div class="flex items-baseline gap-3 mb-2">
+          <span class="text-xs mono text-[var(--ink-2)]">VARIANT 3</span>
+          <h2 class="text-2xl sm:text-3xl font-semibold">Blue-green · sky → teal → emerald</h2>
+        </div>
+        <p class="text-[var(--ink-1)] mb-8 max-w-2xl">Cool, calm, oceanic — feels closer to a focused tool than a party.</p>
+
+        <div class="grid lg:grid-cols-[1fr_1.2fr] gap-6">
+          <div class="glass rounded-3xl p-6 relative overflow-hidden">
+            <div class="absolute inset-0 opacity-60" style="background: radial-gradient(60% 50% at 50% 0%, rgba(var(--c2-rgb),0.25), transparent 60%);"></div>
+            <div class="relative">
+              <div class="relative mx-auto w-fit">
+                <div class="absolute -inset-2 rounded-3xl themed-ring blur-xl opacity-50"></div>
+                <div class="relative w-60 h-60 sm:w-72 sm:h-72 rounded-2xl overflow-hidden shadow-2xl mx-auto art-1">
+                  <div class="w-full h-full backdrop-blur-xl" style="background: radial-gradient(60% 60% at 30% 30%, rgba(255,255,255,0.25), transparent 60%);"></div>
+                </div>
+              </div>
+              <div class="text-center mt-6">
+                <div class="text-xs mono text-[var(--ink-2)]">YOUR NEXT LISTEN</div>
+                <h3 class="text-3xl font-bold tracking-tight text-themed mt-1">Kind of Blue</h3>
+                <p class="text-[var(--ink-1)]">Miles Davis · 1959 · Jazz</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="glass rounded-3xl p-6">
+              <div class="text-xs mono text-[var(--ink-2)]">ACTIONS</div>
+              <div class="mt-3 space-y-3">
+                <button class="btn-themed w-full rounded-2xl px-5 py-3.5 font-medium transition flex items-center justify-between">
+                  <span>Mark listened &amp; pick another</span>
+                  <span>→</span>
+                </button>
+                <div class="grid grid-cols-2 gap-3">
+                  <button class="glass rounded-2xl px-4 py-3 text-sm ghost-themed-c1 transition flex items-center justify-center gap-2">↻ Skip</button>
+                  <button class="glass rounded-2xl px-4 py-3 text-sm ghost-themed-c3 transition flex items-center justify-center gap-2">♪ Apple Music</button>
+                </div>
+              </div>
+              <div class="hairline my-5"></div>
+              <div class="text-xs mono text-[var(--ink-2)] mb-2">RATE WHEN DONE</div>
+              <div class="flex gap-1 text-2xl text-amber-300">★ ★ ★ ★ ★</div>
+            </div>
+
+            <div class="glass rounded-3xl p-6">
+              <div class="flex items-center justify-between">
+                <div class="text-xs mono text-[var(--ink-2)]">RECENTLY LISTENED</div>
+                <a class="text-xs text-themed">View all →</a>
+              </div>
+              <ul class="mt-3 space-y-3">
+                <li class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg art-3"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">A Love Supreme <span class="text-[var(--ink-2)]">· John Coltrane</span></div>
+                    <div class="text-xs text-[var(--ink-2)]">2 days ago · ★★★★★</div>
+                  </div>
+                </li>
+                <li class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg art-2"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">Mingus Ah Um <span class="text-[var(--ink-2)]">· Charles Mingus</span></div>
+                    <div class="text-xs text-[var(--ink-2)]">4 days ago · ★★★★☆</div>
+                  </div>
+                </li>
+                <li class="flex items-center gap-3">
+                  <div class="w-9 h-9 rounded-lg art-4"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">In Rainbows <span class="text-[var(--ink-2)]">· Radiohead</span></div>
+                    <div class="text-xs text-[var(--ink-2)]">1 week ago · ★★★★☆</div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-10">
+          <div class="flex items-end justify-between mb-4">
+            <div>
+              <h3 class="text-xl font-semibold">Your queue</h3>
+              <p class="text-sm text-[var(--ink-2)]">42 albums, ready when you are.</p>
+            </div>
+            <div class="flex gap-2 text-xs">
+              <button class="chip-q rounded-full px-3 py-1.5">All</button>
+              <button class="glass rounded-full px-3 py-1.5">Queued</button>
+              <button class="glass rounded-full px-3 py-1.5">Skipped</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-1"></div>
+              <div class="text-sm font-medium truncate">Kind of Blue</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">Miles Davis</div>
+            </article>
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-2"></div>
+              <div class="text-sm font-medium truncate">A Love Supreme</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">John Coltrane</div>
+            </article>
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-3"></div>
+              <div class="text-sm font-medium truncate">Mingus Ah Um</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">Charles Mingus</div>
+            </article>
+            <article class="glass rounded-2xl p-3 hover:bg-white/[0.06] transition">
+              <div class="aspect-square rounded-xl mb-3 art-4"></div>
+              <div class="text-sm font-medium truncate">The Shape of Jazz to Come</div>
+              <div class="text-xs text-[var(--ink-2)] truncate">Ornette Coleman</div>
+            </article>
+          </div>
+        </div>
+
+        <div class="mt-10 glass rounded-2xl p-5 flex flex-wrap items-center gap-3">
+          <span class="text-xs mono text-[var(--ink-2)] mr-2">CHIPS</span>
+          <span class="chip-q px-2.5 py-1 rounded-full text-xs">✓ In queue</span>
+          <span class="chip-l px-2.5 py-1 rounded-full text-xs">Listened</span>
+          <span class="chip-s px-2.5 py-1 rounded-full text-xs">Skipped</span>
+          <span class="ml-auto text-xs mono text-[var(--ink-2)]">BUTTONS</span>
+          <button class="btn-themed px-4 py-2 rounded-full text-sm">Pick another</button>
+          <button class="glass px-4 py-2 rounded-full text-sm ghost-themed-c1">Skip</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Side-by-side compare ===== -->
+    <section id="compare" class="relative border-t border-white/5">
+      <div class="max-w-6xl mx-auto px-6 py-16">
+        <div class="flex items-baseline gap-3 mb-2">
+          <span class="text-xs mono text-[var(--ink-2)]">SIDE BY SIDE</span>
+          <h2 class="text-2xl sm:text-3xl font-semibold">Three palettes, one row each</h2>
+        </div>
+        <p class="text-[var(--ink-1)] mb-8 max-w-2xl">Hero, chips, primary button, and an album card — stacked so you can read color decisions cleanly.</p>
+
+        <div class="grid lg:grid-cols-3 gap-5">
+          <!-- Mini panel template repeated 3x with different palette wrappers -->
+          <div class="palette-sunset relative overflow-hidden rounded-3xl glass p-5">
+            <div class="themed-bg opacity-60"></div>
+            <div class="relative">
+              <div class="text-xs mono text-[var(--ink-2)] mb-3">1 · WARM SUNSET</div>
+              <div class="relative mx-auto w-fit">
+                <div class="absolute -inset-1 rounded-2xl themed-ring blur opacity-50"></div>
+                <div class="relative w-36 h-36 rounded-xl mx-auto art-1"></div>
+              </div>
+              <div class="text-center mt-3">
+                <div class="text-base font-semibold text-themed">Channel Orange</div>
+                <div class="text-xs text-[var(--ink-2)]">Frank Ocean · 2012</div>
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2 justify-center">
+                <span class="chip-q px-2 py-0.5 rounded-full text-[11px]">queued</span>
+                <span class="chip-l px-2 py-0.5 rounded-full text-[11px]">listened</span>
+                <span class="chip-s px-2 py-0.5 rounded-full text-[11px]">skipped</span>
+              </div>
+              <button class="btn-themed mt-4 w-full px-4 py-2.5 rounded-full text-sm">Pick another</button>
+            </div>
+          </div>
+
+          <div class="palette-neon relative overflow-hidden rounded-3xl glass p-5">
+            <div class="themed-bg opacity-60"></div>
+            <div class="relative">
+              <div class="text-xs mono text-[var(--ink-2)] mb-3">2 · NEON</div>
+              <div class="relative mx-auto w-fit">
+                <div class="absolute -inset-1 rounded-2xl themed-ring blur opacity-50"></div>
+                <div class="relative w-36 h-36 rounded-xl mx-auto art-1"></div>
+              </div>
+              <div class="text-center mt-3">
+                <div class="text-base font-semibold text-themed">In Rainbows</div>
+                <div class="text-xs text-[var(--ink-2)]">Radiohead · 2007</div>
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2 justify-center">
+                <span class="chip-q px-2 py-0.5 rounded-full text-[11px]">queued</span>
+                <span class="chip-l px-2 py-0.5 rounded-full text-[11px]">listened</span>
+                <span class="chip-s px-2 py-0.5 rounded-full text-[11px]">skipped</span>
+              </div>
+              <button class="btn-themed mt-4 w-full px-4 py-2.5 rounded-full text-sm">Pick another</button>
+            </div>
+          </div>
+
+          <div class="palette-bluegreen relative overflow-hidden rounded-3xl glass p-5">
+            <div class="themed-bg opacity-60"></div>
+            <div class="relative">
+              <div class="text-xs mono text-[var(--ink-2)] mb-3">3 · BLUE-GREEN</div>
+              <div class="relative mx-auto w-fit">
+                <div class="absolute -inset-1 rounded-2xl themed-ring blur opacity-50"></div>
+                <div class="relative w-36 h-36 rounded-xl mx-auto art-1"></div>
+              </div>
+              <div class="text-center mt-3">
+                <div class="text-base font-semibold text-themed">Kind of Blue</div>
+                <div class="text-xs text-[var(--ink-2)]">Miles Davis · 1959</div>
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2 justify-center">
+                <span class="chip-q px-2 py-0.5 rounded-full text-[11px]">queued</span>
+                <span class="chip-l px-2 py-0.5 rounded-full text-[11px]">listened</span>
+                <span class="chip-s px-2 py-0.5 rounded-full text-[11px]">skipped</span>
+              </div>
+              <button class="btn-themed mt-4 w-full px-4 py-2.5 rounded-full text-sm">Pick another</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-12 text-center text-xs text-[var(--ink-2)]">
+          Tell me which palette to lock in (or mix — e.g. warm sunset on the hero, blue-green elsewhere).
+        </div>
+      </div>
+    </section>
+
+  </body>
+</html>

@@ -55,11 +55,11 @@ export function App() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-neutral-800 bg-neutral-950/80 backdrop-blur sticky top-0 z-10">
+      <header className="glass-strong sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <a
             href="#/recommendation"
-            className="text-lg font-semibold tracking-tight hover:text-neutral-300 transition"
+            className="text-lg font-semibold tracking-tight text-themed hover:opacity-80 transition"
           >
             Crate
           </a>
@@ -69,24 +69,24 @@ export function App() {
                 key={t.id}
                 href={`#/${t.id}`}
                 className={
-                  "px-3 py-1.5 rounded-md text-sm transition " +
+                  "px-3 py-1.5 rounded-full text-sm transition " +
                   (route === t.id
-                    ? "bg-neutral-100 text-neutral-900"
-                    : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800")
+                    ? "chip-queued"
+                    : "text-neutral-400 hover:text-neutral-100 hover:bg-white/5")
                 }
               >
                 {t.label}
               </a>
             ))}
             {userLabel && (
-              <span className="ml-3 pl-3 border-l border-neutral-800 text-xs text-neutral-500 max-w-[10rem] truncate" title={userLabel}>
+              <span className="ml-3 pl-3 border-l border-white/10 text-xs text-neutral-500 max-w-[10rem] truncate" title={userLabel}>
                 {userLabel}
               </span>
             )}
             <button
               type="button"
               onClick={() => void logout()}
-              className="px-3 py-1.5 rounded-md text-sm text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 transition"
+              className="px-3 py-1.5 rounded-full text-sm text-neutral-400 hover:text-neutral-100 hover:bg-white/5 transition"
             >
               Sign out
             </button>
@@ -96,7 +96,7 @@ export function App() {
             aria-label="Open menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen(true)}
-            className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 transition"
+            className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-white/5 transition"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="3" y1="6" x2="21" y2="6" />
@@ -117,20 +117,20 @@ export function App() {
       />
       <aside
         className={
-          "sm:hidden fixed top-0 right-0 z-30 h-full w-72 max-w-[80%] bg-neutral-950 border-l border-neutral-800 shadow-xl transform transition-transform duration-200 ease-out " +
+          "sm:hidden fixed top-0 right-0 z-30 h-full w-72 max-w-[80%] glass-strong shadow-xl transform transition-transform duration-200 ease-out " +
           (menuOpen ? "translate-x-0" : "translate-x-full")
         }
         role="dialog"
         aria-modal="true"
         aria-label="Navigation"
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <span className="text-sm font-semibold tracking-tight text-neutral-200">Menu</span>
           <button
             type="button"
             aria-label="Close menu"
             onClick={() => setMenuOpen(false)}
-            className="inline-flex items-center justify-center w-9 h-9 rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 transition"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-white/5 transition"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -144,16 +144,16 @@ export function App() {
               key={t.id}
               href={`#/${t.id}`}
               className={
-                "px-3 py-2 rounded-md text-sm transition " +
+                "px-3 py-2 rounded-full text-sm transition " +
                 (route === t.id
-                  ? "bg-neutral-100 text-neutral-900"
-                  : "text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800")
+                  ? "chip-queued"
+                  : "text-neutral-300 hover:text-neutral-100 hover:bg-white/5")
               }
             >
               {t.label}
             </a>
           ))}
-          <div className="mt-3 pt-3 border-t border-neutral-800">
+          <div className="mt-3 pt-3 border-t border-white/10">
             {userLabel && (
               <div className="px-3 py-1.5 text-xs text-neutral-500 truncate" title={userLabel}>
                 {userLabel}
@@ -165,7 +165,7 @@ export function App() {
                 setMenuOpen(false);
                 void logout();
               }}
-              className="w-full text-left px-3 py-2 rounded-md text-sm text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 transition"
+              className="w-full text-left px-3 py-2 rounded-md text-sm text-neutral-300 hover:text-neutral-100 hover:bg-white/5 transition"
             >
               Sign out
             </button>

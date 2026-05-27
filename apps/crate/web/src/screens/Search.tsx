@@ -95,7 +95,7 @@ export function Search(props: { onSelectArtist: (artist: ArtistResult) => void }
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search albums or artists…"
-          className="w-full px-4 py-2 pr-24 rounded-md bg-neutral-900 border border-neutral-800 focus:outline-none focus:border-neutral-600"
+          className="glass w-full px-4 py-2 pr-24 rounded-full focus:outline-none focus:border-[rgba(var(--c1-rgb),0.40)]"
         />
         {loading && (
           <span className="absolute right-10 top-1/2 -translate-y-1/2 text-xs text-neutral-500">
@@ -107,7 +107,7 @@ export function Search(props: { onSelectArtist: (artist: ArtistResult) => void }
             type="button"
             aria-label="Clear search"
             onClick={() => setQ("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 transition"
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-full text-neutral-400 hover:text-neutral-100 hover:bg-white/5 transition"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -123,7 +123,7 @@ export function Search(props: { onSelectArtist: (artist: ArtistResult) => void }
         <button
           type="button"
           onClick={() => props.onSelectArtist(topArtist)}
-          className="w-full flex items-center justify-between gap-3 p-4 rounded-md bg-neutral-900 border border-neutral-800 hover:border-neutral-600 hover:bg-neutral-850 transition text-left"
+          className="glass w-full flex items-center justify-between gap-3 p-4 rounded-2xl hover:bg-white/[0.08] transition text-left"
         >
           <div className="min-w-0">
             <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">Artist</div>

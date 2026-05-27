@@ -138,7 +138,7 @@ export function Recommendation() {
             className="w-56 h-56 sm:w-96 sm:h-96 rounded-lg shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)] object-cover"
           />
         ) : (
-          <div className="w-56 h-56 sm:w-96 sm:h-96 rounded-lg bg-neutral-900" />
+          <div className="w-56 h-56 sm:w-96 sm:h-96 rounded-lg bg-white/5" />
         )}
 
         <div>
@@ -161,7 +161,7 @@ export function Recommendation() {
           <button
             onClick={markAndPickAnother}
             disabled={acting}
-            className="w-full px-6 py-3 rounded-full bg-transparent border-2 border-emerald-400 text-emerald-300 hover:bg-emerald-400/10 hover:text-emerald-200 font-medium transition disabled:opacity-50"
+            className="btn-themed w-full px-6 py-3 rounded-full font-medium"
           >
             Listened — pick another
           </button>
@@ -169,7 +169,7 @@ export function Recommendation() {
             <button
               onClick={() => load(genre)}
               disabled={acting}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-transparent border-2 border-sky-400 text-sky-300 hover:bg-sky-400/10 hover:text-sky-200 text-sm font-medium transition disabled:opacity-50"
+              className="glass flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full ink-c1 hover:bg-[rgba(var(--c1-rgb),0.10)] text-sm font-medium transition disabled:opacity-50"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="16 3 21 3 21 8" />
@@ -185,7 +185,7 @@ export function Recommendation() {
                 href={pick.apple_music_url}
                 target="_blank"
                 rel="noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-transparent border-2 border-pink-400 text-pink-300 hover:bg-pink-400/10 hover:text-pink-200 text-sm font-medium transition"
+                className="glass flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full ink-c3 hover:bg-[rgba(var(--c3-rgb),0.10)] text-sm font-medium transition"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 18V5l12-2v13" />
@@ -222,7 +222,7 @@ export function Recommendation() {
 function AmbientBackdrop(props: { artworkUrl: string | null; tintCss: string; ready: boolean }) {
   const { artworkUrl, tintCss, ready } = props;
   return (
-    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none bg-neutral-950">
+    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none bg-transparent">
       {artworkUrl && (
         <img
           src={artworkUrl}
@@ -230,15 +230,15 @@ function AmbientBackdrop(props: { artworkUrl: string | null; tintCss: string; re
           aria-hidden="true"
           className={
             "absolute inset-0 w-full h-full object-cover scale-125 blur-3xl transition-opacity duration-700 " +
-            (ready ? "opacity-60" : "opacity-0")
+            (ready ? "opacity-50" : "opacity-0")
           }
         />
       )}
       <div
         className="absolute inset-0 transition-colors duration-700"
-        style={{ backgroundColor: tintCss, opacity: 0.35 }}
+        style={{ backgroundColor: tintCss, opacity: 0.25 }}
       />
-      <div className="absolute inset-0 bg-gradient-to-b from-neutral-950/40 via-neutral-950/60 to-neutral-950" />
+      <div className="absolute inset-0 bg-gradient-to-b from-neutral-950/20 via-neutral-950/40 to-neutral-950/80" />
     </div>
   );
 }
@@ -246,12 +246,12 @@ function AmbientBackdrop(props: { artworkUrl: string | null; tintCss: string; re
 function SkeletonHero() {
   return (
     <div className="flex flex-col items-center text-center gap-6 py-6 animate-pulse">
-      <div className="w-56 h-56 sm:w-96 sm:h-96 rounded-lg bg-neutral-900" />
+      <div className="w-56 h-56 sm:w-96 sm:h-96 rounded-lg bg-white/5" />
       <div className="space-y-2">
-        <div className="h-8 w-64 bg-neutral-900 rounded" />
-        <div className="h-5 w-40 bg-neutral-900 rounded mx-auto" />
+        <div className="h-8 w-64 bg-white/5 rounded" />
+        <div className="h-5 w-40 bg-white/5 rounded mx-auto" />
       </div>
-      <div className="h-10 w-60 bg-neutral-900 rounded-full" />
+      <div className="h-10 w-60 bg-white/5 rounded-full" />
     </div>
   );
 }

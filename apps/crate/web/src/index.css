@@ -1,3 +1,65 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --c1: #fbbf24;
+  --c1-rgb: 251, 191, 36;
+  --c1-ink: #fde68a;
+  --c2: #fb7185;
+  --c2-rgb: 251, 113, 133;
+  --c2-ink: #fecdd3;
+  --c3: #c084fc;
+  --c3-rgb: 192, 132, 252;
+  --c3-ink: #e9d5ff;
+}
+
+.sunset-backdrop {
+  position: fixed;
+  inset: -20%;
+  z-index: -10;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 40% at 50% 0%,  rgba(var(--c1-rgb), 0.22), transparent 60%),
+    radial-gradient(50% 35% at 10% 80%, rgba(var(--c2-rgb), 0.20), transparent 60%),
+    radial-gradient(50% 35% at 95% 70%, rgba(var(--c3-rgb), 0.22), transparent 60%);
+  filter: blur(30px);
+}
+
+.glass {
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+.glass-strong {
+  background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03));
+  border: 1px solid rgba(255,255,255,0.14);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+.btn-themed {
+  background: linear-gradient(135deg, rgba(var(--c1-rgb), 0.22), rgba(var(--c2-rgb), 0.24));
+  border: 1px solid rgba(var(--c2-rgb), 0.50);
+  box-shadow: 0 10px 40px -15px rgba(var(--c2-rgb), 0.55);
+  color: #fff;
+  transition: filter 150ms;
+}
+.btn-themed:hover { filter: brightness(1.10); }
+.btn-themed:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.text-themed {
+  background: linear-gradient(90deg, var(--c1), var(--c2), var(--c3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.chip-queued   { background: rgba(var(--c1-rgb), 0.15); border: 1px solid rgba(var(--c1-rgb), 0.40); color: var(--c1-ink); }
+.chip-listened { background: rgba(var(--c2-rgb), 0.15); border: 1px solid rgba(var(--c2-rgb), 0.40); color: var(--c2-ink); }
+.chip-skipped  { background: rgba(var(--c3-rgb), 0.15); border: 1px solid rgba(var(--c3-rgb), 0.40); color: var(--c3-ink); }
+
+.ink-c1 { color: var(--c1-ink); }
+.ink-c2 { color: var(--c2-ink); }
+.ink-c3 { color: var(--c3-ink); }

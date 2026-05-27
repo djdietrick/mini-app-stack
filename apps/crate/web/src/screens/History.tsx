@@ -52,10 +52,10 @@ export function History() {
             key={f}
             onClick={() => setFilter(f)}
             className={
-              "px-3 py-1.5 rounded-md text-sm capitalize " +
+              "px-3 py-1.5 rounded-full text-sm capitalize transition " +
               (filter === f
-                ? "bg-neutral-100 text-neutral-900"
-                : "bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-neutral-100")
+                ? "chip-queued"
+                : "glass text-neutral-400 hover:text-neutral-100")
             }
           >
             {f}
@@ -70,17 +70,17 @@ export function History() {
       )}
 
       {rows.length > 0 && (
-        <ul className="divide-y divide-neutral-800 rounded-md border border-neutral-800 bg-neutral-900">
+        <ul className="divide-y divide-white/5 rounded-2xl glass">
           {rows.map((r) => (
             <li key={r.id} className="flex gap-3 p-3">
               {r.artwork_url ? (
                 <img
                   src={r.artwork_url}
                   alt=""
-                  className="w-12 h-12 rounded object-cover flex-shrink-0"
+                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
                 />
               ) : (
-                <div className="w-12 h-12 rounded bg-neutral-800 flex-shrink-0" />
+                <div className="w-12 h-12 rounded-lg bg-white/5 flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{r.title}</div>
@@ -117,7 +117,7 @@ export function History() {
                   disabled={busy === r.id}
                   aria-label="Re-add to queue"
                   title="Re-add to queue"
-                  className="self-center inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs text-emerald-300 bg-emerald-500/10 ring-1 ring-emerald-400/30 hover:bg-emerald-500/20 hover:text-emerald-200 transition disabled:opacity-50"
+                  className="self-center inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs chip-queued hover:brightness-125 transition disabled:opacity-50"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8" />

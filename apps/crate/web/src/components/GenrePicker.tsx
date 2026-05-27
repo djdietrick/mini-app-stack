@@ -26,7 +26,7 @@ export function GenrePicker(props: {
       <select
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
-        className="appearance-none pl-16 pr-8 py-2 rounded-full bg-white/10 backdrop-blur ring-1 ring-white/15 text-sm text-neutral-100 hover:bg-white/15 focus:outline-none focus:ring-white/30 transition cursor-pointer"
+        className="appearance-none pl-16 pr-8 py-2 rounded-full bg-white/10 backdrop-blur ring-1 ring-white/15 text-sm text-neutral-100 hover:bg-white/15 focus:outline-none focus:ring-[rgba(var(--c1-rgb),0.45)] transition cursor-pointer"
       >
         <option value="" className="bg-neutral-900 text-neutral-100">
           Any ({total})
