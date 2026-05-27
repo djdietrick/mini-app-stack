@@ -1,9 +1,9 @@
 import type { ItemStatus } from "../api";
 
 const opts: { value: ItemStatus; label: string; cls: string }[] = [
-  { value: "stocked", label: "Stocked", cls: "bg-emerald-500 text-emerald-950" },
-  { value: "low", label: "Low", cls: "bg-amber-500 text-amber-950" },
-  { value: "out", label: "Out", cls: "bg-rose-500 text-rose-950" },
+  { value: "stocked", label: "Stocked", cls: "bg-sage-500 text-white" },
+  { value: "low", label: "Low", cls: "bg-honey-400 text-ink" },
+  { value: "out", label: "Out", cls: "bg-apple-700 text-white" },
 ];
 
 export function StatusToggle({
@@ -17,7 +17,7 @@ export function StatusToggle({
 }) {
   const pad = size === "sm" ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm";
   return (
-    <div className="inline-flex rounded-md overflow-hidden border border-neutral-800">
+    <div className="inline-flex rounded-md overflow-hidden border border-cream-300 bg-cream-50">
       {opts.map((o) => {
         const active = value === o.value;
         return (
@@ -30,7 +30,7 @@ export function StatusToggle({
               " transition font-medium " +
               (active
                 ? o.cls
-                : "bg-neutral-900 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800")
+                : "bg-cream-50 text-ink-muted hover:text-ink hover:bg-cream-200")
             }
           >
             {o.label}

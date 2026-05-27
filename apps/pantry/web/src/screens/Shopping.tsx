@@ -67,7 +67,7 @@ export function Shopping({ listId }: { listId: string }) {
   };
 
   if (!list) {
-    return <div className="text-neutral-500 text-sm">{error ?? "Loading…"}</div>;
+    return <div className="text-ink-muted text-sm">{error ?? "Loading…"}</div>;
   }
 
   const checked = list.items.filter((i) => i.checked_off);
@@ -75,21 +75,21 @@ export function Shopping({ listId }: { listId: string }) {
   if (list.status === "completed") {
     return (
       <div className="space-y-4">
-        <a href="#/lists" className="text-sm text-neutral-400 hover:text-neutral-100">
+        <a href="#/lists" className="text-sm text-ink-muted hover:text-ink">
           ← Lists
         </a>
-        <h1 className="text-xl font-semibold">{list.name}</h1>
-        <div className="text-sm text-neutral-500">
+        <h1 className="font-display text-2xl font-semibold text-ink">{list.name}</h1>
+        <div className="text-sm text-ink-soft">
           Completed{" "}
           {list.completed_at && new Date(list.completed_at).toLocaleString()}
         </div>
-        <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-md overflow-hidden">
+        <ul className="divide-y divide-cream-300 border border-cream-300 rounded-md overflow-hidden bg-white">
           {list.items.map((i) => (
             <li key={i.id} className="px-3 py-2 flex items-center justify-between text-sm">
-              <span className={i.checked_off ? "" : "text-neutral-600 line-through"}>
+              <span className={i.checked_off ? "text-ink" : "text-ink-soft line-through"}>
                 {i.name_snapshot}
               </span>
-              <span className="text-xs text-neutral-500">×{i.quantity}</span>
+              <span className="text-xs text-ink-soft">×{i.quantity}</span>
             </li>
           ))}
         </ul>
@@ -103,21 +103,21 @@ export function Shopping({ listId }: { listId: string }) {
         <button
           type="button"
           onClick={() => setFinishing(false)}
-          className="text-sm text-neutral-400 hover:text-neutral-100"
+          className="text-sm text-ink-muted hover:text-ink"
         >
           ← Back to shopping
         </button>
-        <h1 className="text-xl font-semibold">Finish shopping</h1>
-        <p className="text-sm text-neutral-400">
+        <h1 className="font-display text-2xl font-semibold text-ink">Finish shopping</h1>
+        <p className="text-sm text-ink-muted">
           Set how many of each you bought. We default to 1 and mark items as stocked.
         </p>
         {checked.length === 0 ? (
-          <div className="text-sm text-neutral-500">Nothing checked off.</div>
+          <div className="text-sm text-ink-muted">Nothing checked off.</div>
         ) : (
-          <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-md overflow-hidden">
+          <ul className="divide-y divide-cream-300 border border-cream-300 rounded-md overflow-hidden bg-white">
             {checked.map((i) => (
               <li key={i.id} className="px-3 py-3 flex items-center gap-3">
-                <span className="flex-1 min-w-0 truncate text-sm">{i.name_snapshot}</span>
+                <span className="flex-1 min-w-0 truncate text-sm text-ink">{i.name_snapshot}</span>
                 <input
                   type="number"
                   min={0}
@@ -128,19 +128,19 @@ export function Shopping({ listId }: { listId: string }) {
                       [i.id]: Math.max(0, Number(e.target.value) || 0),
                     }))
                   }
-                  className="w-20 px-2 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded text-right focus:outline-none focus:border-neutral-600"
+                  className="w-20 px-2 py-1.5 text-sm bg-white border border-cream-300 rounded text-right focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100"
                 />
               </li>
             ))}
           </ul>
         )}
-        {error && <div className="text-sm text-rose-400">{error}</div>}
-        <div className="fixed bottom-0 left-0 right-0 bg-neutral-950 border-t border-neutral-800 px-4 py-3 z-10">
+        {error && <div className="text-sm text-apple-700">{error}</div>}
+        <div className="fixed bottom-0 left-0 right-0 bg-cream-50/95 backdrop-blur border-t border-cream-300 px-4 py-3 z-10">
           <div className="max-w-4xl mx-auto flex items-center justify-end">
             <button
               type="button"
               onClick={finish}
-              className="px-4 py-2 text-sm font-medium rounded-md bg-neutral-100 text-neutral-900 hover:bg-white"
+              className="px-4 py-2 text-sm font-medium rounded-md bg-apple-500 text-white hover:bg-apple-600 transition"
             >
               Done
             </button>
@@ -152,36 +152,36 @@ export function Shopping({ listId }: { listId: string }) {
 
   return (
     <div className="space-y-4 pb-24">
-      <a href="#/lists" className="text-sm text-neutral-400 hover:text-neutral-100">
+      <a href="#/lists" className="text-sm text-ink-muted hover:text-ink">
         ← Lists
       </a>
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{list.name}</h1>
-        <span className="text-xs text-neutral-500">
+        <h1 className="font-display text-2xl font-semibold text-ink">{list.name}</h1>
+        <span className="text-xs text-ink-soft">
           {checked.length}/{list.items.length}
         </span>
       </div>
-      {error && <div className="text-sm text-rose-400">{error}</div>}
+      {error && <div className="text-sm text-apple-700">{error}</div>}
 
       {grouped.map(([section, group]) => (
-        <section key={section} className="border border-neutral-800 rounded-md overflow-hidden">
-          <div className="px-3 py-2 text-xs uppercase tracking-wide text-neutral-500 border-b border-neutral-800">
+        <section key={section} className="border border-cream-300 rounded-md overflow-hidden bg-white">
+          <div className="px-3 py-2 text-xs uppercase tracking-wide text-ink-soft border-b border-cream-300 bg-cream-50 font-sans">
             {section}
           </div>
-          <ul className="divide-y divide-neutral-800">
+          <ul className="divide-y divide-cream-300">
             {group.map((it) => (
               <li key={it.id}>
                 <button
                   type="button"
                   onClick={() => void toggle(it)}
-                  className="w-full px-3 py-4 flex items-center gap-3 text-left hover:bg-neutral-900/50 transition"
+                  className="w-full px-3 py-4 flex items-center gap-3 text-left hover:bg-cream-50 transition"
                 >
                   <span
                     className={
                       "w-6 h-6 rounded border flex items-center justify-center text-sm transition " +
                       (it.checked_off
-                        ? "bg-emerald-500 border-emerald-500 text-emerald-950"
-                        : "border-neutral-700")
+                        ? "bg-sage-500 border-sage-500 text-white"
+                        : "border-cream-300 bg-white")
                     }
                     aria-hidden
                   >
@@ -190,13 +190,13 @@ export function Shopping({ listId }: { listId: string }) {
                   <span
                     className={
                       "flex-1 min-w-0 truncate " +
-                      (it.checked_off ? "text-neutral-500 line-through" : "")
+                      (it.checked_off ? "text-ink-soft line-through" : "text-ink")
                     }
                   >
                     {it.name_snapshot}
                   </span>
                   {it.stores.length > 0 && (
-                    <span className="text-xs text-neutral-500">{it.stores.join(", ")}</span>
+                    <span className="text-xs text-ink-soft">{it.stores.join(", ")}</span>
                   )}
                 </button>
               </li>
@@ -205,12 +205,12 @@ export function Shopping({ listId }: { listId: string }) {
         </section>
       ))}
 
-      <div className="fixed bottom-0 left-0 right-0 bg-neutral-950 border-t border-neutral-800 px-4 py-3 z-10">
+      <div className="fixed bottom-0 left-0 right-0 bg-cream-50/95 backdrop-blur border-t border-cream-300 px-4 py-3 z-10">
         <div className="max-w-4xl mx-auto flex items-center justify-end">
           <button
             type="button"
             onClick={() => setFinishing(true)}
-            className="px-4 py-2 text-sm font-medium rounded-md bg-neutral-100 text-neutral-900 hover:bg-white"
+            className="px-4 py-2 text-sm font-medium rounded-md bg-apple-500 text-white hover:bg-apple-600 transition"
           >
             Finish shopping
           </button>

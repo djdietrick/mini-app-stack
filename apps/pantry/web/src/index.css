@@ -1,3 +1,24 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    background: #FBF6EC;
+    color: #1F2A1C;
+  }
+  body {
+    font-family: Inter, -apple-system, BlinkMacFontSystem, "Segoe UI", Roboto, sans-serif;
+  }
+  h1, h2, h3 {
+    font-family: "Fraunces", ui-serif, Georgia, serif;
+    letter-spacing: -0.01em;
+  }
+  input, select, textarea {
+    color: #1F2A1C;
+  }
+  ::selection {
+    background: #E85D4A;
+    color: white;
+  }
+}

@@ -61,27 +61,29 @@ export function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen bg-cream-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Welcome to Pantry</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">
+            Welcome to Pantry
+          </h1>
           <button
             type="button"
             onClick={() => void logout()}
-            className="text-xs text-neutral-400 hover:text-neutral-200"
+            className="text-xs text-ink-muted hover:text-ink"
           >
             Sign out
           </button>
         </div>
         {userLabel && (
-          <p className="text-xs text-neutral-500 mb-6 truncate" title={userLabel}>
+          <p className="text-xs text-ink-soft mb-6 truncate" title={userLabel}>
             Signed in as {userLabel}
           </p>
         )}
 
         {mode === "choose" && (
           <div className="space-y-3">
-            <p className="text-sm text-neutral-400 mb-4">
+            <p className="text-sm text-ink-muted mb-4">
               Pantry is organized around households. Create one for yourself, or join one a
               partner/roommate has shared with you.
             </p>
@@ -91,7 +93,7 @@ export function Onboarding() {
                 setMode("create");
                 setError(null);
               }}
-              className="w-full px-4 py-3 rounded-md bg-neutral-100 text-neutral-900 hover:bg-white text-sm font-medium"
+              className="w-full px-4 py-3 rounded-md bg-apple-500 text-white hover:bg-apple-600 text-sm font-medium transition"
             >
               Create a household
             </button>
@@ -101,7 +103,7 @@ export function Onboarding() {
                 setMode("join");
                 setError(null);
               }}
-              className="w-full px-4 py-3 rounded-md border border-neutral-700 text-neutral-200 hover:border-neutral-500 text-sm"
+              className="w-full px-4 py-3 rounded-md border border-cream-300 bg-white text-ink hover:border-apple-400 text-sm transition"
             >
               I have an invite link
             </button>
@@ -110,7 +112,7 @@ export function Onboarding() {
 
         {mode === "create" && (
           <div className="space-y-3">
-            <label className="block text-xs uppercase tracking-wide text-neutral-500">
+            <label className="block text-xs uppercase tracking-wide text-ink-soft font-sans">
               Household name
             </label>
             <input
@@ -118,15 +120,15 @@ export function Onboarding() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="The Smiths"
-              className="w-full px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+              className="w-full px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100 placeholder:text-ink-soft"
             />
-            {error && <div className="text-sm text-rose-400">{error}</div>}
+            {error && <div className="text-sm text-apple-700">{error}</div>}
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setMode("choose")}
                 disabled={busy}
-                className="px-3 py-2 text-sm rounded-md text-neutral-300 hover:bg-neutral-900"
+                className="px-3 py-2 text-sm rounded-md text-ink hover:bg-cream-200 transition"
               >
                 Back
               </button>
@@ -134,7 +136,7 @@ export function Onboarding() {
                 type="button"
                 onClick={() => void createHousehold()}
                 disabled={busy}
-                className="ml-auto px-4 py-2 text-sm font-medium rounded-md bg-neutral-100 text-neutral-900 hover:bg-white disabled:opacity-50"
+                className="ml-auto px-4 py-2 text-sm font-medium rounded-md bg-apple-500 text-white hover:bg-apple-600 disabled:opacity-50 transition"
               >
                 Create
               </button>
@@ -144,7 +146,7 @@ export function Onboarding() {
 
         {mode === "join" && (
           <div className="space-y-3">
-            <label className="block text-xs uppercase tracking-wide text-neutral-500">
+            <label className="block text-xs uppercase tracking-wide text-ink-soft font-sans">
               Invite link or token
             </label>
             <input
@@ -152,15 +154,15 @@ export function Onboarding() {
               value={inviteInput}
               onChange={(e) => setInviteInput(e.target.value)}
               placeholder="https://.../invite/abc123"
-              className="w-full px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+              className="w-full px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100 placeholder:text-ink-soft"
             />
-            {error && <div className="text-sm text-rose-400">{error}</div>}
+            {error && <div className="text-sm text-apple-700">{error}</div>}
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setMode("choose")}
                 disabled={busy}
-                className="px-3 py-2 text-sm rounded-md text-neutral-300 hover:bg-neutral-900"
+                className="px-3 py-2 text-sm rounded-md text-ink hover:bg-cream-200 transition"
               >
                 Back
               </button>
@@ -168,7 +170,7 @@ export function Onboarding() {
                 type="button"
                 onClick={() => void joinHousehold()}
                 disabled={busy}
-                className="ml-auto px-4 py-2 text-sm font-medium rounded-md bg-neutral-100 text-neutral-900 hover:bg-white disabled:opacity-50"
+                className="ml-auto px-4 py-2 text-sm font-medium rounded-md bg-apple-500 text-white hover:bg-apple-600 disabled:opacity-50 transition"
               >
                 Join
               </button>

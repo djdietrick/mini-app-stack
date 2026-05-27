@@ -90,8 +90,8 @@ export function ListBuilder() {
   return (
     <div className="space-y-4 pb-24">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">New list</h1>
-        <a href="#/lists" className="text-sm text-neutral-400 hover:text-neutral-100">
+        <h1 className="font-display text-2xl font-semibold text-ink">New list</h1>
+        <a href="#/lists" className="text-sm text-ink-muted hover:text-ink">
           Cancel
         </a>
       </div>
@@ -100,14 +100,14 @@ export function ListBuilder() {
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="List name (optional)"
-        className="w-full px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+        className="w-full px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100 placeholder:text-ink-soft"
       />
 
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search items…"
-        className="w-full px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+        className="w-full px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100 placeholder:text-ink-soft"
       />
 
       <div className="flex gap-2">
@@ -116,30 +116,30 @@ export function ListBuilder() {
           onChange={(e) => setExtraInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addExtra()}
           placeholder="Add untracked item…"
-          className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+          className="flex-1 px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100 placeholder:text-ink-soft"
         />
         <button
           type="button"
           onClick={addExtra}
-          className="px-3 py-2 text-sm rounded-md bg-neutral-800 text-neutral-200 hover:bg-neutral-700"
+          className="px-3 py-2 text-sm rounded-md bg-cream-200 text-ink hover:bg-cream-300 transition"
         >
           Add
         </button>
       </div>
 
       {extras.length > 0 && (
-        <div className="border border-neutral-800 rounded-md overflow-hidden">
-          <div className="px-3 py-2 text-xs uppercase tracking-wide text-neutral-500 border-b border-neutral-800">
+        <div className="border border-cream-300 rounded-md overflow-hidden bg-white">
+          <div className="px-3 py-2 text-xs uppercase tracking-wide text-ink-soft border-b border-cream-300 bg-cream-50">
             Untracked
           </div>
-          <ul className="divide-y divide-neutral-800">
+          <ul className="divide-y divide-cream-300">
             {extras.map((e, idx) => (
               <li key={idx} className="px-3 py-2 flex items-center justify-between">
-                <span className="text-sm">{e.name}</span>
+                <span className="text-sm text-ink">{e.name}</span>
                 <button
                   type="button"
                   onClick={() => removeExtra(idx)}
-                  className="text-xs text-neutral-500 hover:text-rose-400 px-2 py-1"
+                  className="text-xs text-ink-soft hover:text-apple-700 px-2 py-1"
                 >
                   Remove
                 </button>
@@ -149,22 +149,22 @@ export function ListBuilder() {
         </div>
       )}
 
-      {error && <div className="text-sm text-rose-400">{error}</div>}
+      {error && <div className="text-sm text-apple-700">{error}</div>}
 
       <Section title="Out" items={sections.out} selected={selected} onToggle={toggle} />
       <Section title="Low" items={sections.low} selected={selected} onToggle={toggle} />
       <Section title="Other" items={sections.other} selected={selected} onToggle={toggle} />
 
-      <div className="fixed bottom-0 left-0 right-0 bg-neutral-950 border-t border-neutral-800 px-4 py-3 z-10">
+      <div className="fixed bottom-0 left-0 right-0 bg-cream-50/95 backdrop-blur border-t border-cream-300 px-4 py-3 z-10">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
-          <span className="text-sm text-neutral-400">
+          <span className="text-sm text-ink-muted">
             {totalSelected} item{totalSelected === 1 ? "" : "s"}
           </span>
           <button
             type="button"
             disabled={busy}
             onClick={submit}
-            className="px-4 py-2 text-sm font-medium rounded-md bg-neutral-100 text-neutral-900 hover:bg-white disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium rounded-md bg-apple-500 text-white hover:bg-apple-600 disabled:opacity-50 transition"
           >
             Create list
           </button>
@@ -187,11 +187,11 @@ function Section({
 }) {
   if (items.length === 0) return null;
   return (
-    <section className="border border-neutral-800 rounded-md overflow-hidden">
-      <div className="px-3 py-2 text-xs uppercase tracking-wide text-neutral-500 border-b border-neutral-800">
+    <section className="border border-cream-300 rounded-md overflow-hidden bg-white">
+      <div className="px-3 py-2 text-xs uppercase tracking-wide text-ink-soft border-b border-cream-300 bg-cream-50 font-sans">
         {title} ({items.length})
       </div>
-      <ul className="divide-y divide-neutral-800">
+      <ul className="divide-y divide-cream-300">
         {items.map((i) => {
           const on = selected.has(i.id);
           return (
@@ -201,23 +201,23 @@ function Section({
                 onClick={() => onToggle(i.id)}
                 className={
                   "w-full px-3 py-3 flex items-center gap-3 text-left transition " +
-                  (on ? "bg-neutral-900" : "bg-neutral-950 hover:bg-neutral-900/50")
+                  (on ? "bg-apple-50" : "bg-white hover:bg-cream-50")
                 }
               >
                 <span
                   className={
                     "w-5 h-5 rounded border flex items-center justify-center text-xs transition " +
                     (on
-                      ? "bg-neutral-100 border-neutral-100 text-neutral-900"
-                      : "border-neutral-700")
+                      ? "bg-apple-500 border-apple-500 text-white"
+                      : "border-cream-300 bg-white")
                   }
                   aria-hidden
                 >
                   {on ? "✓" : ""}
                 </span>
                 <span className="flex-1 min-w-0">
-                  <span className="block font-medium truncate">{i.name}</span>
-                  <span className="block text-xs text-neutral-500 truncate">
+                  <span className="block font-medium truncate text-ink">{i.name}</span>
+                  <span className="block text-xs text-ink-soft truncate">
                     {i.quantity} {i.size ? `· ${i.size}` : ""}
                   </span>
                 </span>

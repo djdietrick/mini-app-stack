@@ -101,59 +101,69 @@ export function ItemEditor({ item, tags: tagsProp, onClose, onSaved, onTagsChang
 
   return (
     <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative w-full sm:max-w-lg bg-neutral-950 border border-neutral-800 sm:rounded-lg shadow-xl max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-neutral-950 border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold">{item ? "Edit item" : "New item"}</h2>
+      <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
+      <div className="relative w-full sm:max-w-lg bg-cream-50 border border-cream-300 sm:rounded-lg shadow-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-cream-50 border-b border-cream-300 px-4 py-3 flex items-center justify-between">
+          <h2 className="font-display text-lg font-semibold text-ink">
+            {item ? "Edit item" : "New item"}
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-100 px-2 py-1 rounded"
+            className="text-ink-muted hover:text-ink px-2 py-1 rounded transition"
           >
             Close
           </button>
         </div>
         <div className="p-4 space-y-4">
           <div>
-            <label className="block text-xs uppercase tracking-wide text-neutral-500 mb-1">Name</label>
+            <label className="block text-xs uppercase tracking-wide text-ink-soft mb-1 font-sans">
+              Name
+            </label>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+              className="w-full px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100"
             />
           </div>
           <div>
-            <label className="block text-xs uppercase tracking-wide text-neutral-500 mb-1">Status</label>
+            <label className="block text-xs uppercase tracking-wide text-ink-soft mb-1 font-sans">
+              Status
+            </label>
             <StatusToggle value={status} onChange={setStatus} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs uppercase tracking-wide text-neutral-500 mb-1">Quantity</label>
+              <label className="block text-xs uppercase tracking-wide text-ink-soft mb-1 font-sans">
+                Quantity
+              </label>
               <input
                 type="number"
                 min={0}
                 value={quantity}
                 onChange={(e) => setQuantity(Math.max(0, Number(e.target.value) || 0))}
-                className="w-full px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+                className="w-full px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100"
               />
             </div>
             <div>
-              <label className="block text-xs uppercase tracking-wide text-neutral-500 mb-1">Size</label>
+              <label className="block text-xs uppercase tracking-wide text-ink-soft mb-1 font-sans">
+                Size
+              </label>
               <input
                 placeholder="e.g. 16oz"
                 value={size}
                 onChange={(e) => setSize(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+                className="w-full px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100 placeholder:text-ink-soft"
               />
             </div>
           </div>
           {(["store", "section", "general"] as const).map((kind) => (
             <div key={kind}>
-              <div className="text-xs uppercase tracking-wide text-neutral-500 mb-1">{kind}</div>
+              <div className="text-xs uppercase tracking-wide text-ink-soft mb-1 font-sans">{kind}</div>
               <div className="flex flex-wrap gap-1.5 items-center">
                 {grouped[kind].length === 0 && newTagKind !== kind && (
-                  <span className="text-xs text-neutral-600">no tags yet</span>
+                  <span className="text-xs text-ink-soft">no tags yet</span>
                 )}
                 {grouped[kind].map((t) => {
                   const on = tagIds.includes(t.id);
@@ -165,8 +175,8 @@ export function ItemEditor({ item, tags: tagsProp, onClose, onSaved, onTagsChang
                       className={
                         "px-2 py-1 rounded text-xs border transition " +
                         (on
-                          ? "bg-neutral-100 text-neutral-900 border-neutral-100"
-                          : "bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-600")
+                          ? "bg-ink text-cream-50 border-ink"
+                          : "bg-white text-ink border-cream-300 hover:border-apple-400")
                       }
                     >
                       {t.name}
@@ -190,13 +200,13 @@ export function ItemEditor({ item, tags: tagsProp, onClose, onSaved, onTagsChang
                         }
                       }}
                       placeholder={`new ${kind} tag`}
-                      className="px-2 py-1 text-xs bg-neutral-900 border border-neutral-700 rounded focus:outline-none focus:border-neutral-500 w-32"
+                      className="px-2 py-1 text-xs bg-white border border-cream-300 rounded focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100 w-32"
                     />
                     <button
                       type="button"
                       disabled={creatingTag || !newTagName.trim()}
                       onClick={() => void createTag(kind)}
-                      className="px-2 py-1 text-xs rounded bg-neutral-100 text-neutral-900 disabled:opacity-50"
+                      className="px-2 py-1 text-xs rounded bg-apple-500 text-white hover:bg-apple-600 disabled:opacity-50 font-medium"
                     >
                       Add
                     </button>
@@ -206,7 +216,7 @@ export function ItemEditor({ item, tags: tagsProp, onClose, onSaved, onTagsChang
                         setNewTagKind(null);
                         setNewTagName("");
                       }}
-                      className="px-1 py-1 text-xs text-neutral-400 hover:text-neutral-200"
+                      className="px-1 py-1 text-xs text-ink-muted hover:text-ink"
                     >
                       ✕
                     </button>
@@ -218,7 +228,7 @@ export function ItemEditor({ item, tags: tagsProp, onClose, onSaved, onTagsChang
                       setNewTagKind(kind);
                       setNewTagName("");
                     }}
-                    className="px-2 py-1 rounded text-xs border border-dashed border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
+                    className="px-2 py-1 rounded text-xs border border-dashed border-cream-300 text-ink-muted hover:border-apple-400 hover:text-ink transition"
                   >
                     + new
                   </button>
@@ -227,23 +237,25 @@ export function ItemEditor({ item, tags: tagsProp, onClose, onSaved, onTagsChang
             </div>
           ))}
           <div>
-            <label className="block text-xs uppercase tracking-wide text-neutral-500 mb-1">Notes</label>
+            <label className="block text-xs uppercase tracking-wide text-ink-soft mb-1 font-sans">
+              Notes
+            </label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+              className="w-full px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100"
             />
           </div>
-          {error && <div className="text-sm text-rose-400">{error}</div>}
+          {error && <div className="text-sm text-apple-700">{error}</div>}
         </div>
-        <div className="sticky bottom-0 bg-neutral-950 border-t border-neutral-800 px-4 py-3 flex items-center justify-between gap-2">
+        <div className="sticky bottom-0 bg-cream-50 border-t border-cream-300 px-4 py-3 flex items-center justify-between gap-2">
           {item ? (
             <button
               type="button"
               disabled={busy}
               onClick={remove}
-              className="px-3 py-2 text-sm rounded-md text-rose-400 hover:text-rose-300 hover:bg-neutral-900 disabled:opacity-50"
+              className="px-3 py-2 text-sm rounded-md text-apple-700 hover:bg-apple-50 disabled:opacity-50 transition"
             >
               Delete
             </button>
@@ -254,7 +266,7 @@ export function ItemEditor({ item, tags: tagsProp, onClose, onSaved, onTagsChang
             type="button"
             disabled={busy}
             onClick={submit}
-            className="px-4 py-2 text-sm font-medium rounded-md bg-neutral-100 text-neutral-900 hover:bg-white disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium rounded-md bg-apple-500 text-white hover:bg-apple-600 disabled:opacity-50 transition"
           >
             {item ? "Save" : "Create"}
           </button>

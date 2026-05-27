@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pantry — Design Explorations</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f3f4f6; color: #111; }
+  .shell { max-width: 1100px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #6b7280; font-size: 14px; margin-bottom: 20px; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px; border-bottom: 1px solid #e5e7eb; }
+  .tab { appearance: none; border: 0; background: none; padding: 10px 14px; font-size: 14px; font-weight: 600; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab.active { color: #111; border-bottom-color: #111; }
+
+  .theme { display: none; }
+  .theme.active { display: block; }
+
+  .theme-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .theme-head h2 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
+  .theme-head p { margin: 4px 0 0; color: #6b7280; font-size: 14px; max-width: 520px; }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 760px) { .grid { grid-template-columns: 320px 1fr; } }
+
+  .panel { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.06); }
+  .panel h3 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: #6b7280; }
+
+  .swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .sw { border-radius: 10px; padding: 12px; min-height: 72px; display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; font-weight: 600; }
+  .sw .hex { font-weight: 500; opacity: .8; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .type-sample { padding: 8px 0; }
+  .type-sample .display { font-size: 28px; letter-spacing: -0.02em; }
+  .type-sample .body { font-size: 14px; color: #4b5563; }
+
+  .snippet-row { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 540px) { .snippet-row { grid-template-columns: 1fr 1fr; } }
+
+  /* Generic snippet building blocks (themed overrides below) */
+  .card { border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 12px; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .dot { width: 8px; height: 8px; border-radius: 999px; }
+  .pill-toggle { display: inline-flex; padding: 2px; border-radius: 999px; gap: 2px; }
+  .pill-toggle button { border: 0; background: transparent; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn { border: 0; padding: 10px 14px; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; }
+  .nav { display: flex; justify-content: space-around; padding: 10px; border-radius: 14px; }
+  .nav .item { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; font-weight: 600; }
+  .nav .item svg { width: 22px; height: 22px; }
+
+  /* ───────────────── Theme: Farmstand ───────────────── */
+  .t-farmstand { --bg:#fbf6ec; --surface:#ffffff; --ink:#1f2a1c; --muted:#6f7a64; --primary:#3f7d3a; --primary-ink:#fff; --accent:#e07b3a; --warn:#d9a441; --danger:#b3422f; --line:#e7e1d3; --radius:14px; }
+  /* Farmstand palette variants — set on .t-farmstand to swap */
+  .t-farmstand.v-orchard   { --primary:#2f8f4f; --primary-ink:#fff; --accent:#ff7a18; --warn:#f2b134; --danger:#c8412b; }
+  .t-farmstand.v-tomato    { --primary:#d94a2b; --primary-ink:#fff; --accent:#4a8b3a; --warn:#f2b134; --danger:#8a2a1c; }
+  .t-farmstand.v-meadow    { --primary:#5cb043; --primary-ink:#0e2a14; --accent:#f4a300; --warn:#e8c547; --danger:#d4533b; }
+  .t-farmstand.v-honeycrisp{ --primary:#e85d4a; --primary-ink:#fff; --accent:#f6b73c; --warn:#f0a83c; --danger:#a93221; }
+  .t-farmstand.v-berry     { --primary:#7a3b8f; --primary-ink:#fff; --accent:#e8a33d; --warn:#f0c050; --danger:#c0392b; }
+  .t-farmstand .panel, .t-farmstand .preview { background: var(--surface); border: 1px solid var(--line); }
+  .t-farmstand .preview-bg { background: var(--bg); padding: 16px; border-radius: var(--radius); border: 1px solid var(--line); }
+  .t-farmstand h2, .t-farmstand .display { font-family: "Fraunces", "Source Serif Pro", Georgia, serif; color: var(--ink); }
+  .t-farmstand .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+  .t-farmstand .icon-tile { width:42px; height:42px; border-radius: 10px; background: #eef2e6; display:grid; place-items:center; font-size:20px; }
+  .t-farmstand .badge.stocked { background:#e3efe1; color:#26562a; }
+  .t-farmstand .badge.low { background:#fbeacb; color:#8a5a14; }
+  .t-farmstand .badge.out { background:#f7d9d2; color:#8a2c1f; }
+  .t-farmstand .pill-toggle { background:#eef2e6; }
+  .t-farmstand .pill-toggle .on { background: var(--primary); color: var(--primary-ink); }
+  .t-farmstand .btn.primary { background: var(--primary); color: var(--primary-ink); }
+  .t-farmstand .btn.ghost { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+  .t-farmstand .nav { background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+  .t-farmstand .nav .item.active { color: var(--primary); }
+  .t-farmstand .section-head { font-family: "Fraunces", Georgia, serif; font-size: 18px; color: var(--ink); display:flex; align-items:center; gap:8px; }
+
+  /* ───────────────── Theme: Bodega Pop ───────────────── */
+  .t-bodega { --bg:#fff7e6; --surface:#ffffff; --ink:#1b1b1b; --muted:#5a5a5a; --primary:#ff5a5f; --primary-ink:#fff; --accent:#ffd23f; --info:#3da5d9; --good:#3aa757; --line:#1b1b1b; --radius:6px; }
+  .t-bodega .panel, .t-bodega .preview { background: var(--surface); border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--line); }
+  .t-bodega .preview-bg { background: var(--bg); padding: 16px; border-radius: var(--radius); border: 2px solid var(--line); box-shadow: 6px 6px 0 var(--line); }
+  .t-bodega h2, .t-bodega .display { font-family: "Archivo Black", "Inter", system-ui, sans-serif; text-transform: uppercase; letter-spacing: -0.01em; color: var(--ink); }
+  .t-bodega .card { background: var(--surface); border: 2px solid var(--line); border-radius: var(--radius); box-shadow: 3px 3px 0 var(--line); }
+  .t-bodega .icon-tile { width:42px; height:42px; border-radius: 6px; background: var(--accent); border: 2px solid var(--line); display:grid; place-items:center; font-size:20px; }
+  .t-bodega .badge { border: 2px solid var(--line); border-radius: 4px; padding: 2px 8px; text-transform: uppercase; }
+  .t-bodega .badge.stocked { background: var(--good); color: #fff; }
+  .t-bodega .badge.low { background: var(--accent); color: var(--ink); }
+  .t-bodega .badge.out { background: var(--primary); color: #fff; }
+  .t-bodega .pill-toggle { background: #fff; border: 2px solid var(--line); border-radius: 4px; }
+  .t-bodega .pill-toggle .on { background: var(--ink); color: #fff; border-radius: 2px; }
+  .t-bodega .btn.primary { background: var(--primary); color: var(--primary-ink); border: 2px solid var(--line); box-shadow: 3px 3px 0 var(--line); border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .t-bodega .btn.ghost { background: #fff; color: var(--ink); border: 2px solid var(--line); border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .t-bodega .nav { background: var(--ink); color: #fff; border-radius: var(--radius); }
+  .t-bodega .nav .item.active { color: var(--accent); }
+  .t-bodega .section-head { font-family: "Archivo Black", system-ui, sans-serif; text-transform: uppercase; font-size: 14px; letter-spacing: .04em; display:flex; align-items:center; gap:8px; }
+
+  /* ───────────────── Theme: Cottage Pastel ───────────────── */
+  .t-cottage { --bg:#fdf4f0; --surface:#ffffff; --ink:#3b2e2a; --muted:#8a7973; --primary:#c98b9b; --primary-ink:#fff; --accent:#a8c4a2; --warn:#e6c27a; --danger:#c97565; --line:#efe2dc; --radius:18px; }
+  .t-cottage .panel, .t-cottage .preview { background: var(--surface); border: 1px solid var(--line); }
+  .t-cottage .preview-bg { background: var(--bg); padding: 16px; border-radius: var(--radius); border: 1px solid var(--line); }
+  .t-cottage h2, .t-cottage .display { font-family: "Caveat", "Quicksand", system-ui, cursive; color: var(--ink); }
+  .t-cottage .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+  .t-cottage .icon-tile { width:42px; height:42px; border-radius: 14px; background: #f6e9e3; display:grid; place-items:center; font-size:20px; }
+  .t-cottage .badge.stocked { background:#e5efe1; color:#3f6a3a; }
+  .t-cottage .badge.low { background:#fbeed1; color:#7e5d1c; }
+  .t-cottage .badge.out { background:#f6d9d2; color:#8d3a2c; }
+  .t-cottage .pill-toggle { background:#f6e9e3; }
+  .t-cottage .pill-toggle .on { background: var(--primary); color: var(--primary-ink); }
+  .t-cottage .btn.primary { background: var(--primary); color: var(--primary-ink); border-radius: 999px; }
+  .t-cottage .btn.ghost { background: transparent; color: var(--primary); border: 1px solid var(--primary); border-radius: 999px; }
+  .t-cottage .nav { background: var(--surface); border: 1px solid var(--line); color: var(--muted); border-radius: 999px; }
+  .t-cottage .nav .item.active { color: var(--primary); }
+  .t-cottage .section-head { font-family: "Caveat", cursive; font-size: 22px; color: var(--ink); display:flex; align-items:center; gap:8px; }
+
+  /* ───────────────── Theme: Midnight Market ───────────────── */
+  .t-midnight { --bg:#0f1115; --surface:#171a21; --ink:#f3f5f7; --muted:#9aa3af; --primary:#7cf6c0; --primary-ink:#0f1115; --accent:#ffb86b; --warn:#f7c948; --danger:#ff7a7a; --line:#262b35; --radius:14px; }
+  .t-midnight .panel { background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
+  .t-midnight .panel h3 { color: var(--muted); }
+  .t-midnight .preview-bg { background: var(--bg); padding: 16px; border-radius: var(--radius); border: 1px solid var(--line); }
+  .t-midnight h2, .t-midnight .display { font-family: "Space Grotesk", "Inter", system-ui, sans-serif; color: var(--ink); letter-spacing: -0.02em; }
+  .t-midnight .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); color: var(--ink); }
+  .t-midnight .icon-tile { width:42px; height:42px; border-radius: 10px; background: #21262f; display:grid; place-items:center; font-size:20px; }
+  .t-midnight .badge.stocked { background: rgba(124,246,192,.15); color: var(--primary); }
+  .t-midnight .badge.low { background: rgba(247,201,72,.15); color: var(--warn); }
+  .t-midnight .badge.out { background: rgba(255,122,122,.15); color: var(--danger); }
+  .t-midnight .pill-toggle { background:#21262f; }
+  .t-midnight .pill-toggle button { color: var(--muted); }
+  .t-midnight .pill-toggle .on { background: var(--primary); color: var(--primary-ink); }
+  .t-midnight .btn.primary { background: var(--primary); color: var(--primary-ink); }
+  .t-midnight .btn.ghost { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+  .t-midnight .nav { background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+  .t-midnight .nav .item.active { color: var(--primary); }
+  .t-midnight .section-head { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 16px; color: var(--ink); display:flex; align-items:center; gap:8px; }
+  .t-midnight .sub-on-dark { color: var(--muted); }
+
+  /* ───────────────── Theme: Citrus Grid ───────────────── */
+  .t-citrus { --bg:#f7f7f4; --surface:#ffffff; --ink:#101418; --muted:#5b6470; --primary:#ff8a3d; --primary-ink:#101418; --accent:#2bd4a8; --warn:#ffd23f; --danger:#ff5577; --line:#e6e6e2; --radius:10px; }
+  .t-citrus .panel, .t-citrus .preview { background: var(--surface); border: 1px solid var(--line); }
+  .t-citrus .preview-bg { background: var(--bg); padding: 16px; border-radius: var(--radius); border: 1px solid var(--line); background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 24px 24px; background-position: -1px -1px; }
+  .t-citrus h2, .t-citrus .display { font-family: "JetBrains Mono", ui-monospace, monospace; color: var(--ink); letter-spacing: -0.02em; }
+  .t-citrus .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+  .t-citrus .icon-tile { width:42px; height:42px; border-radius: 8px; background:#fff1e6; display:grid; place-items:center; font-size:20px; border: 1px dashed var(--primary); }
+  .t-citrus .badge { font-family: ui-monospace, monospace; }
+  .t-citrus .badge.stocked { background:#e1f7ee; color:#0f7a52; }
+  .t-citrus .badge.low { background:#fff5cf; color:#7c5a05; }
+  .t-citrus .badge.out { background:#ffe1e8; color:#8a1a33; }
+  .t-citrus .pill-toggle { background:#f1f1ec; border: 1px solid var(--line); }
+  .t-citrus .pill-toggle .on { background: var(--ink); color: #fff; }
+  .t-citrus .btn.primary { background: var(--primary); color: var(--primary-ink); }
+  .t-citrus .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
+  .t-citrus .nav { background: var(--surface); border: 1px solid var(--line); color: var(--muted); border-radius: var(--radius); }
+  .t-citrus .nav .item.active { color: var(--primary); }
+  .t-citrus .section-head { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; display:flex; align-items:center; gap:8px; }
+
+  .meta { display:flex; gap:8px; flex-wrap: wrap; align-items: center; }
+  .meta .label { font-size: 12px; color: var(--muted, #6b7280); }
+  .qty { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap: 12px; }
+
+  .shopping-group { display:flex; flex-direction: column; gap: 8px; }
+  .checkrow { display:flex; align-items:center; gap: 10px; padding: 8px 0; }
+  .checkrow .check { width:22px; height:22px; border-radius: 6px; border: 2px solid currentColor; opacity: .5; }
+  .checkrow.done .check { background: currentColor; opacity:.7; }
+  .checkrow.done .name { text-decoration: line-through; opacity: .6; }
+
+  .palette-picker .pchip { display:inline-flex; align-items:center; gap:8px; padding: 7px 12px; border-radius: 999px; border: 1px solid #d6cfbf; background:#fff; font-size: 13px; font-weight: 600; cursor: pointer; color:#1f2a1c; }
+  .palette-picker .pchip.active { border-color: #1f2a1c; box-shadow: 0 0 0 2px #1f2a1c20; }
+  .palette-picker .dot2 { width: 12px; height: 12px; border-radius: 999px; display:inline-block; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <h1>Pantry — Design Explorations</h1>
+  <div class="sub">Five directions. Each shows a palette, typography, and a few core UI snippets pulled from real pantry views (item card, status toggle, list, shopping group, bottom nav).</div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="farmstand">🌿 Farmstand</button>
+    <button class="tab" data-tab="bodega">🛒 Bodega Pop</button>
+    <button class="tab" data-tab="cottage">🌸 Cottage Pastel</button>
+    <button class="tab" data-tab="midnight">🌙 Midnight Market</button>
+    <button class="tab" data-tab="citrus">🍊 Citrus Grid</button>
+  </div>
+
+  <!-- ─────────── Farmstand ─────────── -->
+  <section class="theme t-farmstand active" data-theme="farmstand" id="farmstand-section">
+    <div class="theme-head">
+      <div>
+        <h2>Farmstand</h2>
+        <p>Warm, earthy, a little editorial. Serif display, hand-written-but-not produce-aisle vibes. Try the palette variants below — same theme, more vibrant primary/accent pairings.</p>
+      </div>
+      <div class="badge stocked">Recommended</div>
+    </div>
+
+    <div class="palette-picker" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+      <button class="pchip active" data-variant="" data-primary="#3F7D3A" data-accent="#E07B3A">
+        <span class="dot2" style="background:#3F7D3A"></span><span class="dot2" style="background:#E07B3A"></span> Original sage
+      </button>
+      <button class="pchip" data-variant="v-orchard" data-primary="#2F8F4F" data-accent="#FF7A18">
+        <span class="dot2" style="background:#2F8F4F"></span><span class="dot2" style="background:#FF7A18"></span> Orchard
+      </button>
+      <button class="pchip" data-variant="v-tomato" data-primary="#D94A2B" data-accent="#4A8B3A">
+        <span class="dot2" style="background:#D94A2B"></span><span class="dot2" style="background:#4A8B3A"></span> Heirloom tomato
+      </button>
+      <button class="pchip" data-variant="v-meadow" data-primary="#5CB043" data-accent="#F4A300">
+        <span class="dot2" style="background:#5CB043"></span><span class="dot2" style="background:#F4A300"></span> Meadow
+      </button>
+      <button class="pchip" data-variant="v-honeycrisp" data-primary="#E85D4A" data-accent="#F6B73C">
+        <span class="dot2" style="background:#E85D4A"></span><span class="dot2" style="background:#F6B73C"></span> Honeycrisp
+      </button>
+      <button class="pchip" data-variant="v-berry" data-primary="#7A3B8F" data-accent="#E8A33D">
+        <span class="dot2" style="background:#7A3B8F"></span><span class="dot2" style="background:#E8A33D"></span> Berry patch
+      </button>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h3>Palette</h3>
+        <div class="swatches">
+          <div class="sw sw-primary" style="background:#3f7d3a;color:#fff">Primary <span class="hex">#3F7D3A</span></div>
+          <div class="sw sw-accent" style="background:#e07b3a;color:#fff">Accent <span class="hex">#E07B3A</span></div>
+          <div class="sw" style="background:#fbf6ec;color:#1f2a1c">Background <span class="hex">#FBF6EC</span></div>
+          <div class="sw" style="background:#1f2a1c;color:#fff">Ink <span class="hex">#1F2A1C</span></div>
+          <div class="sw" style="background:#d9a441;color:#1f2a1c">Low <span class="hex">#D9A441</span></div>
+          <div class="sw" style="background:#b3422f;color:#fff">Out <span class="hex">#B3422F</span></div>
+        </div>
+
+        <h3 style="margin-top:18px">Type</h3>
+        <div class="type-sample">
+          <div class="display">Fraunces · Display</div>
+          <div class="body" style="font-family: 'Inter', system-ui;">Inter · Body — Your pantry is looking healthy.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Snippets</h3>
+        <div class="preview-bg">
+          <div class="section-head">🥕 Produce</div>
+          <div style="height:8px"></div>
+          <div class="card">
+            <div class="icon-tile">🥑</div>
+            <div style="flex:1">
+              <div style="font-weight:700">Avocados</div>
+              <div class="meta"><span class="label">2 left · 4-pack</span></div>
+            </div>
+            <span class="badge low">● Low</span>
+          </div>
+          <div style="height:10px"></div>
+          <div class="card">
+            <div class="icon-tile">🥬</div>
+            <div style="flex:1">
+              <div style="font-weight:700">Spinach</div>
+              <div class="meta"><span class="label">Out — last bought 4d ago</span></div>
+            </div>
+            <span class="badge out">● Out</span>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="row">
+            <div class="pill-toggle">
+              <button class="on">Stocked</button>
+              <button>Low</button>
+              <button>Out</button>
+            </div>
+            <button class="btn primary">Add to list</button>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="nav">
+            <div class="item active">▣<span>Pantry</span></div>
+            <div class="item">≡<span>Lists</span></div>
+            <div class="item">✓<span>Shop</span></div>
+            <div class="item">⌂<span>Home</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── Bodega Pop ─────────── -->
+  <section class="theme t-bodega" data-theme="bodega">
+    <div class="theme-head">
+      <div>
+        <h2>Bodega Pop</h2>
+        <p>Loud, blocky, neo-brutalist corner-store energy. Thick borders, hard shadows, a yellow that wants attention. Best if you want the app to feel like a tool, not a journal.</p>
+      </div>
+      <div class="badge low">Bold</div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h3>Palette</h3>
+        <div class="swatches">
+          <div class="sw" style="background:#ff5a5f;color:#fff">Primary <span class="hex">#FF5A5F</span></div>
+          <div class="sw" style="background:#ffd23f;color:#1b1b1b">Accent <span class="hex">#FFD23F</span></div>
+          <div class="sw" style="background:#fff7e6;color:#1b1b1b">Background <span class="hex">#FFF7E6</span></div>
+          <div class="sw" style="background:#1b1b1b;color:#fff">Ink <span class="hex">#1B1B1B</span></div>
+          <div class="sw" style="background:#3aa757;color:#fff">Stocked <span class="hex">#3AA757</span></div>
+          <div class="sw" style="background:#3da5d9;color:#fff">Info <span class="hex">#3DA5D9</span></div>
+        </div>
+
+        <h3 style="margin-top:18px">Type</h3>
+        <div class="type-sample">
+          <div class="display">ARCHIVO BLACK · DISPLAY</div>
+          <div class="body" style="font-family: 'Inter', system-ui;">Inter · Body — Stock up. Check off. Done.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Snippets</h3>
+        <div class="preview-bg">
+          <div class="section-head">🧺 Aisle 3 · Snacks</div>
+          <div style="height:8px"></div>
+          <div class="card">
+            <div class="icon-tile">🥨</div>
+            <div style="flex:1">
+              <div style="font-weight:800; text-transform:uppercase">Pretzels</div>
+              <div class="meta"><span class="label">1 bag · 16oz</span></div>
+            </div>
+            <span class="badge low">Low</span>
+          </div>
+          <div style="height:10px"></div>
+          <div class="card">
+            <div class="icon-tile">🍫</div>
+            <div style="flex:1">
+              <div style="font-weight:800; text-transform:uppercase">Dark Chocolate</div>
+              <div class="meta"><span class="label">Out</span></div>
+            </div>
+            <span class="badge out">Out</span>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="row">
+            <div class="pill-toggle">
+              <button class="on">STOCKED</button>
+              <button>LOW</button>
+              <button>OUT</button>
+            </div>
+            <button class="btn primary">Add to list</button>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="nav">
+            <div class="item active">▣<span>PANTRY</span></div>
+            <div class="item">≡<span>LISTS</span></div>
+            <div class="item">✓<span>SHOP</span></div>
+            <div class="item">⌂<span>HOME</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── Cottage Pastel ─────────── -->
+  <section class="theme t-cottage" data-theme="cottage">
+    <div class="theme-head">
+      <div>
+        <h2>Cottage Pastel</h2>
+        <p>Soft, rounded, hand-written. Dusty rose primary, sage and butter accents. Most "cute" of the bunch — leans household-personal over utility.</p>
+      </div>
+      <div class="badge stocked">Soft</div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h3>Palette</h3>
+        <div class="swatches">
+          <div class="sw" style="background:#c98b9b;color:#fff">Primary <span class="hex">#C98B9B</span></div>
+          <div class="sw" style="background:#a8c4a2;color:#3b2e2a">Accent <span class="hex">#A8C4A2</span></div>
+          <div class="sw" style="background:#fdf4f0;color:#3b2e2a">Background <span class="hex">#FDF4F0</span></div>
+          <div class="sw" style="background:#3b2e2a;color:#fff">Ink <span class="hex">#3B2E2A</span></div>
+          <div class="sw" style="background:#e6c27a;color:#3b2e2a">Low <span class="hex">#E6C27A</span></div>
+          <div class="sw" style="background:#c97565;color:#fff">Out <span class="hex">#C97565</span></div>
+        </div>
+
+        <h3 style="margin-top:18px">Type</h3>
+        <div class="type-sample">
+          <div class="display">Caveat · Display</div>
+          <div class="body" style="font-family: 'Quicksand', system-ui;">Quicksand · Body — A little list of little things.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Snippets</h3>
+        <div class="preview-bg">
+          <div class="section-head">🧁 Baking</div>
+          <div style="height:8px"></div>
+          <div class="card">
+            <div class="icon-tile">🧈</div>
+            <div style="flex:1">
+              <div style="font-weight:700">Butter</div>
+              <div class="meta"><span class="label">1 stick left</span></div>
+            </div>
+            <span class="badge low">Low</span>
+          </div>
+          <div style="height:10px"></div>
+          <div class="card">
+            <div class="icon-tile">🥛</div>
+            <div style="flex:1">
+              <div style="font-weight:700">Whole milk</div>
+              <div class="meta"><span class="label">Out</span></div>
+            </div>
+            <span class="badge out">Out</span>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="row">
+            <div class="pill-toggle">
+              <button class="on">Stocked</button>
+              <button>Low</button>
+              <button>Out</button>
+            </div>
+            <button class="btn primary">Add to list</button>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="nav">
+            <div class="item active">▣<span>Pantry</span></div>
+            <div class="item">≡<span>Lists</span></div>
+            <div class="item">✓<span>Shop</span></div>
+            <div class="item">⌂<span>Home</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── Midnight Market ─────────── -->
+  <section class="theme t-midnight" data-theme="midnight">
+    <div class="theme-head">
+      <div>
+        <h2 style="color:#0f1115">Midnight Market</h2>
+        <p>Dark, calm, productive. Mint primary against deep navy-black, with warm amber and coral accents. Easy on the eyes in the evening — kitchen at 11pm energy.</p>
+      </div>
+      <div class="badge stocked">Dark mode</div>
+    </div>
+
+    <div class="grid">
+      <div class="panel" style="background:#171a21; color:#f3f5f7; border:1px solid #262b35;">
+        <h3 style="color:#9aa3af">Palette</h3>
+        <div class="swatches">
+          <div class="sw" style="background:#7cf6c0;color:#0f1115">Primary <span class="hex">#7CF6C0</span></div>
+          <div class="sw" style="background:#ffb86b;color:#0f1115">Accent <span class="hex">#FFB86B</span></div>
+          <div class="sw" style="background:#0f1115;color:#f3f5f7">Background <span class="hex">#0F1115</span></div>
+          <div class="sw" style="background:#171a21;color:#f3f5f7">Surface <span class="hex">#171A21</span></div>
+          <div class="sw" style="background:#f7c948;color:#0f1115">Low <span class="hex">#F7C948</span></div>
+          <div class="sw" style="background:#ff7a7a;color:#0f1115">Out <span class="hex">#FF7A7A</span></div>
+        </div>
+
+        <h3 style="margin-top:18px; color:#9aa3af">Type</h3>
+        <div class="type-sample">
+          <div class="display" style="color:#f3f5f7">Space Grotesk · Display</div>
+          <div class="body" style="color:#9aa3af; font-family:'Inter', system-ui;">Inter · Body — Low light, low friction.</div>
+        </div>
+      </div>
+
+      <div class="panel" style="background:#171a21; color:#f3f5f7; border:1px solid #262b35;">
+        <h3 style="color:#9aa3af">Snippets</h3>
+        <div class="preview-bg">
+          <div class="section-head">🌙 Late night</div>
+          <div style="height:8px"></div>
+          <div class="card">
+            <div class="icon-tile">🥣</div>
+            <div style="flex:1">
+              <div style="font-weight:700">Oats</div>
+              <div class="meta"><span class="label sub-on-dark">~½ container</span></div>
+            </div>
+            <span class="badge low">Low</span>
+          </div>
+          <div style="height:10px"></div>
+          <div class="card">
+            <div class="icon-tile">☕</div>
+            <div style="flex:1">
+              <div style="font-weight:700">Coffee beans</div>
+              <div class="meta"><span class="label sub-on-dark">Out — order tomorrow</span></div>
+            </div>
+            <span class="badge out">Out</span>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="row">
+            <div class="pill-toggle">
+              <button class="on">Stocked</button>
+              <button>Low</button>
+              <button>Out</button>
+            </div>
+            <button class="btn primary">Add to list</button>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="nav">
+            <div class="item active">▣<span>Pantry</span></div>
+            <div class="item">≡<span>Lists</span></div>
+            <div class="item">✓<span>Shop</span></div>
+            <div class="item">⌂<span>Home</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────── Citrus Grid ─────────── -->
+  <section class="theme t-citrus" data-theme="citrus">
+    <div class="theme-head">
+      <div>
+        <h2>Citrus Grid</h2>
+        <p>Tactical, gridded, mono-typed. Like a kitchen whiteboard or a logistics app. Orange + teal pop against engineering paper. Best for power-users who like the data view.</p>
+      </div>
+      <div class="badge stocked">Utility</div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h3>Palette</h3>
+        <div class="swatches">
+          <div class="sw" style="background:#ff8a3d;color:#101418">Primary <span class="hex">#FF8A3D</span></div>
+          <div class="sw" style="background:#2bd4a8;color:#101418">Accent <span class="hex">#2BD4A8</span></div>
+          <div class="sw" style="background:#f7f7f4;color:#101418">Background <span class="hex">#F7F7F4</span></div>
+          <div class="sw" style="background:#101418;color:#fff">Ink <span class="hex">#101418</span></div>
+          <div class="sw" style="background:#ffd23f;color:#101418">Low <span class="hex">#FFD23F</span></div>
+          <div class="sw" style="background:#ff5577;color:#fff">Out <span class="hex">#FF5577</span></div>
+        </div>
+
+        <h3 style="margin-top:18px">Type</h3>
+        <div class="type-sample">
+          <div class="display">JetBrains Mono · Display</div>
+          <div class="body" style="font-family: 'Inter', system-ui;">Inter · Body — qty: 3 · status: stocked</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Snippets</h3>
+        <div class="preview-bg">
+          <div class="section-head">// pantry · 12 items</div>
+          <div style="height:8px"></div>
+          <div class="card">
+            <div class="icon-tile">🍝</div>
+            <div style="flex:1">
+              <div style="font-weight:700; font-family: 'JetBrains Mono', monospace;">pasta.penne</div>
+              <div class="meta"><span class="label">qty 2 · 500g</span></div>
+            </div>
+            <span class="badge low">LOW</span>
+          </div>
+          <div style="height:10px"></div>
+          <div class="card">
+            <div class="icon-tile">🧄</div>
+            <div style="flex:1">
+              <div style="font-weight:700; font-family: 'JetBrains Mono', monospace;">garlic.fresh</div>
+              <div class="meta"><span class="label">qty 0</span></div>
+            </div>
+            <span class="badge out">OUT</span>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="row">
+            <div class="pill-toggle">
+              <button class="on">STOCKED</button>
+              <button>LOW</button>
+              <button>OUT</button>
+            </div>
+            <button class="btn primary">+ to list</button>
+          </div>
+
+          <div style="height:16px"></div>
+          <div class="nav">
+            <div class="item active">▣<span>pantry</span></div>
+            <div class="item">≡<span>lists</span></div>
+            <div class="item">✓<span>shop</span></div>
+            <div class="item">⌂<span>home</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const themes = document.querySelectorAll('.theme');
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('active'));
+    themes.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.querySelector(`.theme[data-theme="${t.dataset.tab}"]`).classList.add('active');
+  }));
+
+  const farmstand = document.getElementById('farmstand-section');
+  const chips = farmstand.querySelectorAll('.pchip');
+  const variantClasses = ['v-orchard','v-tomato','v-meadow','v-honeycrisp','v-berry'];
+  chips.forEach(chip => chip.addEventListener('click', () => {
+    chips.forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    variantClasses.forEach(v => farmstand.classList.remove(v));
+    if (chip.dataset.variant) farmstand.classList.add(chip.dataset.variant);
+
+    const p = chip.dataset.primary;
+    const a = chip.dataset.accent;
+    const primarySw = farmstand.querySelector('.sw-primary');
+    const accentSw = farmstand.querySelector('.sw-accent');
+    primarySw.style.background = p;
+    primarySw.querySelector('.hex').textContent = p;
+    accentSw.style.background = a;
+    accentSw.querySelector('.hex').textContent = a;
+  }));
+</script>
+</body>
+</html>

@@ -62,51 +62,51 @@ export function Tags() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Tags</h1>
-      {error && <div className="text-sm text-rose-400">{error}</div>}
+      <h1 className="font-display text-2xl font-semibold text-ink">Tags</h1>
+      {error && <div className="text-sm text-apple-700">{error}</div>}
       {KINDS.map(({ kind, label, hint }) => {
         const ofKind = tags.filter((t) => t.kind === kind);
         return (
-          <section key={kind} className="border border-neutral-800 rounded-md overflow-hidden">
-            <div className="px-3 py-2 border-b border-neutral-800 flex items-baseline justify-between">
-              <h2 className="font-medium">{label}</h2>
-              <span className="text-xs text-neutral-500">{hint}</span>
+          <section key={kind} className="border border-cream-300 rounded-md overflow-hidden bg-white">
+            <div className="px-3 py-2 border-b border-cream-300 flex items-baseline justify-between bg-cream-50">
+              <h2 className="font-display font-semibold text-ink text-base">{label}</h2>
+              <span className="text-xs text-ink-soft font-sans">{hint}</span>
             </div>
-            <ul className="divide-y divide-neutral-800">
+            <ul className="divide-y divide-cream-300">
               {ofKind.length === 0 && (
-                <li className="px-3 py-3 text-sm text-neutral-500">No {label.toLowerCase()} yet.</li>
+                <li className="px-3 py-3 text-sm text-ink-muted">No {label.toLowerCase()} yet.</li>
               )}
               {ofKind.map((t) => (
                 <li key={t.id} className="px-3 py-2 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={() => void rename(t)}
-                    className="text-sm hover:text-neutral-300 transition"
+                    className="text-sm text-ink hover:text-apple-600 transition"
                   >
                     {t.name}
                   </button>
                   <button
                     type="button"
                     onClick={() => void remove(t.id, t.name)}
-                    className="text-xs text-neutral-500 hover:text-rose-400 transition px-2 py-1"
+                    className="text-xs text-ink-soft hover:text-apple-700 transition px-2 py-1"
                   >
                     Delete
                   </button>
                 </li>
               ))}
             </ul>
-            <div className="px-3 py-2 border-t border-neutral-800 flex gap-2">
+            <div className="px-3 py-2 border-t border-cream-300 flex gap-2 bg-cream-50">
               <input
                 value={newName[kind]}
                 onChange={(e) => setNewName((n) => ({ ...n, [kind]: e.target.value }))}
                 onKeyDown={(e) => e.key === "Enter" && add(kind)}
                 placeholder={`Add ${label.slice(0, -1).toLowerCase()}…`}
-                className="flex-1 px-2 py-1.5 text-sm bg-neutral-900 border border-neutral-800 rounded focus:outline-none focus:border-neutral-600"
+                className="flex-1 px-2 py-1.5 text-sm bg-white border border-cream-300 rounded focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100 placeholder:text-ink-soft"
               />
               <button
                 type="button"
                 onClick={() => add(kind)}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-100 text-neutral-900 hover:bg-white"
+                className="px-3 py-1.5 text-sm font-medium rounded bg-apple-500 text-white hover:bg-apple-600 transition"
               >
                 Add
               </button>

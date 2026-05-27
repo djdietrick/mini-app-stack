@@ -72,13 +72,13 @@ export function Pantry() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search pantry…"
-            className="w-full px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md focus:outline-none focus:border-neutral-600"
+            className="w-full px-3 py-2 bg-white border border-cream-300 rounded-md focus:outline-none focus:border-apple-400 focus:ring-2 focus:ring-apple-100 placeholder:text-ink-soft"
           />
         </div>
         <button
           type="button"
           onClick={() => setEditing("new")}
-          className="px-3 py-2 text-sm font-medium rounded-md bg-neutral-100 text-neutral-900 hover:bg-white"
+          className="px-3 py-2 text-sm font-medium rounded-md bg-apple-500 text-white hover:bg-apple-600 transition"
         >
           + Add
         </button>
@@ -98,8 +98,8 @@ export function Pantry() {
             className={
               "px-2.5 py-1 rounded text-xs font-medium transition " +
               (filter === k
-                ? "bg-neutral-100 text-neutral-900"
-                : "bg-neutral-900 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800")
+                ? "bg-ink text-cream-50"
+                : "bg-cream-50 text-ink-muted hover:text-ink hover:bg-cream-200 border border-cream-300")
             }
           >
             {label}
@@ -109,7 +109,7 @@ export function Pantry() {
           <select
             value={tagFilter}
             onChange={(e) => setTagFilter(e.target.value)}
-            className="ml-auto px-2 py-1 text-xs bg-neutral-900 border border-neutral-800 rounded"
+            className="ml-auto px-2 py-1 text-xs bg-white border border-cream-300 rounded"
           >
             <option value="">all tags</option>
             {tags.map((t) => (
@@ -121,25 +121,25 @@ export function Pantry() {
         )}
       </div>
 
-      {error && <div className="text-sm text-rose-400">{error}</div>}
+      {error && <div className="text-sm text-apple-700">{error}</div>}
       {loading ? (
-        <div className="text-neutral-500 text-sm">Loading…</div>
+        <div className="text-ink-muted text-sm">Loading…</div>
       ) : filtered.length === 0 ? (
-        <div className="text-neutral-500 text-sm py-8 text-center">
+        <div className="text-ink-muted text-sm py-8 text-center">
           {items.length === 0 ? "No items yet. Tap + Add to start." : "No matches."}
         </div>
       ) : (
-        <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-md overflow-hidden">
+        <ul className="divide-y divide-cream-300 border border-cream-300 rounded-md overflow-hidden bg-white">
           {filtered.map((i) => (
-            <li key={i.id} className="bg-neutral-950 hover:bg-neutral-900/50 transition">
+            <li key={i.id} className="bg-white hover:bg-cream-50 transition">
               <div className="px-3 py-3 flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setEditing(i)}
                   className="flex-1 min-w-0 text-left"
                 >
-                  <div className="font-medium truncate">{i.name}</div>
-                  <div className="text-xs text-neutral-500 truncate">
+                  <div className="font-medium truncate text-ink">{i.name}</div>
+                  <div className="text-xs text-ink-soft truncate">
                     {i.quantity} {i.size ? `· ${i.size}` : ""}
                     {i.tag_ids.length > 0 && (
                       <span className="ml-1">

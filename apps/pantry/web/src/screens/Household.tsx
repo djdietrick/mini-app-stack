@@ -178,10 +178,12 @@ export function Household() {
                 if (e.key === "Enter") void saveName();
                 if (e.key === "Escape") setEditingName(false);
               }}
-              className="text-2xl font-semibold tracking-tight bg-neutral-900 border border-neutral-700 rounded px-2 py-1 flex-1 min-w-0"
+              className="font-display text-2xl font-semibold tracking-tight bg-white border border-cream-300 rounded px-2 py-1 flex-1 min-w-0 focus:outline-none focus:border-apple-400"
             />
           ) : (
-            <h2 className="text-2xl font-semibold tracking-tight truncate">{household.name}</h2>
+            <h2 className="font-display text-3xl font-semibold tracking-tight truncate text-ink">
+              {household.name}
+            </h2>
           )}
           {isOwner && !editingName && (
             <button
@@ -190,37 +192,37 @@ export function Household() {
                 setNameInput(household.name);
                 setEditingName(true);
               }}
-              className="text-xs text-neutral-400 hover:text-neutral-100"
+              className="text-xs text-ink-muted hover:text-ink"
             >
               Rename
             </button>
           )}
         </div>
-        <p className="text-xs text-neutral-500 mt-1">
+        <p className="text-xs text-ink-soft mt-1 font-sans">
           You are {household.role === "owner" ? "the owner" : "a member"} · {members.length}{" "}
           {members.length === 1 ? "member" : "members"}
         </p>
       </div>
 
       {error && (
-        <div className="text-sm text-rose-400 bg-rose-950/40 border border-rose-900 rounded px-3 py-2">
+        <div className="text-sm text-apple-700 bg-apple-50 border border-apple-100 rounded px-3 py-2">
           {error}
         </div>
       )}
 
       <section>
-        <h3 className="text-sm uppercase tracking-wide text-neutral-500 mb-2">Members</h3>
-        <ul className="border border-neutral-800 rounded-md divide-y divide-neutral-800">
+        <h3 className="text-sm uppercase tracking-wide text-ink-soft mb-2 font-sans">Members</h3>
+        <ul className="border border-cream-300 rounded-md divide-y divide-cream-300 bg-white">
           {members.map((m) => (
             <li key={m.user_id} className="px-3 py-2 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm truncate">
+                <div className="text-sm truncate text-ink">
                   {m.display_name || m.email}
                   {m.user_id === myUserId && (
-                    <span className="ml-2 text-xs text-neutral-500">(you)</span>
+                    <span className="ml-2 text-xs text-ink-soft">(you)</span>
                   )}
                 </div>
-                <div className="text-xs text-neutral-500 truncate">
+                <div className="text-xs text-ink-soft truncate">
                   {m.role} · joined {new Date(m.joined_at).toLocaleDateString()}
                 </div>
               </div>
@@ -229,7 +231,7 @@ export function Household() {
                   type="button"
                   disabled={busy}
                   onClick={() => void removeMember(m.user_id)}
-                  className="text-xs text-rose-400 hover:text-rose-300 disabled:opacity-50"
+                  className="text-xs text-apple-700 hover:text-apple-600 disabled:opacity-50"
                 >
                   {m.user_id === myUserId ? "Leave" : "Remove"}
                 </button>
@@ -242,20 +244,20 @@ export function Household() {
       {isOwner && (
         <section>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm uppercase tracking-wide text-neutral-500">Invites</h3>
+            <h3 className="text-sm uppercase tracking-wide text-ink-soft font-sans">Invites</h3>
             <button
               type="button"
               disabled={busy}
               onClick={() => void createInvite()}
-              className="text-xs px-2.5 py-1 rounded bg-neutral-100 text-neutral-900 hover:bg-white disabled:opacity-50"
+              className="text-xs px-2.5 py-1 rounded bg-apple-500 text-white hover:bg-apple-600 disabled:opacity-50 transition font-medium"
             >
               + New invite
             </button>
           </div>
 
           {createdToken && (
-            <div className="border border-emerald-900 bg-emerald-950/40 rounded-md p-3 mb-3 space-y-2">
-              <div className="text-xs text-emerald-300">
+            <div className="border border-sage-400 bg-sage-400/10 rounded-md p-3 mb-3 space-y-2">
+              <div className="text-xs text-sage-600 font-medium">
                 Single-use link · expires{" "}
                 {new Date(createdToken.expiresAt).toLocaleDateString()}
               </div>
@@ -263,30 +265,30 @@ export function Household() {
                 <input
                   readOnly
                   value={inviteUrl(createdToken.token)}
-                  className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-neutral-900 border border-neutral-800 rounded"
+                  className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-white border border-cream-300 rounded text-ink"
                   onFocus={(e) => e.currentTarget.select()}
                 />
                 <button
                   type="button"
                   onClick={() => void copyInvite()}
-                  className="text-xs px-2 py-1.5 rounded bg-neutral-100 text-neutral-900 hover:bg-white"
+                  className="text-xs px-2 py-1.5 rounded bg-ink text-cream-50 hover:bg-ink/90 font-medium"
                 >
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-ink-soft">
                 Share this link with one person. It works exactly once.
               </p>
             </div>
           )}
 
           {invites.length > 0 && (
-            <ul className="border border-neutral-800 rounded-md divide-y divide-neutral-800">
+            <ul className="border border-cream-300 rounded-md divide-y divide-cream-300 bg-white">
               {invites.map((iv) => (
                 <li key={iv.id} className="px-3 py-2 flex items-center justify-between text-sm">
-                  <div className="text-neutral-300">
+                  <div className="text-ink">
                     Created {new Date(iv.created_at).toLocaleDateString()}
-                    <span className="text-neutral-500">
+                    <span className="text-ink-soft">
                       {" · expires "}
                       {new Date(iv.expires_at).toLocaleDateString()}
                     </span>
@@ -295,7 +297,7 @@ export function Household() {
                     type="button"
                     disabled={busy}
                     onClick={() => void revokeInvite(iv.id)}
-                    className="text-xs text-rose-400 hover:text-rose-300 disabled:opacity-50"
+                    className="text-xs text-apple-700 hover:text-apple-600 disabled:opacity-50"
                   >
                     Revoke
                   </button>
@@ -304,33 +306,33 @@ export function Household() {
             </ul>
           )}
           {invites.length === 0 && !createdToken && (
-            <p className="text-xs text-neutral-500">No active invites.</p>
+            <p className="text-xs text-ink-soft">No active invites.</p>
           )}
         </section>
       )}
 
       {all.length > 1 && (
         <section>
-          <h3 className="text-sm uppercase tracking-wide text-neutral-500 mb-2">
+          <h3 className="text-sm uppercase tracking-wide text-ink-soft mb-2 font-sans">
             Switch household
           </h3>
-          <ul className="border border-neutral-800 rounded-md divide-y divide-neutral-800">
+          <ul className="border border-cream-300 rounded-md divide-y divide-cream-300 bg-white">
             {all.map((h) => (
               <li key={h.id} className="px-3 py-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-sm truncate">{h.name}</div>
-                  <div className="text-xs text-neutral-500">
+                  <div className="text-sm truncate text-ink">{h.name}</div>
+                  <div className="text-xs text-ink-soft">
                     {h.role} · {h.member_count} {h.member_count === 1 ? "member" : "members"}
                   </div>
                 </div>
                 {h.active ? (
-                  <span className="text-xs text-emerald-400">active</span>
+                  <span className="text-xs text-sage-600 font-medium">active</span>
                 ) : (
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => void switchTo(h.id)}
-                    className="text-xs px-2 py-1 rounded border border-neutral-700 hover:border-neutral-500"
+                    className="text-xs px-2 py-1 rounded border border-cream-300 hover:border-apple-400 transition text-ink"
                   >
                     Switch
                   </button>
@@ -343,12 +345,12 @@ export function Household() {
 
       {isOwner && (
         <section>
-          <h3 className="text-sm uppercase tracking-wide text-neutral-500 mb-2">Danger zone</h3>
+          <h3 className="text-sm uppercase tracking-wide text-ink-soft mb-2 font-sans">Danger zone</h3>
           <button
             type="button"
             disabled={busy}
             onClick={() => void deleteHousehold()}
-            className="text-sm px-3 py-2 rounded border border-rose-900 text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
+            className="text-sm px-3 py-2 rounded border border-apple-700 text-apple-700 hover:bg-apple-50 disabled:opacity-50 transition"
           >
             Delete household
           </button>
@@ -359,7 +361,7 @@ export function Household() {
         <button
           type="button"
           onClick={() => navigate("#/pantry")}
-          className="text-xs text-neutral-400 hover:text-neutral-200"
+          className="text-xs text-ink-muted hover:text-ink"
         >
           ← Back to pantry
         </button>

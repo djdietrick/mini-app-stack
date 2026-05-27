@@ -45,20 +45,22 @@ export function InviteAccept({ token }: Props) {
       <div className="w-full max-w-md text-center">
         {error ? (
           <>
-            <h1 className="text-xl font-semibold mb-2">Can't use this invite</h1>
-            <p className="text-sm text-neutral-400 mb-6">{error}</p>
+            <h1 className="font-display text-2xl font-semibold mb-2 text-ink">Can't use this invite</h1>
+            <p className="text-sm text-ink-muted mb-6">{error}</p>
             <button
               type="button"
               onClick={() => navigate("#/pantry")}
-              className="text-sm px-4 py-2 rounded-md border border-neutral-700 hover:border-neutral-500"
+              className="text-sm px-4 py-2 rounded-md border border-cream-300 bg-white text-ink hover:border-apple-400 transition"
             >
               Go home
             </button>
           </>
         ) : preview ? (
           <>
-            <h1 className="text-xl font-semibold mb-2">Join "{preview.householdName}"?</h1>
-            <p className="text-sm text-neutral-400 mb-6">
+            <h1 className="font-display text-2xl font-semibold mb-2 text-ink">
+              Join "{preview.householdName}"?
+            </h1>
+            <p className="text-sm text-ink-muted mb-6">
               {preview.inviterName} invited you. You'll share their pantry items, tags, and grocery
               lists.
             </p>
@@ -67,7 +69,7 @@ export function InviteAccept({ token }: Props) {
                 type="button"
                 disabled={busy}
                 onClick={() => navigate("#/pantry")}
-                className="px-4 py-2 text-sm rounded-md text-neutral-300 hover:bg-neutral-900"
+                className="px-4 py-2 text-sm rounded-md text-ink hover:bg-cream-200 transition"
               >
                 Cancel
               </button>
@@ -75,14 +77,14 @@ export function InviteAccept({ token }: Props) {
                 type="button"
                 disabled={busy}
                 onClick={() => void accept()}
-                className="px-4 py-2 text-sm font-medium rounded-md bg-neutral-100 text-neutral-900 hover:bg-white disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium rounded-md bg-apple-500 text-white hover:bg-apple-600 disabled:opacity-50 transition"
               >
                 Join household
               </button>
             </div>
           </>
         ) : (
-          <p className="text-sm text-neutral-500">Loading invite…</p>
+          <p className="text-sm text-ink-muted">Loading invite…</p>
         )}
       </div>
     </div>

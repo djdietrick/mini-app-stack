@@ -74,7 +74,7 @@ export function App() {
   // Invite links are accessible whether or not the user has a household yet.
   if (route.name === "invite") {
     return (
-      <div className="min-h-screen">
+      <div className="min-h-screen bg-cream-100">
         <main className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
           <InviteAccept token={route.token} />
         </main>
@@ -84,7 +84,7 @@ export function App() {
 
   if (householdLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm text-neutral-500">
+      <div className="min-h-screen flex items-center justify-center text-sm text-ink-muted bg-cream-100">
         Loading…
       </div>
     );
@@ -95,12 +95,12 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-neutral-800 bg-neutral-950/80 backdrop-blur sticky top-0 z-10">
+    <div className="min-h-screen bg-cream-100">
+      <header className="border-b border-cream-300 bg-cream-50/90 backdrop-blur sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <a
             href="#/pantry"
-            className="text-lg font-semibold tracking-tight hover:text-neutral-300 transition"
+            className="font-display text-xl font-semibold tracking-tight text-ink hover:text-apple-600 transition"
           >
             Pantry
           </a>
@@ -110,10 +110,10 @@ export function App() {
                 key={t.id}
                 href={t.href}
                 className={
-                  "px-3 py-1.5 rounded-md text-sm transition " +
+                  "px-3 py-1.5 rounded-md text-sm font-medium transition " +
                   (route.name === t.id
-                    ? "bg-neutral-100 text-neutral-900"
-                    : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800")
+                    ? "bg-ink text-cream-50"
+                    : "text-ink-muted hover:text-ink hover:bg-cream-200")
                 }
               >
                 {t.label}
@@ -122,10 +122,10 @@ export function App() {
             <a
               href="#/household"
               className={
-                "ml-3 pl-3 border-l border-neutral-800 px-2 py-1 rounded-md text-xs max-w-[12rem] truncate transition " +
+                "ml-3 pl-3 border-l border-cream-300 px-2 py-1 rounded-md text-xs max-w-[12rem] truncate transition " +
                 (route.name === "household"
-                  ? "text-neutral-100 bg-neutral-800"
-                  : "text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800")
+                  ? "text-ink bg-cream-200"
+                  : "text-ink-muted hover:text-ink hover:bg-cream-200")
               }
               title={`Household: ${household.name}`}
             >
@@ -133,7 +133,7 @@ export function App() {
             </a>
             {userLabel && (
               <span
-                className="ml-1 text-xs text-neutral-500 max-w-[10rem] truncate"
+                className="ml-1 text-xs text-ink-soft max-w-[10rem] truncate"
                 title={userLabel}
               >
                 {userLabel}
@@ -142,7 +142,7 @@ export function App() {
             <button
               type="button"
               onClick={() => void logout()}
-              className="px-3 py-1.5 rounded-md text-sm text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 transition"
+              className="px-3 py-1.5 rounded-md text-sm text-ink-muted hover:text-ink hover:bg-cream-200 transition"
             >
               Sign out
             </button>
@@ -152,7 +152,7 @@ export function App() {
             aria-label="Open menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen(true)}
-            className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 transition"
+            className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-md text-ink hover:bg-cream-200 transition"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="3" y1="6" x2="21" y2="6" />
@@ -165,7 +165,7 @@ export function App() {
 
       <div
         className={
-          "sm:hidden fixed inset-0 z-20 bg-black/60 transition-opacity duration-200 " +
+          "sm:hidden fixed inset-0 z-20 bg-ink/40 transition-opacity duration-200 " +
           (menuOpen ? "opacity-100" : "opacity-0 pointer-events-none")
         }
         onClick={() => setMenuOpen(false)}
@@ -173,20 +173,20 @@ export function App() {
       />
       <aside
         className={
-          "sm:hidden fixed top-0 right-0 z-30 h-full w-72 max-w-[80%] bg-neutral-950 border-l border-neutral-800 shadow-xl transform transition-transform duration-200 ease-out " +
+          "sm:hidden fixed top-0 right-0 z-30 h-full w-72 max-w-[80%] bg-cream-50 border-l border-cream-300 shadow-xl transform transition-transform duration-200 ease-out " +
           (menuOpen ? "translate-x-0" : "translate-x-full")
         }
         role="dialog"
         aria-modal="true"
         aria-label="Navigation"
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800">
-          <span className="text-sm font-semibold tracking-tight text-neutral-200">Menu</span>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-cream-300">
+          <span className="font-display text-base font-semibold tracking-tight text-ink">Menu</span>
           <button
             type="button"
             aria-label="Close menu"
             onClick={() => setMenuOpen(false)}
-            className="inline-flex items-center justify-center w-9 h-9 rounded-md text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 transition"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ink hover:bg-cream-200 transition"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -200,30 +200,30 @@ export function App() {
               key={t.id}
               href={t.href}
               className={
-                "px-3 py-2 rounded-md text-sm transition " +
+                "px-3 py-2 rounded-md text-sm font-medium transition " +
                 (route.name === t.id
-                  ? "bg-neutral-100 text-neutral-900"
-                  : "text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800")
+                  ? "bg-ink text-cream-50"
+                  : "text-ink hover:bg-cream-200")
               }
             >
               {t.label}
             </a>
           ))}
-          <div className="mt-3 pt-3 border-t border-neutral-800">
+          <div className="mt-3 pt-3 border-t border-cream-300">
             <a
               href="#/household"
               className={
                 "block px-3 py-2 rounded-md text-sm transition " +
                 (route.name === "household"
-                  ? "bg-neutral-100 text-neutral-900"
-                  : "text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800")
+                  ? "bg-ink text-cream-50"
+                  : "text-ink hover:bg-cream-200")
               }
             >
-              <div className="truncate">{household.name}</div>
-              <div className="text-xs text-neutral-500">Manage household</div>
+              <div className="truncate font-medium">{household.name}</div>
+              <div className="text-xs text-ink-soft">Manage household</div>
             </a>
             {userLabel && (
-              <div className="px-3 py-1.5 text-xs text-neutral-500 truncate" title={userLabel}>
+              <div className="px-3 py-1.5 text-xs text-ink-soft truncate" title={userLabel}>
                 {userLabel}
               </div>
             )}
@@ -233,7 +233,7 @@ export function App() {
                 setMenuOpen(false);
                 void logout();
               }}
-              className="w-full text-left px-3 py-2 rounded-md text-sm text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800 transition"
+              className="w-full text-left px-3 py-2 rounded-md text-sm text-ink hover:bg-cream-200 transition"
             >
               Sign out
             </button>

@@ -32,22 +32,22 @@ export function Lists() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Grocery lists</h1>
+        <h1 className="font-display text-2xl font-semibold text-ink">Grocery lists</h1>
         <a
           href="#/builder"
-          className="px-3 py-2 text-sm font-medium rounded-md bg-neutral-100 text-neutral-900 hover:bg-white"
+          className="px-3 py-2 text-sm font-medium rounded-md bg-apple-500 text-white hover:bg-apple-600 transition"
         >
           + New list
         </a>
       </div>
-      {error && <div className="text-sm text-rose-400">{error}</div>}
+      {error && <div className="text-sm text-apple-700">{error}</div>}
 
       <section>
-        <h2 className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Active</h2>
+        <h2 className="text-xs uppercase tracking-wide text-ink-soft mb-2 font-sans">Active</h2>
         {active.length === 0 ? (
-          <div className="text-sm text-neutral-500">No active lists.</div>
+          <div className="text-sm text-ink-muted">No active lists.</div>
         ) : (
-          <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-md overflow-hidden">
+          <ul className="divide-y divide-cream-300 border border-cream-300 rounded-md overflow-hidden bg-white">
             {active.map((l) => (
               <ListRow key={l.id} list={l} onDelete={() => void remove(l.id, l.name)} />
             ))}
@@ -56,11 +56,11 @@ export function Lists() {
       </section>
 
       <section>
-        <h2 className="text-xs uppercase tracking-wide text-neutral-500 mb-2">Completed</h2>
+        <h2 className="text-xs uppercase tracking-wide text-ink-soft mb-2 font-sans">Completed</h2>
         {completed.length === 0 ? (
-          <div className="text-sm text-neutral-500">No past lists yet.</div>
+          <div className="text-sm text-ink-muted">No past lists yet.</div>
         ) : (
-          <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-md overflow-hidden">
+          <ul className="divide-y divide-cream-300 border border-cream-300 rounded-md overflow-hidden bg-white">
             {completed.map((l) => (
               <ListRow key={l.id} list={l} onDelete={() => void remove(l.id, l.name)} />
             ))}
@@ -74,11 +74,11 @@ export function Lists() {
 function ListRow({ list, onDelete }: { list: ListSummary; onDelete: () => void }) {
   const dateStr = new Date(list.created_at).toLocaleDateString();
   return (
-    <li className="bg-neutral-950 hover:bg-neutral-900/50 transition">
+    <li className="bg-white hover:bg-cream-50 transition">
       <div className="px-3 py-3 flex items-center gap-3">
         <a href={`#/shopping/${list.id}`} className="flex-1 min-w-0">
-          <div className="font-medium truncate">{list.name}</div>
-          <div className="text-xs text-neutral-500">
+          <div className="font-medium truncate text-ink">{list.name}</div>
+          <div className="text-xs text-ink-soft">
             {dateStr} · {list.checked_count}/{list.item_count} checked
             {list.status === "completed" && " · completed"}
           </div>
@@ -86,7 +86,7 @@ function ListRow({ list, onDelete }: { list: ListSummary; onDelete: () => void }
         <button
           type="button"
           onClick={onDelete}
-          className="text-xs text-neutral-500 hover:text-rose-400 transition px-2 py-1"
+          className="text-xs text-ink-soft hover:text-apple-700 transition px-2 py-1"
         >
           Delete
         </button>
