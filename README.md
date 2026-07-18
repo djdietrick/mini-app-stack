@@ -112,6 +112,7 @@ const redis = createRedisClient({
 - [apps/auth](apps/auth/) — shared identity service (port `3100`). Owns writes to `shared.users`, `shared.user_credentials`, `shared.sessions`.
 - [apps/crate](apps/crate/) — music queue / rating app backed by the iTunes search API (port `3101`).
 - [apps/pantry](apps/pantry/) — kitchen inventory + grocery list builder (port `3102`). Items track quantity, size, and a 3-state status (stocked / low / out); tags are typed (`store` / `section` / `general`); grocery lists are generated on demand from low/out items, checked off at the store, and reconciled back into inventory on finish.
+- [apps/ytdigest](apps/ytdigest/) — YouTube channel digest emailer (port `3103`). Subscribe to channels with a daily or weekly cadence; polls uploads + view/like stats on a schedule, evaluates per-channel or global rules (keyword match, performance/engagement vs. a channel's own trailing baseline, duration, or "every upload"), and emails one combined digest per day via `@stack/mailer`.
 
 ## Scripts
 
