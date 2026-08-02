@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repo purpose
 
-Monorepo (pnpm workspaces) of small self-hosted microservices and the shared data infrastructure that backs them. Apps live under `apps/`, shared TS code under `packages/`. The data layer (Postgres + Mongo + Redis) is defined in `infra/` and orchestrated by the root `docker-compose.yml`.
+Monorepo (pnpm workspaces) of small self-hosted microservices and the shared data infrastructure that backs them. Apps live under `apps/`, shared TS code under `packages/`. The data layer (Postgres + Redis) is defined in `infra/` and orchestrated by the root `docker-compose.yml`.
 
 ## Common commands
 
 Run from the repo root.
 
 ```bash
-# Infrastructure (Postgres + Mongo + Redis)
+# Infrastructure (Postgres + Redis)
 pnpm infra:up       # start data services in the background
 pnpm infra:down     # stop services, keep volumes
 pnpm infra:logs     # tail logs from all services
@@ -30,7 +30,7 @@ Workspace install: `pnpm install` at the root. Adding a dependency to a specific
 The stack is deliberately *not* "one DB per app." There is one shared database per engine, and apps share a single user identity. This is the core architectural decision; most other things follow from it.
 
 - **Postgres** — single database `appstack`. Each app gets its own schema (`crate`, `pantry`, …) plus a dedicated login role that owns it. A separate `shared` schema holds cross-app tables. App roles get **read-only** access to `shared` and have `search_path = <app>, shared, public`, so unqualified table references resolve naturally.
-- **Mongo** — single database `appstack`. All apps connect as one user (`appstack`) and namespace via collection prefixes (`notes_items`, `timer_sessions`). The `createMongoClient` helper applies the prefix automatically.
+- **Firestore** (cloud only) — single database per environment. Apps namespace via collection prefixes (`crate_queue`, `pantry_items`); the `createFirestoreClient` helper applies the prefix automatically.
 - **Redis** — single instance. Apps namespace via `keyPrefix` and/or logical db index (0–15).
 
 ### Auth / identity boundary
@@ -46,7 +46,7 @@ When adding any new shared concept, follow this pattern: data in `shared`, write
 
 ### Provisioning lifecycle
 
-`infra/postgres/init/*` and `infra/mongo/init/*` are mounted into the official images' init directories. **They only run on an empty data volume.** Editing them and restarting does nothing — you must either run the equivalent SQL/JS by hand or `pnpm infra:reset` (destructive).
+`infra/postgres/init/*` is mounted into the official image's init directory. **It only runs on an empty data volume.** Editing it and restarting does nothing — you must either run the equivalent SQL by hand or `pnpm infra:reset` (destructive).
 
 The Postgres init runs in lexicographic order:
 
@@ -61,10 +61,10 @@ To add a new app to the data layer: append its name to `APPS=()` in `10-app-sche
 `packages/db-clients` (`@stack/db-clients`) is the only sanctioned way for apps to open connections. Each helper returns a handle with a `close()` method:
 
 - `createPostgresClient({ url, schema })` — postgres.js + Drizzle, sets `search_path` from `schema`.
-- `createMongoClient({ url, database?, collectionPrefix? })` — official driver. Use `handle.collection("items")` so the prefix is applied automatically; only reach for `handle.db.collection(...)` if you need to bypass it.
+- `createFirestoreClient({ projectId?, databaseId?, collectionPrefix? })` — `@google-cloud/firestore`. Use `handle.collection("items")` so the prefix is applied automatically. Picks up `FIRESTORE_EMULATOR_HOST` on its own, so local and cloud share one code path.
 - `createRedisClient({ url, keyPrefix?, db? })` — ioredis.
 
-Apps should depend on `@stack/db-clients` rather than importing `postgres` / `mongodb` / `ioredis` directly, so connection conventions (pool sizes, prefixing, search_path) stay consistent.
+Apps should depend on `@stack/db-clients` rather than importing `postgres` / `@google-cloud/firestore` / `ioredis` directly, so connection conventions (pool sizes, prefixing, search_path) stay consistent.
 
 ### Auth
 

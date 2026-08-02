@@ -6,14 +6,18 @@ Monorepo of small self-hosted microservices and the shared data infrastructure t
 
 ```
 .
-├── docker-compose.yml          # Postgres + Mongo + Redis
+├── docker-compose.yml          # Postgres + Redis (+ optional Firebase emulators)
+├── firebase.json               # Hosting rewrites, Firestore rules/indexes, emulators
 ├── .env.example                # copy to .env and edit
+├── .github/workflows/          # CI, Terraform plan/apply, Firebase deploys
 ├── infra/
 │   ├── postgres/init/          # extensions + per-app schema/role provisioning
-│   ├── mongo/init/             # per-app db/user provisioning
-│   └── redis/redis.conf        # lean redis config
+│   ├── redis/redis.conf        # lean redis config
+│   └── terraform/              # GCP/Firebase infrastructure as code
+├── functions/                  # Firebase Functions codebase (cloud transport)
 ├── packages/
-│   └── db-clients/             # shared TS clients (Drizzle, mongodb, ioredis)
+│   ├── service-kit/            # transport-agnostic routes + Fastify/Express adapters
+│   └── db-clients/             # shared TS clients (Drizzle, Firestore, ioredis)
 └── apps/                       # individual services live here
 ```
 
@@ -22,7 +26,6 @@ Monorepo of small self-hosted microservices and the shared data infrastructure t
 Everything lives in a single shared database per engine so apps can join across each other's data and share a single user identity.
 
 - **PostgreSQL 16** — shared database `appstack`. One schema per app (`notes`, `timer`, …) plus a `shared` schema for cross-app tables (users, sessions, app config). Each app role is read-only on `shared`; writes go through the future auth service.
-- **MongoDB 7** — shared database `appstack`. Apps namespace via collection prefixes (`notes_items`, `timer_sessions`). One app user (`appstack`) with `readWrite` on the db.
 - **Redis 7** — caching, sessions, pub/sub. AOF persistence, `maxmemory 256mb` with `allkeys-lru` eviction. Apps namespace via `keyPrefix`.
 
 ### First-time setup
@@ -35,7 +38,7 @@ docker compose up -d
 docker compose ps
 ```
 
-The Postgres and Mongo init scripts only run when their data volume is empty. To re-run them after editing, either reset (`pnpm infra:reset` — destroys data) or apply the SQL/JS manually.
+The Postgres init scripts only run when the data volume is empty. To re-run them after editing, either reset (`pnpm infra:reset` — destroys data) or apply the SQL manually.
 
 To add a new app to a live Postgres without resetting, run the equivalent of `infra/postgres/init/10-app-schemas.sh` by hand (substituting the new app name):
 
@@ -57,7 +60,7 @@ Take a backup first with `docker compose exec -T postgres pg_dump -U "$POSTGRES_
 ### Adding a new app to the data layer
 
 1. **Postgres** — add the app name to the `APPS=()` array in [infra/postgres/init/10-app-schemas.sh](infra/postgres/init/10-app-schemas.sh#L17). Add `APP_<NAME>_PASSWORD` to `.env` and pass it through to the `postgres` service env in `docker-compose.yml`. The script grants the app role read access to the `shared` schema automatically.
-2. **Mongo** — no provisioning needed. Use the shared `appstack` user and prefix your collection names (e.g. `notes_items`).
+2. **Firestore** (cloud only) — no provisioning needed. Prefix your collection names (e.g. `notes_items`) via `createFirestoreClient({ collectionPrefix })`.
 3. **Redis** — no provisioning needed. Pick a logical db index (0-15) or use `keyPrefix` to namespace keys.
 
 ### Shared identity / config
@@ -86,7 +89,7 @@ See [CLAUDE.md](CLAUDE.md) for the integration pattern.
 ```ts
 import {
   createPostgresClient,
-  createMongoClient,
+  createFirestoreClient,
   createRedisClient,
 } from "@stack/db-clients";
 
@@ -95,9 +98,9 @@ const pg = createPostgresClient({
   schema: "notes",
 });
 
-const mongo = await createMongoClient({
-  url: process.env.MONGO_URL!,           // mongodb://appstack:pw@mongo:27017/appstack?authSource=appstack
-  database: "appstack",
+// Cloud only. Picks up FIRESTORE_EMULATOR_HOST automatically when set.
+const fs = createFirestoreClient({
+  projectId: process.env.GOOGLE_CLOUD_PROJECT,
   collectionPrefix: "notes_",            // every collection access auto-prefixes
 });
 
@@ -123,8 +126,8 @@ pnpm infra:logs     # tail logs
 pnpm infra:reset    # stop AND delete all data volumes (destructive)
 ```
 
-## Choosing SQL vs NoSQL per app
+## Choosing a store
 
-- Default to **Postgres**. JSONB columns handle most document-shaped data while keeping you in one system.
-- Reach for **Mongo** when the data is genuinely schema-flexible, deeply nested, or you want per-document TTLs / change streams.
-- Use **Redis** for ephemeral state (sessions, rate limits, queues, pub/sub) — not as a primary store.
+- Self-hosted, the primary store is **Postgres**. JSONB columns handle most document-shaped data while keeping you in one system.
+- In the cloud the same apps run on **Firestore** via a second repository implementation behind the same port. See "Deploying to Firebase".
+- Use **Redis** for ephemeral state (caches, locks, rate limits) — not as a primary store. Firestore documents with a TTL policy play that role in the cloud.

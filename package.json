@@ -8,7 +8,13 @@
     "infra:up": "docker compose -p mini-app-stack up -d",
     "infra:down": "docker compose -p mini-app-stack down",
     "infra:logs": "docker compose -p mini-app-stack logs -f",
-    "infra:reset": "docker compose -p mini-app-stack down -v"
+    "infra:reset": "docker compose -p mini-app-stack down -v",
+    "emulators:up": "docker compose -p mini-app-stack --profile emulators up -d",
+    "emulators:down": "docker compose -p mini-app-stack --profile emulators down",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build:web": "pnpm -r --if-present build:web",
+    "build": "pnpm build:web",
+    "test": "pnpm -r --if-present test"
   },
   "engines": {
     "node": ">=20"
