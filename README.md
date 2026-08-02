@@ -124,6 +124,20 @@ pnpm infra:up       # start all data services
 pnpm infra:down     # stop, keep data
 pnpm infra:logs     # tail logs
 pnpm infra:reset    # stop AND delete all data volumes (destructive)
+
+pnpm emulators:up   # Firebase emulator suite (the cloud path, locally)
+pnpm emulators:down
+
+pnpm typecheck      # every workspace
+pnpm build:web      # every SPA
+pnpm test           # every workspace with tests
+```
+
+Run the tests with a Firestore emulator so the Firestore contract tests
+actually execute instead of self-skipping:
+
+```bash
+pnpm exec firebase emulators:exec --only firestore --project demo-ci "pnpm test"
 ```
 
 ## Choosing a store
@@ -131,3 +145,90 @@ pnpm infra:reset    # stop AND delete all data volumes (destructive)
 - Self-hosted, the primary store is **Postgres**. JSONB columns handle most document-shaped data while keeping you in one system.
 - In the cloud the same apps run on **Firestore** via a second repository implementation behind the same port. See "Deploying to Firebase".
 - Use **Redis** for ephemeral state (caches, locks, rate limits) — not as a primary store. Firestore documents with a TTL policy play that role in the cloud.
+
+
+## Deploying to Firebase
+
+The stack has two deployment targets and both are permanent. The same domain
+code and the same route tables serve both; only the implementations wired
+underneath differ.
+
+|                | Self-hosted (Docker)        | Cloud (Firebase)                  |
+|----------------|-----------------------------|-----------------------------------|
+| Compute        | Fastify on your server      | Cloud Functions (2nd gen)         |
+| Data           | Postgres                    | Firestore                         |
+| Identity       | `apps/auth` + `shared.*`    | Firebase Auth (session cookies)   |
+| Cache / locks  | Redis                       | Firestore docs with a TTL policy  |
+| Static SPA     | `@fastify/static`           | Firebase Hosting                  |
+| Config         | `docker-compose.yml`        | `infra/terraform/` + `firebase.json` |
+
+### The three seams
+
+Everything that differs between the two targets is behind one of three ports,
+and nothing else in the codebase knows which target it is running on.
+
+1. **Transport** — `@stack/service-kit`. Routes are declarative descriptors
+   (`method`, `path`, zod `input`, `handler(ctx, input)`); `toFastifyPlugin`
+   serves them self-hosted and `toExpressApp` serves them inside a Function.
+   Handlers never see a request or reply object.
+2. **Data** — a per-app repository port (`apps/<app>/src/repo/types.ts`) with a
+   Postgres and a Firestore implementation, selected by `DATA_BACKEND`.
+3. **Identity** — `SessionVerifier` in `@stack/auth-client`, either
+   `stackVerifier` (calls `apps/auth`) or `firebaseVerifier` (verifies a
+   Firebase session cookie), selected by `AUTH_MODE`.
+
+Adding an endpoint means adding one route descriptor and one method on the
+repo port, then implementing that method twice. That second implementation is
+the standing cost of keeping both targets.
+
+### Environment selection
+
+```
+DATA_BACKEND=postgres|firestore
+AUTH_MODE=stack|firebase
+CACHE_BACKEND=redis|firestore
+MAIL_TRANSPORT=smtp|http
+```
+
+Frontends pick their auth provider at build time via `VITE_AUTH_MODE`; the
+Firebase SDK is tree-shaken out of the self-hosted bundle.
+
+### Infrastructure
+
+`infra/terraform/` owns the GCP resources — see
+[infra/terraform/README.md](infra/terraform/README.md) for the bootstrap
+sequence and the division of labour with `firebase.json`. Deploys run from
+GitHub Actions authenticating over Workload Identity Federation; there is no
+long-lived service account key anywhere.
+
+### Environments
+
+Two GCP projects: `mini-app-stack-staging` and `mini-app-stack-prod`. Every
+pull request gets a Firebase Hosting **preview channel** with its own URL.
+
+Be clear about what a preview is: **preview channels fork the frontend only.**
+Functions, Firestore data and Auth users are shared across the whole staging
+project, so two PRs that change the API incompatibly will break each other,
+and PR previews share data. That is fine for frontend-only and additive
+changes. For an API-breaking PR, deploy its functions under a suffixed id
+(`crateApi-pr123`) and point that PR's rewrite at it.
+
+Terraform is never applied from a pull request — PRs get a plan comment, and
+apply happens on merge to `main`.
+
+### Migration status
+
+| App        | Self-hosted | Firebase |
+|------------|-------------|----------|
+| `crate`    | yes         | yes      |
+| `pantry`   | yes         | not yet  |
+| `ytdigest` | yes         | not yet  |
+| `auth`     | yes         | replaced by Firebase Auth in the cloud |
+
+`pantry` and `ytdigest` still run only on the self-hosted path. Porting them
+means the same three steps `crate` went through: extract routes into
+`src/domain/`, define the repo port with a Postgres implementation, then add
+the Firestore implementation and export the function. `ytdigest` additionally
+needs its in-process `setInterval`/`node-cron` schedulers replaced with
+`onSchedule` functions, and an HTTP mail transport — Cloud Functions cannot
+open SMTP ports.

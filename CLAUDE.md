@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repo purpose
 
-Monorepo (pnpm workspaces) of small self-hosted microservices and the shared data infrastructure that backs them. Apps live under `apps/`, shared TS code under `packages/`. The data layer (Postgres + Redis) is defined in `infra/` and orchestrated by the root `docker-compose.yml`.
+Monorepo (pnpm workspaces) of small microservices and the shared data infrastructure that backs them. Apps live under `apps/`, shared TS code under `packages/`. The data layer (Postgres + Redis) is defined in `infra/` and orchestrated by the root `docker-compose.yml`.
+
+**There are two deployment targets and both are permanent**: the self-hosted Docker stack, and Firebase/GCP. The same domain code and route tables serve both — see "Dual deployment targets" below. When changing anything data- or transport-related, assume you must satisfy both.
 
 ## Common commands
 
@@ -19,6 +21,19 @@ pnpm infra:reset    # DESTROY all data volumes (re-runs init scripts on next up)
 
 # Typecheck a single workspace package
 pnpm --filter @stack/db-clients typecheck
+
+# Whole workspace
+pnpm typecheck
+pnpm build:web
+pnpm test
+
+# Run tests with a Firestore emulator, so the Firestore contract tests run
+# instead of self-skipping. This is what CI does.
+pnpm exec firebase emulators:exec --only firestore --project demo-ci "pnpm test"
+
+# Firebase emulator suite (auth + firestore + functions + hosting)
+pnpm emulators:up
+pnpm emulators:down
 ```
 
 Workspace install: `pnpm install` at the root. Adding a dependency to a specific package: `pnpm --filter <name> add <dep>`.
@@ -32,6 +47,40 @@ The stack is deliberately *not* "one DB per app." There is one shared database p
 - **Postgres** — single database `appstack`. Each app gets its own schema (`crate`, `pantry`, …) plus a dedicated login role that owns it. A separate `shared` schema holds cross-app tables. App roles get **read-only** access to `shared` and have `search_path = <app>, shared, public`, so unqualified table references resolve naturally.
 - **Firestore** (cloud only) — single database per environment. Apps namespace via collection prefixes (`crate_queue`, `pantry_items`); the `createFirestoreClient` helper applies the prefix automatically.
 - **Redis** — single instance. Apps namespace via `keyPrefix` and/or logical db index (0–15).
+
+### Dual deployment targets
+
+Everything that differs between self-hosted and Firebase sits behind exactly three ports. Nothing else in the codebase knows which target it is running on, and **no domain code may import Fastify, Express, `postgres`, or `firebase-admin` directly.**
+
+1. **Transport** — `@stack/service-kit`. A route is a descriptor: `method`, `path`, optional zod `input` (`params`/`query`/`body`), and `handler(ctx, input)`. `ctx` carries `{ repo, user, scope, log }` and deliberately has no request or reply on it. `toFastifyPlugin` serves the table self-hosted; `toExpressApp` serves it inside a Cloud Function. Domain code throws `AppError` (`notFound()`, `conflict("CODE")`, …) and each adapter maps it to HTTP.
+2. **Data** — a per-app repository port at `apps/<app>/src/repo/types.ts`, implemented by `postgres.ts` and `firestore.ts`. Repo methods return `boolean` for "did it match" rather than throwing; the route decides the 404.
+3. **Identity** — `SessionVerifier` in `@stack/auth-client`: `stackVerifier` (calls `apps/auth`) or `firebaseVerifier` (verifies a Firebase session cookie).
+
+Selected by env: `DATA_BACKEND=postgres|firestore`, `AUTH_MODE=stack|firebase`, `CACHE_BACKEND=redis|firestore`, `MAIL_TRANSPORT=smtp|http`. Frontends pick their provider at build time with `VITE_AUTH_MODE`.
+
+`apps/crate` is the reference implementation and the only app ported so far; `apps/pantry` and `apps/ytdigest` still run self-hosted only.
+
+**Things that will bite you when writing a Firestore implementation:**
+
+- No joins. Denormalise onto the document (crate copies album/artist metadata onto each queue doc) and accept that the copy does not retro-update.
+- No unique constraints. Either use a deterministic document id, or do the check and the write inside one `runTransaction`.
+- Transactions must do all reads before any write, cap at 500 writes, and **the callback must be idempotent** — it is retried on contention, so no side effects outside the transaction.
+- `in` filters cap at 30 values; chunk anything larger (see `statusFor`).
+- No `ORDER BY random()` and no `GROUP BY`; aggregate in memory when the set is per-user and small.
+- Document ids are app-generated UUIDs, not Firestore auto-ids, so `z.string().uuid()` route validation holds on both backends.
+- Firestore TTL is a per-collection policy on a timestamp field and deletes asynchronously, so code still checks `expiresAt` on read.
+
+**Wire formats are contracts.** crate's queue rows are snake_case because they began as Postgres rows and `apps/crate/web/src/api.ts` reads those keys. The Firestore repo reproduces them exactly. Do not "clean up" field names.
+
+**Cloud routing.** Firebase Hosting forwards the *original* path to a rewritten function, so `/api/search` arrives as `/api/search`. Each function mounts its route table under the prefix Hosting rewrites to, mirroring Fastify's `{ prefix: "/api" }`.
+
+**`firestore.rules` is deny-all on purpose.** Browsers never touch Firestore; everything goes through Functions on the Admin SDK, which bypasses rules. That is what makes the public Firebase web API key harmless.
+
+### Infrastructure as code
+
+`infra/terraform/` owns GCP resources; `firebase.json` / `firestore.rules` / `firestore.indexes.json` own Firebase config. Deliberately outside Terraform: Cloud Scheduler jobs (created by `onSchedule`, would show as permanent drift), function source, and secret *values* (Terraform creates the secrets, never the versions — a value in a variable lands in state). Bootstrap once from `infra/terraform/bootstrap/`; CI authenticates over Workload Identity Federation, so there is no service account key.
+
+Terraform is never applied from a pull request. PRs get a plan comment; apply happens on merge to `main`.
 
 ### Auth / identity boundary
 
@@ -105,15 +154,16 @@ The cookie is HttpOnly + SameSite=Lax. In production, set `AUTH_COOKIE_SECURE=tr
 - **Package manager**: pnpm (declared in `packageManager`). Node ≥ 20.
 - **Module system**: ESM throughout (`"type": "module"`). TS imports use `.js` extensions for relative paths so the same source works after compilation.
 - **Env handling**: `.env` at the repo root drives `docker-compose.yml`. Required vars use the `${VAR:?message}` form so compose fails fast if they're missing.
-- When scaffolding a new app, follow the shared-everything pattern above and depend on `@stack/db-clients`. Existing apps (`apps/crate`, `apps/pantry`) are good references — each is a Fastify backend + Vite/React SPA, proxies `/auth/*` to `apps/auth`, and runs SQL migrations from `migrations/*.sql` on boot via `src/migrate.ts`.
+- When scaffolding a new app, follow the shared-everything pattern above, depend on `@stack/db-clients` and `@stack/service-kit`, and structure it like `apps/crate`: route descriptors in `src/domain/`, a repository port in `src/repo/types.ts` with `postgres.ts` and `firestore.ts` implementations, and `src/index.ts` as wiring only. The Fastify backend serves its own Vite/React SPA, proxies `/auth/*` to `apps/auth`, and runs SQL migrations from `migrations/*.sql` on boot via `runMigrations` from `@stack/service-kit`. `apps/pantry` and `apps/ytdigest` predate this structure and still have routes inline in `src/index.ts`.
 
 ### apps/pantry
 
 Kitchen inventory + grocery lists. Runs as the `pantry` Postgres role on port `3102`.
 
 - Data model (`pantry` schema):
-  - `items` — name, quantity, size, status (`stocked`/`low`/`out`), notes; unique per `(user_id, name)`.
+  - `items` — name, quantity, size, status (`stocked`/`low`/`out`), notes; unique per `(household_id, name)`.
   - `tags` — typed by `kind` (`store`/`section`/`general`); joined via `item_tags`.
+  - `households`, `household_members`, `household_invites`, `user_settings` — pantry data is scoped by household, not by user (`migrations/0002_households.sql`). A `preHandler` resolves the caller's active household onto the request.
   - `grocery_lists` + `grocery_list_items` — list items snapshot `name_snapshot` and optionally reference an `items.id` (nullable so ad-hoc untracked entries are supported).
 - Key endpoint: `POST /lists/:id/finish` accepts `{ updates: [{ listItemId, quantity }] }`, defaults missing quantities to 1, writes each linked `items.quantity` and flips its status to `stocked`, then marks the list completed. This is the only path that mutates inventory from list activity — checking items off during shopping only toggles `checked_off`.
 - UX is mobile-first: flat filterable Pantry screen with inline 3-state status toggle; list builder pre-selects everything that's not `stocked` and groups results Out → Low → Other; Shopping view groups items by their first `section` tag for in-store flow.
