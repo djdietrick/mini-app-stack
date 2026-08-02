@@ -25,6 +25,31 @@ resource "google_firebase_hosting_site" "this" {
   site_id  = "${var.app}-${var.env}"
 }
 
+/**
+ * The Firebase *web app* registration. Creating it is what produces the web
+ * API key and auth domain the SPA needs, so those values come out of
+ * `terraform output` rather than being copied by hand out of the console.
+ *
+ * The API key is public by design — it ships in every SPA bundle and only
+ * identifies the project. It is not a credential; firestore.rules is deny-all
+ * precisely so that this key grants no data access.
+ */
+resource "google_firebase_web_app" "this" {
+  provider     = google-beta
+  project      = var.project
+  display_name = "${var.app} (${var.env})"
+
+  # Keep the registration if the app is removed from the apps list; deleting it
+  # would invalidate the API key baked into already-deployed bundles.
+  deletion_policy = "ABANDON"
+}
+
+data "google_firebase_web_app_config" "this" {
+  provider   = google-beta
+  project    = var.project
+  web_app_id = google_firebase_web_app.this.app_id
+}
+
 resource "google_service_account" "function" {
   project      = var.project
   account_id   = "fn-${var.app}-${var.env}"
@@ -63,6 +88,16 @@ output "default_url" {
 
 output "service_account_email" {
   value = google_service_account.function.email
+}
+
+output "web_api_key" {
+  description = "VITE_FIREBASE_API_KEY. Public by design; safe to expose."
+  value       = data.google_firebase_web_app_config.this.api_key
+}
+
+output "web_auth_domain" {
+  description = "VITE_FIREBASE_AUTH_DOMAIN."
+  value       = data.google_firebase_web_app_config.this.auth_domain
 }
 
 output "service_account_member" {

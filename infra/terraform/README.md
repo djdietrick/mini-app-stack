@@ -7,6 +7,7 @@ Docker stack does not use any of this.
 bootstrap/        run ONCE, by hand, with local state
 modules/
   project-services/   APIs to enable
+  firebase-project/   turns the GCP project into a Firebase project
   firestore/          database + TTL policies
   identity/           Firebase Auth (Identity Platform) config
   app-site/           per-app Hosting site + function service account + IAM
@@ -40,6 +41,10 @@ Two things deliberately live outside Terraform:
 Separate directories, not workspaces. Each targets its own GCP project, so a
 mistake in staging cannot reach prod, and `terraform plan` output for one env is
 readable on its own in a PR comment.
+
+## First-time setup
+
+Full walkthrough in [docs/firebase-setup.md](../../docs/firebase-setup.md).
 
 ## Bootstrapping
 

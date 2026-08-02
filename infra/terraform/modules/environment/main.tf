@@ -34,6 +34,14 @@ module "services" {
   project = var.project
 }
 
+# Must exist before any google_firebase_* resource in this project.
+module "firebase" {
+  source  = "../firebase-project"
+  project = var.project
+
+  depends_on = [module.services]
+}
+
 module "firestore" {
   source              = "../firestore"
   project             = var.project
@@ -51,7 +59,7 @@ module "sites" {
   app     = each.key
   env     = var.env
 
-  depends_on = [module.services]
+  depends_on = [module.firebase]
 }
 
 module "identity" {
@@ -64,7 +72,7 @@ module "identity" {
     var.extra_authorized_domains,
   )
 
-  depends_on = [module.services]
+  depends_on = [module.firebase]
 }
 
 /**
@@ -96,4 +104,18 @@ output "hosting_urls" {
 
 output "function_service_accounts" {
   value = { for app, site in module.sites : app => site.service_account_email }
+}
+
+/**
+ * Frontend build config. Set these as the VITE_FIREBASE_* GitHub variables;
+ * they are public values that ship in the SPA bundle, not secrets.
+ */
+output "web_config" {
+  value = {
+    for app, site in module.sites : app => {
+      apiKey     = site.web_api_key
+      authDomain = site.web_auth_domain
+      projectId  = var.project
+    }
+  }
 }

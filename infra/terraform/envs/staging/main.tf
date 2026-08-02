@@ -43,3 +43,6 @@ module "env" {
 output "hosting_sites" { value = module.env.hosting_sites }
 output "hosting_urls" { value = module.env.hosting_urls }
 output "function_service_accounts" { value = module.env.function_service_accounts }
+
+# Feed these into the VITE_FIREBASE_* GitHub variables.
+output "web_config" { value = module.env.web_config }

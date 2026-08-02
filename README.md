@@ -195,9 +195,12 @@ Firebase SDK is tree-shaken out of the self-hosted bundle.
 
 ### Infrastructure
 
+**First-time setup: [docs/firebase-setup.md](docs/firebase-setup.md)** — the
+two GCP projects, the one-time bootstrap, and the nine GitHub variables.
+
 `infra/terraform/` owns the GCP resources — see
-[infra/terraform/README.md](infra/terraform/README.md) for the bootstrap
-sequence and the division of labour with `firebase.json`. Deploys run from
+[infra/terraform/README.md](infra/terraform/README.md) for the division of
+labour with `firebase.json`. Deploys run from
 GitHub Actions authenticating over Workload Identity Federation; there is no
 long-lived service account key anywhere.
 
