@@ -56,6 +56,9 @@ importers:
       '@stack/db-clients':
         specifier: workspace:*
         version: link:../../packages/db-clients
+      '@stack/service-kit':
+        specifier: workspace:*
+        version: link:../../packages/service-kit
       fastify:
         specifier: ^5.0.0
         version: 5.8.5
@@ -63,6 +66,9 @@ importers:
         specifier: ^3.23.8
         version: 3.25.76
     devDependencies:
+      '@types/express':
+        specifier: ^4.17.21
+        version: 4.17.25
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.19
@@ -78,6 +84,9 @@ importers:
       autoprefixer:
         specifier: ^10.4.0
         version: 10.5.0(postcss@8.5.14)
+      express:
+        specifier: ^4.21.2
+        version: 4.22.2
       postcss:
         specifier: ^8.4.0
         version: 8.5.14
