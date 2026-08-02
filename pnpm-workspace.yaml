@@ -1,3 +1,6 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # Firebase Functions codebase. Deployed by the Firebase CLI, but a workspace
+  # member so it can consume the apps' domain code and share the lockfile.
+  - "functions"

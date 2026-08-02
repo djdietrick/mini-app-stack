@@ -1,0 +1,19 @@
+{
+  "projects": {
+    "default": "mini-app-stack-staging",
+    "staging": "mini-app-stack-staging",
+    "prod": "mini-app-stack-prod"
+  },
+  "targets": {
+    "mini-app-stack-staging": {
+      "hosting": {
+        "crate": ["crate-staging"]
+      }
+    },
+    "mini-app-stack-prod": {
+      "hosting": {
+        "crate": ["crate-prod"]
+      }
+    }
+  }
+}

@@ -3,6 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./domain": "./src/domain/routes.ts",
+    "./domain/itunes": "./src/domain/itunes.ts",
+    "./domain/types": "./src/domain/types.ts",
+    "./repo/types": "./src/repo/types.ts",
+    "./repo/postgres": "./src/repo/postgres.ts",
+    "./repo/firestore": "./src/repo/firestore.ts"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
@@ -14,6 +22,7 @@
   "dependencies": {
     "@fastify/http-proxy": "^10.0.0",
     "@fastify/static": "^8.0.0",
+    "@google-cloud/firestore": "^7.10.0",
     "@stack/auth-client": "workspace:*",
     "@stack/auth-ui": "workspace:*",
     "@stack/db-clients": "workspace:*",

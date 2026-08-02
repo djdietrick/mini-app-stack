@@ -1,0 +1,42 @@
+name: Clean up PR preview
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  cleanup:
+    name: Delete preview channel
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      # Channels expire on their own after 7 days; deleting on close keeps the
+      # channel list readable and frees the URL immediately. A PR that never
+      # deployed has no channel, so a failure here is not worth failing the job.
+      - name: Delete channel
+        continue-on-error: true
+        run: |
+          pnpm exec firebase hosting:channel:delete "pr-${{ github.event.number }}" \
+            --project "${{ vars.STAGING_PROJECT_ID }}" --force

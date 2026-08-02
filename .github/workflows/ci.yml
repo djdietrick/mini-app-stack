@@ -34,5 +34,15 @@ jobs:
       - name: Build SPAs
         run: pnpm build:web
 
+      - name: Build functions bundle
+        run: pnpm --filter @stack/functions build
+
+      # Run the suite inside the Firestore emulator so the Firestore repo's
+      # contract test actually executes. Without it that suite self-skips and
+      # the cloud data layer would go untested. Java for the emulator is
+      # preinstalled on the GitHub-hosted ubuntu image.
       - name: Test
-        run: pnpm test
+        run: >
+          pnpm exec firebase emulators:exec
+          --only firestore --project demo-ci
+          "pnpm test"

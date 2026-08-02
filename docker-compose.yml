@@ -166,3 +166,34 @@ services:
       timeout: 5s
       retries: 5
     networks: [appnet]
+
+  # Firebase emulator suite — the cloud code path, locally.
+  #
+  # Not started by `docker compose up`; it lives behind a profile so the normal
+  # self-hosted stack is unaffected:
+  #
+  #   pnpm infra:up          Postgres + Redis + Fastify apps  (the default)
+  #   pnpm emulators:up      Auth + Firestore + Functions + Hosting emulators
+  #
+  # Build the functions bundle first (`pnpm --filter @stack/functions build`);
+  # the emulator serves functions/lib, not functions/src.
+  firebase-emulators:
+    build:
+      context: .
+      dockerfile: infra/firebase/Dockerfile
+    profiles: [emulators]
+    <<: *default-restart
+    working_dir: /workspace
+    volumes:
+      - ./firebase.json:/workspace/firebase.json:ro
+      - ./firestore.rules:/workspace/firestore.rules:ro
+      - ./firestore.indexes.json:/workspace/firestore.indexes.json:ro
+      - ./functions:/workspace/functions
+      - ./apps/crate/web/dist:/workspace/apps/crate/web/dist:ro
+    ports:
+      - "${EMULATOR_UI_PORT:-4000}:4000"       # emulator UI
+      - "${EMULATOR_AUTH_PORT:-9099}:9099"     # auth
+      - "${EMULATOR_FIRESTORE_PORT:-8080}:8080" # firestore
+      - "${EMULATOR_FUNCTIONS_PORT:-5001}:5001" # functions
+      - "${EMULATOR_HOSTING_PORT:-5000}:5000"  # hosting
+    networks: [appnet]

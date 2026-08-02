@@ -1,0 +1,87 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+
+# Never let two applies race on the same state.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Apply infrastructure and deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and test
+        run: |
+          pnpm typecheck
+          pnpm test
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      # Infrastructure first: functions and hosting deploys below assume the
+      # sites, service accounts and Firestore database already exist.
+      # Staging is applied here rather than from a PR so that a pull request
+      # can never mutate infrastructure.
+      - name: Apply staging infrastructure
+        working-directory: infra/terraform/envs/staging
+        run: |
+          terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          terraform apply -input=false -auto-approve
+
+      - name: Apply production infrastructure
+        working-directory: infra/terraform/envs/prod
+        run: |
+          terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          terraform apply -input=false -auto-approve
+
+      - name: Build SPAs against Firebase Auth
+        env:
+          VITE_AUTH_MODE: firebase
+          VITE_FIREBASE_API_KEY: ${{ vars.PROD_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.PROD_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.PROD_PROJECT_ID }}
+        run: pnpm build:web
+
+      - name: Build functions bundle
+        run: pnpm --filter @stack/functions build
+
+      # Rules and indexes ship with the code that depends on them; a query
+      # needing a new composite index must not reach prod before the index does.
+      - name: Deploy Firestore rules and indexes
+        run: |
+          pnpm exec firebase deploy --only firestore \
+            --project "${{ vars.PROD_PROJECT_ID }}" --non-interactive --force
+
+      - name: Deploy functions and hosting
+        run: |
+          pnpm exec firebase deploy --only functions,hosting \
+            --project "${{ vars.PROD_PROJECT_ID }}" --non-interactive --force
