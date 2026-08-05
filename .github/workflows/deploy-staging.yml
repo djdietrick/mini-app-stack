@@ -70,7 +70,24 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
 
+      # Must come before the functions deploy. crate's listQueue combines a
+      # userId equality filter with an addedAt ordering, which Firestore serves
+      # only from a composite index; without this step GET /api/queue fails
+      # with FAILED_PRECONDITION. The emulator does not enforce index
+      # requirements, so this gap is invisible locally.
+      - name: Deploy Firestore rules and indexes to staging
+        run: |
+          pnpm exec firebase deploy --only firestore \
+            --project "${{ vars.STAGING_PROJECT_ID }}" \
+            --non-interactive --force
+
       - name: Deploy functions to staging
+        env:
+          # Bind each function to its own runtime identity instead of the
+          # default compute service account. Read at deploy time by
+          # functions/src/index.ts.
+          CRATE_FUNCTION_SA: ${{ vars.STAGING_CRATE_FUNCTION_SA }}
+          AUTH_FUNCTION_SA: ${{ vars.STAGING_AUTH_FUNCTION_SA }}
         run: |
           pnpm exec firebase deploy --only functions \
             --project "${{ vars.STAGING_PROJECT_ID }}" \

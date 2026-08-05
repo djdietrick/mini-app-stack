@@ -56,25 +56,18 @@ resource "google_service_account" "function" {
   display_name = "${var.app} (${var.env}) function runtime"
 }
 
-# Read/write its own data. Firestore has no per-collection IAM, so isolation
-# between apps comes from collection prefixes plus deny-all security rules —
-# not from this binding. Documented so nobody assumes otherwise.
+# Read/write its own data, and nothing else. Firestore has no per-collection
+# IAM, so isolation between apps comes from collection prefixes plus deny-all
+# security rules — not from this binding. Documented so nobody assumes
+# otherwise.
+#
+# Notably absent: an app function needs no Firebase Auth permission at all.
+# verifySessionCookie validates a JWT against public certificates, so reading
+# the caller's identity requires no IAM. Only the auth function, which *mints*
+# cookies, needs anything more — see modules/environment.
 resource "google_project_iam_member" "firestore" {
   project = var.project
   role    = "roles/datastore.user"
-  member  = "serviceAccount:${google_service_account.function.email}"
-}
-
-# Mint and verify Firebase Auth session cookies.
-resource "google_project_iam_member" "token_creator" {
-  project = var.project
-  role    = "roles/iam.serviceAccountTokenCreator"
-  member  = "serviceAccount:${google_service_account.function.email}"
-}
-
-resource "google_project_iam_member" "firebase_auth" {
-  project = var.project
-  role    = "roles/firebaseauth.admin"
   member  = "serviceAccount:${google_service_account.function.email}"
 }
 

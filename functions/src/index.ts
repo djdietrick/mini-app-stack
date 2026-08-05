@@ -36,6 +36,18 @@ setGlobalOptions({
 const COOKIE_NAME = process.env.AUTH_COOKIE_NAME ?? "stack_session";
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // Firebase's maximum.
 
+/**
+ * Per-function runtime identities, read at deploy time from the values
+ * Terraform emits as `function_service_accounts`.
+ *
+ * Without these, functions run as the default compute service account, which
+ * carries project Editor — so a bug in crate's API would have Firebase Auth
+ * admin rights it has no use for. Undefined when unset, which is what the
+ * emulator wants.
+ */
+const crateServiceAccount = process.env.CRATE_FUNCTION_SA || undefined;
+const authServiceAccount = process.env.AUTH_FUNCTION_SA || undefined;
+
 // Module scope on purpose: these are reused across warm invocations.
 const db = getFirestore();
 const verifier = firebaseVerifier({ auth: getAuth(), cookieName: COOKIE_NAME });
@@ -54,6 +66,7 @@ function mount(prefix: string, handler: express.Express): express.Express {
 }
 
 export const authApi = onRequest(
+  { serviceAccount: authServiceAccount },
   mount(
     "/auth",
     createAuthApi({
@@ -67,6 +80,7 @@ export const authApi = onRequest(
 );
 
 export const crateApi = onRequest(
+  { serviceAccount: crateServiceAccount },
   mount(
     "/api",
     toExpressApp(crateRoutes({ itunes: createItunesGateway(firestoreCache(db)) }), {

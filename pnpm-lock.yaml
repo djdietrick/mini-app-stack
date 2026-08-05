@@ -8,6 +8,15 @@ importers:
 
   .:
     devDependencies:
+      '@stack/auth-client':
+        specifier: workspace:*
+        version: link:packages/auth-client
+      '@stack/crate':
+        specifier: workspace:*
+        version: link:apps/crate
+      '@stack/service-kit':
+        specifier: workspace:*
+        version: link:packages/service-kit
       firebase-tools:
         specifier: ^15.25.1
         version: 15.25.1(@types/node@22.19.19)
@@ -265,15 +274,6 @@ importers:
         specifier: ^6.1.0
         version: 6.6.0(firebase-admin@13.10.0(@firebase/app-compat@0.4.2)(@firebase/app@0.13.2))
     devDependencies:
-      '@stack/auth-client':
-        specifier: workspace:*
-        version: link:../packages/auth-client
-      '@stack/crate':
-        specifier: workspace:*
-        version: link:../apps/crate
-      '@stack/service-kit':
-        specifier: workspace:*
-        version: link:../packages/service-kit
       '@types/express':
         specifier: ^4.17.21
         version: 4.17.25

@@ -20,6 +20,9 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@stack/auth-client": "workspace:*",
+    "@stack/crate": "workspace:*",
+    "@stack/service-kit": "workspace:*",
     "firebase-tools": "^15.25.1"
   }
 }

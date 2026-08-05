@@ -82,6 +82,11 @@ jobs:
             --project "${{ vars.PROD_PROJECT_ID }}" --non-interactive --force
 
       - name: Deploy functions and hosting
+        env:
+          # Bind each function to its own runtime identity instead of the
+          # default compute service account.
+          CRATE_FUNCTION_SA: ${{ vars.PROD_CRATE_FUNCTION_SA }}
+          AUTH_FUNCTION_SA: ${{ vars.PROD_AUTH_FUNCTION_SA }}
         run: |
           pnpm exec firebase deploy --only functions,hosting \
             --project "${{ vars.PROD_PROJECT_ID }}" --non-interactive --force

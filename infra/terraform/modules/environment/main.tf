@@ -76,6 +76,51 @@ module "identity" {
 }
 
 /**
+ * Runtime identity for the authApi function.
+ *
+ * Separate from the per-app service accounts because authApi is app-agnostic —
+ * every app's /auth/* rewrite points at it — and because it is the only
+ * function that needs Firebase Auth write access. Borrowing crate's identity
+ * would hand crate the ability to mint session cookies for anyone.
+ */
+resource "google_service_account" "auth_function" {
+  project      = var.project
+  account_id   = "fn-auth-${var.env}"
+  display_name = "auth (${var.env}) function runtime"
+
+  depends_on = [module.services]
+}
+
+# Writes the users/{uid} mirror doc on session mint.
+resource "google_project_iam_member" "auth_firestore" {
+  project = var.project
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.auth_function.email}"
+}
+
+# verifyIdToken / revokeRefreshTokens.
+resource "google_project_iam_member" "auth_admin" {
+  project = var.project
+  role    = "roles/firebaseauth.admin"
+  member  = "serviceAccount:${google_service_account.auth_function.email}"
+}
+
+/**
+ * createSessionCookie signs a JWT through the IAM signBlob API, which requires
+ * the service account to be able to act as *itself*.
+ *
+ * Scoped to this one service account deliberately. The same role granted at
+ * the project level — which is what this replaced — would let the function
+ * impersonate every service account in the project, turning a bug in the auth
+ * function into full lateral movement.
+ */
+resource "google_service_account_iam_member" "auth_self_signer" {
+  service_account_id = google_service_account.auth_function.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.auth_function.email}"
+}
+
+/**
  * Secrets every environment needs. AUTH_VERIFY_SECRET is absent on purpose —
  * it only exists for the self-hosted apps/auth service-to-service call, which
  * Firebase Auth replaces in the cloud.
@@ -102,8 +147,16 @@ output "hosting_urls" {
   value = { for app, site in module.sites : app => site.default_url }
 }
 
+/**
+ * Feed these into the *_FUNCTION_SA GitHub variables. functions/src/index.ts
+ * reads them at deploy time so each function runs as its own identity instead
+ * of the default compute service account, which carries project Editor.
+ */
 output "function_service_accounts" {
-  value = { for app, site in module.sites : app => site.service_account_email }
+  value = merge(
+    { for app, site in module.sites : app => site.service_account_email },
+    { auth = google_service_account.auth_function.email },
+  )
 }
 
 /**
