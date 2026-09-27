@@ -91,8 +91,12 @@ jobs:
           # default compute service account. Read at deploy time by
           # functions/src/index.ts.
           CRATE_FUNCTION_SA: ${{ vars.STAGING_CRATE_FUNCTION_SA }}
+          PANTRY_FUNCTION_SA: ${{ vars.STAGING_PANTRY_FUNCTION_SA }}
           AUTH_FUNCTION_SA: ${{ vars.STAGING_AUTH_FUNCTION_SA }}
         run: |
+          : "${CRATE_FUNCTION_SA:?set the STAGING_CRATE_FUNCTION_SA repository variable}"
+          : "${PANTRY_FUNCTION_SA:?set the STAGING_PANTRY_FUNCTION_SA repository variable}"
+          : "${AUTH_FUNCTION_SA:?set the STAGING_AUTH_FUNCTION_SA repository variable}"
           pnpm exec firebase deploy --only functions \
             --project "${{ vars.STAGING_PROJECT_ID }}" \
             --non-interactive --force

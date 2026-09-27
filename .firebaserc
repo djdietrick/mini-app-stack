@@ -9,6 +9,9 @@
       "hosting": {
         "crate": [
           "crate-staging-40765"
+        ],
+        "pantry": [
+          "pantry-staging-40765"
         ]
       }
     },
@@ -16,6 +19,9 @@
       "hosting": {
         "crate": [
           "crate-prod-5c26a"
+        ],
+        "pantry": [
+          "pantry-prod-5c26a"
         ]
       }
     }

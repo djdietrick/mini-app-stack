@@ -58,7 +58,7 @@ Everything that differs between self-hosted and Firebase sits behind exactly thr
 
 Selected by env: `DATA_BACKEND=postgres|firestore`, `AUTH_MODE=stack|firebase`, `CACHE_BACKEND=redis|firestore`, `MAIL_TRANSPORT=smtp|http`. Frontends pick their provider at build time with `VITE_AUTH_MODE`.
 
-`apps/crate` is the reference implementation and the only app ported so far; `apps/pantry` and `apps/ytdigest` still run self-hosted only.
+`apps/crate` is the reference implementation; `apps/pantry` is ported too and is the example to copy for anything with per-request scope (its active household) or multi-user data. `apps/ytdigest` still runs self-hosted only.
 
 **Things that will bite you when writing a Firestore implementation:**
 
@@ -156,7 +156,7 @@ The cookie is HttpOnly + SameSite=Lax. In production, set `AUTH_COOKIE_SECURE=tr
 - **Package manager**: pnpm (declared in `packageManager`). Node ≥ 20.
 - **Module system**: ESM throughout (`"type": "module"`). TS imports use `.js` extensions for relative paths so the same source works after compilation.
 - **Env handling**: `.env` at the repo root drives `docker-compose.yml`. Required vars use the `${VAR:?message}` form so compose fails fast if they're missing.
-- When scaffolding a new app, follow the shared-everything pattern above, depend on `@stack/db-clients` and `@stack/service-kit`, and structure it like `apps/crate`: route descriptors in `src/domain/`, a repository port in `src/repo/types.ts` with `postgres.ts` and `firestore.ts` implementations, and `src/index.ts` as wiring only. The Fastify backend serves its own Vite/React SPA, proxies `/auth/*` to `apps/auth`, and runs SQL migrations from `migrations/*.sql` on boot via `runMigrations` from `@stack/service-kit`. `apps/pantry` and `apps/ytdigest` predate this structure and still have routes inline in `src/index.ts`.
+- When scaffolding a new app, follow the shared-everything pattern above, depend on `@stack/db-clients` and `@stack/service-kit`, and structure it like `apps/crate`: route descriptors in `src/domain/`, a repository port in `src/repo/types.ts` with `postgres.ts` and `firestore.ts` implementations, and `src/index.ts` as wiring only. The Fastify backend serves its own Vite/React SPA, proxies `/auth/*` to `apps/auth`, and runs SQL migrations from `migrations/*.sql` on boot via `runMigrations` from `@stack/service-kit`. `apps/ytdigest` predates this structure and still has routes inline in `src/routes/`.
 
 ### apps/pantry
 
@@ -165,7 +165,9 @@ Kitchen inventory + grocery lists. Runs as the `pantry` Postgres role on port `3
 - Data model (`pantry` schema):
   - `items` — name, quantity, size, status (`stocked`/`low`/`out`), notes; unique per `(household_id, name)`.
   - `tags` — typed by `kind` (`store`/`section`/`general`); joined via `item_tags`.
-  - `households`, `household_members`, `household_invites`, `user_settings` — pantry data is scoped by household, not by user (`migrations/0002_households.sql`). A `preHandler` resolves the caller's active household onto the request.
+  - `households`, `household_members`, `household_invites`, `user_settings` — pantry data is scoped by household, not by user (`migrations/0002_households.sql`). `resolvePantryScope` (the adapters' `resolveScope` hook) resolves the caller's active household into `ctx.scope`; data routes 409 `NO_HOUSEHOLD` without one.
   - `grocery_lists` + `grocery_list_items` — list items snapshot `name_snapshot` and optionally reference an `items.id` (nullable so ad-hoc untracked entries are supported).
 - Key endpoint: `POST /lists/:id/finish` accepts `{ updates: [{ listItemId, quantity }] }`, defaults missing quantities to 1, writes each linked `items.quantity` and flips its status to `stocked`, then marks the list completed. This is the only path that mutates inventory from list activity — checking items off during shopping only toggles `checked_off`.
+- Firestore layout differs from the SQL on purpose: item tags are a `tagIds` array on the item, and grocery-list entries are embedded in the list document. Uniqueness is enforced on a lowercased `nameKey` (the columns are `citext`). See the header of `src/repo/firestore.ts`.
+- `src/domain/contract.test.ts` runs the whole HTTP contract against both real backends through both adapters. Postgres runs when `PANTRY_TEST_DATABASE_URL` (as the `pantry` role) and `PANTRY_TEST_ADMIN_DATABASE_URL` (a superuser, to seed `shared.users`) are set; Firestore when `FIRESTORE_EMULATOR_HOST` is. CI sets all three.
 - UX is mobile-first: flat filterable Pantry screen with inline 3-state status toggle; list builder pre-selects everything that's not `stocked` and groups results Out → Low → Other; Shopping view groups items by their first `section` tag for in-store flow.

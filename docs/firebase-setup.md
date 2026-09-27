@@ -186,19 +186,22 @@ leak or rotate.
 | `STAGING_FIREBASE_API_KEY` | staging `web_config` → `crate.apiKey` |
 | `STAGING_FIREBASE_AUTH_DOMAIN` | staging `web_config` → `crate.authDomain` |
 | `STAGING_CRATE_FUNCTION_SA` | staging `function_service_accounts` → `crate` |
+| `STAGING_PANTRY_FUNCTION_SA` | staging `function_service_accounts` → `pantry` |
 | `STAGING_AUTH_FUNCTION_SA` | staging `function_service_accounts` → `auth` |
 | `PROD_FIREBASE_API_KEY` | prod `web_config` → `crate.apiKey` |
 | `PROD_FIREBASE_AUTH_DOMAIN` | prod `web_config` → `crate.authDomain` |
 | `PROD_CRATE_FUNCTION_SA` | prod `function_service_accounts` → `crate` |
+| `PROD_PANTRY_FUNCTION_SA` | prod `function_service_accounts` → `pantry` |
 | `PROD_AUTH_FUNCTION_SA` | prod `function_service_accounts` → `auth` |
 
 The Firebase web API key is **public by design**. It ships in every SPA bundle
 and only identifies the project — it is not a credential. `firestore.rules` is
 deny-all precisely so that this key grants no data access.
 
-The `*_FUNCTION_SA` variables make each function run as its own identity.
-Without them the functions fall back to the default compute service account,
-which carries project Editor.
+The `*_FUNCTION_SA` variables make each function run as its own identity. The
+deploy step fails if any of them is unset. Without it, the function would
+quietly fall back to the default compute service account, which carries
+project Editor.
 
 **Set all of these before opening the pull request.** `terraform.yml` plans on
 any PR touching `infra/terraform/**` and fails without them. It plans staging
@@ -282,6 +285,7 @@ VITE_FIREBASE_PROJECT_ID=STAGING_ID \
   pnpm build:web
 pnpm --filter @stack/functions build
 CRATE_FUNCTION_SA=fn-crate-staging@STAGING_ID.iam.gserviceaccount.com \
+PANTRY_FUNCTION_SA=fn-pantry-staging@STAGING_ID.iam.gserviceaccount.com \
 AUTH_FUNCTION_SA=fn-auth-staging@STAGING_ID.iam.gserviceaccount.com \
   pnpm exec firebase deploy --project STAGING_ID
 ```
@@ -305,4 +309,4 @@ AUTH_FUNCTION_SA=fn-auth-staging@STAGING_ID.iam.gserviceaccount.com \
   re-register. If you change your mind, `firebase auth:import` accepts argon2
   hashes with a matching hash config, so `shared.user_credentials` is not a
   dead end.
-- **`pantry` and `ytdigest` are not ported** and run self-hosted only.
+- **`ytdigest` is not ported** and runs self-hosted only.

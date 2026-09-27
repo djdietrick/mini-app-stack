@@ -224,14 +224,14 @@ apply happens on merge to `main`.
 | App        | Self-hosted | Firebase |
 |------------|-------------|----------|
 | `crate`    | yes         | yes      |
-| `pantry`   | yes         | not yet  |
+| `pantry`   | yes         | yes      |
 | `ytdigest` | yes         | not yet  |
 | `auth`     | yes         | replaced by Firebase Auth in the cloud |
 
-`pantry` and `ytdigest` still run only on the self-hosted path. Porting them
-means the same three steps `crate` went through: extract routes into
+`ytdigest` still runs only on the self-hosted path. Porting it means the same
+three steps `crate` and `pantry` went through: extract routes into
 `src/domain/`, define the repo port with a Postgres implementation, then add
-the Firestore implementation and export the function. `ytdigest` additionally
-needs its in-process `setInterval`/`node-cron` schedulers replaced with
-`onSchedule` functions, and an HTTP mail transport — Cloud Functions cannot
-open SMTP ports.
+the Firestore implementation and export the function. It additionally needs
+its in-process `setInterval`/`node-cron` schedulers replaced with `onSchedule`
+functions, and its SMTP password in Secret Manager. Cloud Functions can send
+SMTP on 587 and 465; only port 25 is blocked.

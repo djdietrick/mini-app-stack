@@ -37,6 +37,34 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "providerAlbumId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "//": "pantry GET /api/lists — one household's lists, newest first, LIMIT 100.",
+      "collectionGroup": "pantry_lists",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "householdId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "pantry item-name uniqueness check: household + lowercased name.",
+      "collectionGroup": "pantry_items",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "householdId", "order": "ASCENDING" },
+        { "fieldPath": "nameKey", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "pantry tag-name uniqueness check: household + kind + lowercased name.",
+      "collectionGroup": "pantry_tags",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "householdId", "order": "ASCENDING" },
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "nameKey", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

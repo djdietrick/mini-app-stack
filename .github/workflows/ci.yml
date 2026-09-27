@@ -13,6 +13,25 @@ jobs:
   build:
     name: Typecheck and build
     runs-on: ubuntu-latest
+
+    # Real Postgres, so the self-hosted repos are tested against the actual
+    # SQL rather than only the Firestore side. Same major version as
+    # docker-compose.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: appstack
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -45,10 +64,31 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # Run the suite inside the Firestore emulator so the Firestore repo's
-      # contract test actually executes. Without it that suite self-skips and
-      # the cloud data layer would go untested.
+      # The same init scripts docker-compose mounts, so the schemas, roles and
+      # grants under test are the ones production gets.
+      - name: Provision Postgres like the Docker stack
+        working-directory: infra/postgres/init
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: appstack
+          POSTGRES_USER: postgres
+          POSTGRES_DB: appstack
+        run: |
+          psql -v ON_ERROR_STOP=1 -f 00-extensions.sql
+          psql -v ON_ERROR_STOP=1 -f 05-shared-schema.sql
+          bash 10-app-schemas.sh
+
+      # Run the suite inside the Firestore emulator so the Firestore repos'
+      # contract tests actually execute. Without it those suites self-skip and
+      # the cloud data layer would go untested. The Postgres URLs do the same
+      # for the self-hosted side; app roles get their name as password when
+      # APP_<NAME>_PASSWORD is unset, which it is here.
       - name: Test
+        env:
+          PANTRY_TEST_DATABASE_URL: postgres://pantry:pantry@localhost:5432/appstack
+          PANTRY_TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@localhost:5432/appstack
         run: >
           pnpm exec firebase emulators:exec
           --only firestore --project demo-ci
