@@ -65,6 +65,52 @@
         { "fieldPath": "kind", "order": "ASCENDING" },
         { "fieldPath": "nameKey", "order": "ASCENDING" }
       ]
+    },
+    {
+      "//": "ytdigest: a channel's videos newest first (poll paging, tracked videos, baselines).",
+      "collectionGroup": "ytdigest_videos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "channelId", "order": "ASCENDING" },
+        { "fieldPath": "publishedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "ytdigest digest candidates: a channel's videos first seen since the last digest.",
+      "collectionGroup": "ytdigest_videos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "channelId", "order": "ASCENDING" },
+        { "fieldPath": "firstSeenAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "ytdigest: a video's latest snapshot, and the latest at or before a cutoff.",
+      "collectionGroup": "ytdigest_snapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "videoId", "order": "ASCENDING" },
+        { "fieldPath": "capturedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "ytdigest GET /api/digests — ORDER BY run_date DESC, created_at DESC.",
+      "collectionGroup": "ytdigest_digest_runs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "runDate", "order": "DESCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "ytdigest one-subscription-per-channel check.",
+      "collectionGroup": "ytdigest_subscriptions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "channelId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -22,8 +22,10 @@
   "devDependencies": {
     "@stack/auth-client": "workspace:*",
     "@stack/crate": "workspace:*",
+    "@stack/mailer": "workspace:*",
     "@stack/pantry": "workspace:*",
     "@stack/service-kit": "workspace:*",
+    "@stack/ytdigest": "workspace:*",
     "firebase-tools": "^15.25.1"
   }
 }

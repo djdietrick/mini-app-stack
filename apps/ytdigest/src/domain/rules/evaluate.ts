@@ -1,6 +1,17 @@
-import type postgres from "postgres";
-import { config } from "../config.js";
+import type { YtdigestRepo } from "../../repo/types.js";
 import { isRuleGroup, type Condition, type RuleGroup } from "./types.js";
+
+/** What evaluation reads: past videos and their snapshots, for baselines. */
+export type BaselineSource = Pick<YtdigestRepo, "pastVideos" | "snapshotAtOrBefore">;
+
+export interface BaselineOptions {
+  /** Trailing videos considered when computing a channel's performance baseline. */
+  sampleSize: number;
+  /** Minimum videos of history required before a performance/engagement rule can match. */
+  minHistory: number;
+}
+
+export const DEFAULT_BASELINE: BaselineOptions = { sampleSize: 10, minHistory: 5 };
 
 export interface VideoForEvaluation {
   id: string;
@@ -26,12 +37,6 @@ function median(values: number[]): number | null {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
-interface BaselineSnapshotRow {
-  view_count: number;
-  like_count: number | null;
-  captured_at: Date;
-}
-
 /**
  * Trailing baseline for a channel: the median views-per-hour and like-ratio
  * of its last N videos (excluding the candidate), each measured at the
@@ -40,38 +45,29 @@ interface BaselineSnapshotRow {
  * videos looked 6 hours after *their* publish, not their current totals.
  */
 export async function computeChannelBaseline(
-  sql: postgres.Sql,
+  source: BaselineSource,
   video: VideoForEvaluation,
+  opts: BaselineOptions,
 ): Promise<{ viewsPerHourMedian: number | null; likeRatioMedian: number | null; sampleSize: number }> {
   const elapsedMs = video.latestCapturedAt.getTime() - video.publishedAt.getTime();
 
-  const history = await sql<{ id: string; published_at: Date }[]>`
-    SELECT id, published_at FROM videos
-    WHERE channel_id = ${video.channelId} AND id != ${video.id}
-    ORDER BY published_at DESC
-    LIMIT ${config.baselineSampleSize}
-  `;
+  const history = await source.pastVideos(video.channelId, video.id, opts.sampleSize);
 
   const viewsPerHour: number[] = [];
   const likeRatios: number[] = [];
 
   for (const past of history) {
-    const cutoff = new Date(past.published_at.getTime() + elapsedMs);
-    const [snapshot] = await sql<BaselineSnapshotRow[]>`
-      SELECT view_count, like_count, captured_at FROM video_stats_snapshots
-      WHERE video_id = ${past.id} AND captured_at <= ${cutoff}
-      ORDER BY captured_at DESC
-      LIMIT 1
-    `;
+    const cutoff = new Date(past.publishedAt.getTime() + elapsedMs);
+    const snapshot = await source.snapshotAtOrBefore(past.id, cutoff);
     if (!snapshot) continue;
 
     const hoursElapsed = Math.max(
-      (snapshot.captured_at.getTime() - past.published_at.getTime()) / 3_600_000,
+      (snapshot.capturedAt.getTime() - past.publishedAt.getTime()) / 3_600_000,
       0.1,
     );
-    viewsPerHour.push(snapshot.view_count / hoursElapsed);
-    if (snapshot.like_count != null && snapshot.view_count > 0) {
-      likeRatios.push(snapshot.like_count / snapshot.view_count);
+    viewsPerHour.push(snapshot.viewCount / hoursElapsed);
+    if (snapshot.likeCount != null && snapshot.viewCount > 0) {
+      likeRatios.push(snapshot.likeCount / snapshot.viewCount);
     }
   }
 
@@ -98,7 +94,8 @@ function evaluateDuration(condition: Extract<Condition, { type: "duration" }>, v
 }
 
 async function evaluateCondition(
-  sql: postgres.Sql,
+  source: BaselineSource,
+  opts: BaselineOptions,
   condition: Condition,
   video: VideoForEvaluation,
   reasons: string[],
@@ -112,8 +109,8 @@ async function evaluateCondition(
     case "duration":
       return evaluateDuration(condition, video);
     case "performance": {
-      const baseline = await computeChannelBaseline(sql, video);
-      if (baseline.sampleSize < config.baselineMinHistory || !baseline.viewsPerHourMedian) return false;
+      const baseline = await computeChannelBaseline(source, video, opts);
+      if (baseline.sampleSize < opts.minHistory || !baseline.viewsPerHourMedian) return false;
       const hoursElapsed = Math.max(
         (video.latestCapturedAt.getTime() - video.publishedAt.getTime()) / 3_600_000,
         0.1,
@@ -125,8 +122,8 @@ async function evaluateCondition(
       return matched;
     }
     case "engagement": {
-      const baseline = await computeChannelBaseline(sql, video);
-      if (baseline.sampleSize < config.baselineMinHistory || !baseline.likeRatioMedian) return false;
+      const baseline = await computeChannelBaseline(source, video, opts);
+      if (baseline.sampleSize < opts.minHistory || !baseline.likeRatioMedian) return false;
       if (video.latestViewCount === 0) return false;
       const likeRatio = (video.latestLikeCount ?? 0) / video.latestViewCount;
       const ratio = likeRatio / baseline.likeRatioMedian;
@@ -138,7 +135,8 @@ async function evaluateCondition(
 }
 
 async function evaluateGroup(
-  sql: postgres.Sql,
+  source: BaselineSource,
+  opts: BaselineOptions,
   group: RuleGroup,
   video: VideoForEvaluation,
   reasons: string[],
@@ -147,19 +145,20 @@ async function evaluateGroup(
   for (const node of group.conditions) {
     results.push(
       isRuleGroup(node)
-        ? await evaluateGroup(sql, node, video, reasons)
-        : await evaluateCondition(sql, node, video, reasons),
+        ? await evaluateGroup(source, opts, node, video, reasons)
+        : await evaluateCondition(source, opts, node, video, reasons),
     );
   }
   return group.op === "AND" ? results.every(Boolean) : results.some(Boolean);
 }
 
 export async function evaluateRule(
-  sql: postgres.Sql,
+  source: BaselineSource,
   rule: RuleGroup,
   video: VideoForEvaluation,
+  opts: BaselineOptions = DEFAULT_BASELINE,
 ): Promise<EvaluationResult> {
   const reasons: string[] = [];
-  const matched = await evaluateGroup(sql, rule, video, reasons);
+  const matched = await evaluateGroup(source, opts, rule, video, reasons);
   return { matched, reasons };
 }

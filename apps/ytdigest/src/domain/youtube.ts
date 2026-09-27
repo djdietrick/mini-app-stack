@@ -1,19 +1,50 @@
 import { z } from "zod";
-import { config } from "../config.js";
+import type { ResolvedChannel, UploadListItem, VideoStats } from "./types.js";
+
+export type { ResolvedChannel, UploadListItem, VideoStats };
 
 const API_BASE = "https://www.googleapis.com/youtube/v3";
 
-async function ytFetch(path: string, params: Record<string, string>): Promise<unknown> {
-  const url = new URL(`${API_BASE}/${path}`);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  url.searchParams.set("key", config.youtubeApiKey);
-
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`YouTube API ${path} failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
+/**
+ * Everything ytdigest asks of YouTube. An interface so tests substitute a fake
+ * and neither deployment target needs network access to run the suite.
+ */
+export interface YouTubeGateway {
+  resolveChannel(input: string): Promise<ResolvedChannel | null>;
+  listNewUploads(
+    uploadsPlaylistId: string,
+    sinceVideoId?: string,
+    maxPages?: number,
+  ): Promise<UploadListItem[]>;
+  batchGetVideoStats(videoIds: string[]): Promise<VideoStats[]>;
 }
+
+/**
+ * The key is passed in rather than read from config so the same code runs in
+ * a Cloud Function, where it comes from Secret Manager at invocation time.
+ */
+export function createYouTubeClient(apiKey: string): YouTubeGateway {
+  async function ytFetch(path: string, params: Record<string, string>): Promise<unknown> {
+    const url = new URL(`${API_BASE}/${path}`);
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    url.searchParams.set("key", apiKey);
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`YouTube API ${path} failed: ${res.status} ${await res.text()}`);
+    }
+    return res.json();
+  }
+
+  return {
+    resolveChannel: (input) => resolveChannel(ytFetch, input),
+    listNewUploads: (playlistId, sinceVideoId, maxPages) =>
+      listNewUploads(ytFetch, playlistId, sinceVideoId, maxPages),
+    batchGetVideoStats: (ids) => batchGetVideoStats(ytFetch, ids),
+  };
+}
+
+type YtFetch = (path: string, params: Record<string, string>) => Promise<unknown>;
 
 /** Parses an ISO-8601 duration (e.g. "PT4M13S") into whole seconds. */
 export function parseIsoDuration(iso: string): number {
@@ -38,13 +69,6 @@ const channelListSchema = z.object({
   ),
 });
 
-export interface ResolvedChannel {
-  youtubeChannelId: string;
-  title: string;
-  thumbnailUrl: string | null;
-  uploadsPlaylistId: string;
-}
-
 function toResolvedChannel(item: z.infer<typeof channelListSchema>["items"][number]): ResolvedChannel {
   return {
     youtubeChannelId: item.id,
@@ -55,7 +79,7 @@ function toResolvedChannel(item: z.infer<typeof channelListSchema>["items"][numb
 }
 
 /** Resolves a channel by @handle, raw channel ID (UC...), or free-text search query. */
-export async function resolveChannel(input: string): Promise<ResolvedChannel | null> {
+async function resolveChannel(ytFetch: YtFetch, input: string): Promise<ResolvedChannel | null> {
   const trimmed = input.trim();
 
   const byIdOrHandle: Record<string, string> | null = trimmed.startsWith("UC")
@@ -111,20 +135,13 @@ const playlistItemsSchema = z.object({
   nextPageToken: z.string().optional(),
 });
 
-export interface UploadListItem {
-  youtubeVideoId: string;
-  title: string;
-  description: string | null;
-  publishedAt: string;
-  thumbnailUrl: string | null;
-}
-
 /**
  * Lists videos in an uploads playlist, newest first, stopping once
  * `sinceVideoId` is seen (or after `maxPages` if it's never found — a fresh
  * channel with no prior history).
  */
-export async function listNewUploads(
+async function listNewUploads(
+  ytFetch: YtFetch,
   uploadsPlaylistId: string,
   sinceVideoId?: string,
   maxPages = 5,
@@ -173,16 +190,8 @@ const videoListSchema = z.object({
   ),
 });
 
-export interface VideoStats {
-  youtubeVideoId: string;
-  viewCount: number;
-  likeCount: number | null;
-  commentCount: number | null;
-  durationSeconds: number;
-}
-
 /** Fetches current stats for up to 50 video IDs per call; batches larger inputs. */
-export async function batchGetVideoStats(videoIds: string[]): Promise<VideoStats[]> {
+async function batchGetVideoStats(ytFetch: YtFetch, videoIds: string[]): Promise<VideoStats[]> {
   const out: VideoStats[] = [];
   for (let i = 0; i < videoIds.length; i += 50) {
     const batch = videoIds.slice(i, i + 50);

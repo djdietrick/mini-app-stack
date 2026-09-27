@@ -187,11 +187,17 @@ leak or rotate.
 | `STAGING_FIREBASE_AUTH_DOMAIN` | staging `web_config` → `crate.authDomain` |
 | `STAGING_CRATE_FUNCTION_SA` | staging `function_service_accounts` → `crate` |
 | `STAGING_PANTRY_FUNCTION_SA` | staging `function_service_accounts` → `pantry` |
+| `STAGING_YTDIGEST_FUNCTION_SA` | staging `function_service_accounts` → `ytdigest` |
 | `STAGING_AUTH_FUNCTION_SA` | staging `function_service_accounts` → `auth` |
 | `PROD_FIREBASE_API_KEY` | prod `web_config` → `crate.apiKey` |
 | `PROD_FIREBASE_AUTH_DOMAIN` | prod `web_config` → `crate.authDomain` |
 | `PROD_CRATE_FUNCTION_SA` | prod `function_service_accounts` → `crate` |
 | `PROD_PANTRY_FUNCTION_SA` | prod `function_service_accounts` → `pantry` |
+| `PROD_YTDIGEST_FUNCTION_SA` | prod `function_service_accounts` → `ytdigest` |
+| `PROD_SMTP_HOST` | your SMTP server, e.g. `smtp.gmail.com` |
+| `PROD_SMTP_PORT` | optional, defaults to `587` (`465` also works; `25` is blocked on GCP) |
+| `PROD_SMTP_USER` | SMTP login |
+| `PROD_MAIL_FROM` | sender, e.g. `YouTube Digest <you@example.com>` (no surrounding quotes) |
 | `PROD_AUTH_FUNCTION_SA` | prod `function_service_accounts` → `auth` |
 
 The Firebase web API key is **public by design**. It ships in every SPA bundle
@@ -255,20 +261,38 @@ Then, before merging: check the prod `terraform plan` comment contains only
 resources you expect, and close/reopen the PR once to confirm `pr-cleanup.yml`
 deletes the preview channel.
 
-## Step 11 — Secret values (only once ytdigest is ported)
+## Step 11 — ytdigest's secrets (before merging the change that adds it)
 
-Terraform creates the Secret Manager *secrets* but never their versions — a
-value passed as a Terraform variable would be written to state in plaintext, and
-CI can read the state bucket. Add versions out of band:
+ytdigest needs two secrets: a YouTube Data API key, and your SMTP password.
+Terraform creates the Secret Manager *secrets* but never their values, because
+a value passed as a Terraform variable is written to state in plaintext, and
+CI can read the state bucket.
+
+The deploy fails if a function binds a secret that has no value. The prod
+deploy applies Terraform (which creates the secrets) and then deploys the
+functions in the same run, so the values have to be added in between: apply
+Terraform yourself first, then add them.
 
 ```bash
+cd infra/terraform/envs/prod
+terraform init -backend-config=bucket=SOME-GLOBALLY-UNIQUE-BUCKET
+terraform apply          # creates YOUTUBE_API_KEY and SMTP_PASSWORD, empty
+
 printf '%s' "$YOUTUBE_API_KEY" | \
-  gcloud secrets versions add youtube-api-key --project STAGING_ID --data-file=-
-printf '%s' "$MAIL_API_KEY" | \
-  gcloud secrets versions add mail-api-key --project STAGING_ID --data-file=-
+  gcloud secrets versions add YOUTUBE_API_KEY --project PROD_ID --data-file=-
+printf '%s' "$SMTP_PASSWORD" | \
+  gcloud secrets versions add SMTP_PASSWORD --project PROD_ID --data-file=-
 ```
 
-`crate` needs neither — the iTunes API is unauthenticated.
+`printf '%s'` rather than `echo`, so no trailing newline ends up in the value.
+
+The YouTube key comes from the Cloud console (APIs & Services → Library →
+*YouTube Data API v3* → Enable, then Credentials → Create API key, restricted
+to that API). Your self-hosted `.env` key works too. Rotating either secret
+later is just another `versions add`; functions pick up the latest version on
+their next cold start.
+
+Only ytdigest's function can read these; `crate` and `pantry` need neither.
 
 ---
 
@@ -284,8 +308,16 @@ VITE_FIREBASE_AUTH_DOMAIN=... \
 VITE_FIREBASE_PROJECT_ID=STAGING_ID \
   pnpm build:web
 pnpm --filter @stack/functions build
+# ytdigest's mail settings (git-ignored; CI writes the same file from variables)
+cat > functions/.env <<'ENV'
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=you@example.com
+MAIL_FROM="YouTube Digest <you@example.com>"
+ENV
 CRATE_FUNCTION_SA=fn-crate-staging@STAGING_ID.iam.gserviceaccount.com \
 PANTRY_FUNCTION_SA=fn-pantry-staging@STAGING_ID.iam.gserviceaccount.com \
+YTDIGEST_FUNCTION_SA=fn-ytdigest-staging@STAGING_ID.iam.gserviceaccount.com \
 AUTH_FUNCTION_SA=fn-auth-staging@STAGING_ID.iam.gserviceaccount.com \
   pnpm exec firebase deploy --project STAGING_ID
 ```
@@ -309,4 +341,6 @@ AUTH_FUNCTION_SA=fn-auth-staging@STAGING_ID.iam.gserviceaccount.com \
   re-register. If you change your mind, `firebase auth:import` accepts argon2
   hashes with a matching hash config, so `shared.user_credentials` is not a
   dead end.
-- **`ytdigest` is not ported** and runs self-hosted only.
+- **ytdigest's schedule is fixed in code**: polling every 180 minutes, and the
+  digest at 08:00 America/New_York (`functions/src/index.ts`). Self-hosted it
+  follows `POLL_INTERVAL_MINUTES`, `DIGEST_SEND_CRON` and `DIGEST_TIME_ZONE`.

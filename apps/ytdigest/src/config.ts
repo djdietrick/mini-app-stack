@@ -26,6 +26,12 @@ export const config = {
   pollIntervalMinutes: Number(process.env.POLL_INTERVAL_MINUTES ?? 180),
   /** Cron expression for the daily combined digest send. */
   digestSendCron: process.env.DIGEST_SEND_CRON ?? "0 8 * * *",
+  /**
+   * IANA zone for that cron, for which weekday a weekly digest goes out, and
+   * for the dates in the email. Unset means the server's local zone, which is
+   * how this has always behaved.
+   */
+  digestTimeZone: process.env.DIGEST_TIME_ZONE || undefined,
 
   /** Trailing videos considered when computing a channel's performance baseline. */
   baselineSampleSize: Number(process.env.BASELINE_SAMPLE_SIZE ?? 10),

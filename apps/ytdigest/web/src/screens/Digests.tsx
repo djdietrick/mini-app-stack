@@ -65,7 +65,7 @@ export function Digests() {
                   <li key={item.video_id} className="text-sm">
                     <a
                       className="font-medium text-ink hover:underline"
-                      href={`https://www.youtube.com/watch?v=${item.video_id}`}
+                      href={`https://www.youtube.com/watch?v=${item.youtube_video_id}`}
                       target="_blank"
                       rel="noreferrer"
                     >

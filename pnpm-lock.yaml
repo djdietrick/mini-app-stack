@@ -14,12 +14,18 @@ importers:
       '@stack/crate':
         specifier: workspace:*
         version: link:apps/crate
+      '@stack/mailer':
+        specifier: workspace:*
+        version: link:packages/mailer
       '@stack/pantry':
         specifier: workspace:*
         version: link:apps/pantry
       '@stack/service-kit':
         specifier: workspace:*
         version: link:packages/service-kit
+      '@stack/ytdigest':
+        specifier: workspace:*
+        version: link:apps/ytdigest
       firebase-tools:
         specifier: ^15.25.1
         version: 15.25.1(@types/node@22.19.19)
@@ -209,6 +215,9 @@ importers:
       '@fastify/static':
         specifier: ^8.0.0
         version: 8.3.0
+      '@google-cloud/firestore':
+        specifier: ^7.10.0
+        version: 7.11.6
       '@stack/auth-client':
         specifier: workspace:*
         version: link:../../packages/auth-client
@@ -221,6 +230,9 @@ importers:
       '@stack/mailer':
         specifier: workspace:*
         version: link:../../packages/mailer
+      '@stack/service-kit':
+        specifier: workspace:*
+        version: link:../../packages/service-kit
       fastify:
         specifier: ^5.0.0
         version: 5.8.5
@@ -234,6 +246,9 @@ importers:
         specifier: ^3.23.8
         version: 3.25.76
     devDependencies:
+      '@types/express':
+        specifier: ^4.17.21
+        version: 4.17.25
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.19
@@ -252,12 +267,12 @@ importers:
       autoprefixer:
         specifier: ^10.4.0
         version: 10.5.0(postcss@8.5.14)
+      express:
+        specifier: ^4.21.2
+        version: 4.22.2
       postcss:
         specifier: ^8.4.0
         version: 8.5.14
-      postgres:
-        specifier: ^3.4.5
-        version: 3.4.9
       react:
         specifier: ^18.3.0
         version: 18.3.1
@@ -288,6 +303,9 @@ importers:
       firebase-functions:
         specifier: ^6.1.0
         version: 6.6.0(firebase-admin@13.10.0(@firebase/app-compat@0.4.2)(@firebase/app@0.13.2))
+      nodemailer:
+        specifier: ^6.9.14
+        version: 6.10.1
     devDependencies:
       '@types/express':
         specifier: ^4.17.21

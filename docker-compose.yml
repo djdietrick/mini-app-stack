@@ -151,6 +151,8 @@ services:
       MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in .env}
       POLL_INTERVAL_MINUTES: ${POLL_INTERVAL_MINUTES:-180}
       DIGEST_SEND_CRON: ${DIGEST_SEND_CRON:-0 8 * * *}
+      # Optional IANA zone for the send time and weekly day; unset = server time.
+      DIGEST_TIME_ZONE: ${DIGEST_TIME_ZONE:-}
     ports:
       - "${YTDIGEST_PORT:-3103}:3103"
     depends_on:

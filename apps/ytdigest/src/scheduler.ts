@@ -1,41 +1,39 @@
 import cron from "node-cron";
-import type postgres from "postgres";
-import type { RedisClient } from "@stack/db-clients";
-import type { Mailer } from "@stack/mailer";
-import { config } from "./config.js";
-import { pollChannels } from "./poll/pollChannels.js";
-import { sendDigest } from "./digest/sendDigest.js";
+import type { Lease } from "@stack/service-kit";
+import { type DigestMailer, type DigestOptions, runDailyDigest } from "./domain/digest.js";
+import { pollChannels } from "./domain/poll.js";
+import type { YouTubeGateway } from "./domain/youtube.js";
+import type { YtdigestRepo } from "./repo/types.js";
 
-/** Runs the combined daily digest for every user with at least one subscription. */
-export async function runDailyDigest(
-  sql: postgres.Sql,
-  mailer: Mailer,
-  runDate: Date = new Date(),
-): Promise<void> {
-  const users = await sql<{ user_id: string; email: string }[]>`
-    SELECT DISTINCT s.user_id, u.email
-    FROM subscriptions s
-    JOIN shared.users u ON u.id = s.user_id
-  `;
-
-  for (const user of users) {
-    try {
-      const result = await sendDigest(sql, mailer, user.user_id, user.email, runDate);
-      if (result.sent) console.log(`[digest] sent ${result.itemCount} item(s) to ${user.email}`);
-    } catch (err) {
-      console.error(`[digest] failed for ${user.email}:`, err);
-    }
-  }
+/**
+ * Self-hosted scheduling: an in-process timer for the poll and node-cron for
+ * the daily send. The cloud runs the same two functions from Cloud Scheduler
+ * instead (functions/src/index.ts), so only the trigger differs.
+ */
+export interface SchedulerDeps {
+  repo: YtdigestRepo;
+  youtube: YouTubeGateway;
+  mailer: DigestMailer;
+  lease: Lease;
+  pollIntervalMinutes: number;
+  digestSendCron: string;
+  digest: DigestOptions;
 }
 
-export function startSchedulers(sql: postgres.Sql, redis: RedisClient, mailer: Mailer): void {
+export function startSchedulers(deps: SchedulerDeps): void {
   const runPoll = () => {
-    pollChannels(sql, redis).catch((err) => console.error("[poll] failed:", err));
+    pollChannels(deps).catch((err) => console.error("[poll] failed:", err));
   };
   runPoll();
-  setInterval(runPoll, config.pollIntervalMinutes * 60_000);
+  setInterval(runPoll, deps.pollIntervalMinutes * 60_000);
 
-  cron.schedule(config.digestSendCron, () => {
-    runDailyDigest(sql, mailer).catch((err) => console.error("[digest] failed:", err));
-  });
+  cron.schedule(
+    deps.digestSendCron,
+    () => {
+      runDailyDigest(deps.repo, deps.mailer, new Date(), deps.digest).catch((err) =>
+        console.error("[digest] failed:", err),
+      );
+    },
+    deps.digest.timeZone ? { timezone: deps.digest.timeZone } : undefined,
+  );
 }
