@@ -88,7 +88,13 @@ jobs:
           # Bind each function to its own runtime identity instead of the
           # default compute service account.
           CRATE_FUNCTION_SA: ${{ vars.PROD_CRATE_FUNCTION_SA }}
+          PANTRY_FUNCTION_SA: ${{ vars.PROD_PANTRY_FUNCTION_SA }}
           AUTH_FUNCTION_SA: ${{ vars.PROD_AUTH_FUNCTION_SA }}
         run: |
+          # Fail rather than silently fall back to the default compute
+          # service account when a variable is missing.
+          : "${CRATE_FUNCTION_SA:?set the PROD_CRATE_FUNCTION_SA repository variable}"
+          : "${PANTRY_FUNCTION_SA:?set the PROD_PANTRY_FUNCTION_SA repository variable}"
+          : "${AUTH_FUNCTION_SA:?set the PROD_AUTH_FUNCTION_SA repository variable}"
           pnpm exec firebase deploy --only functions,hosting \
             --project "${{ vars.PROD_PROJECT_ID }}" --non-interactive --force

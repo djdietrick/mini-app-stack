@@ -10,6 +10,8 @@ import { toExpressApp } from "@stack/service-kit/express";
 import { crateRoutes } from "@stack/crate/domain";
 import { createItunesGateway } from "@stack/crate/domain/itunes";
 import { createFirestoreCrateRepo } from "@stack/crate/repo/firestore";
+import { pantryRoutes, resolvePantryScope } from "@stack/pantry/domain";
+import { createFirestorePantryRepo } from "@stack/pantry/repo/firestore";
 import { createAuthApi } from "./auth.js";
 
 /**
@@ -46,6 +48,7 @@ const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // Firebase's maximum.
  * emulator wants.
  */
 const crateServiceAccount = process.env.CRATE_FUNCTION_SA || undefined;
+const pantryServiceAccount = process.env.PANTRY_FUNCTION_SA || undefined;
 const authServiceAccount = process.env.AUTH_FUNCTION_SA || undefined;
 
 // Module scope on purpose: these are reused across warm invocations.
@@ -86,6 +89,19 @@ export const crateApi = onRequest(
     toExpressApp(crateRoutes({ itunes: createItunesGateway(firestoreCache(db)) }), {
       repo: createFirestoreCrateRepo(db),
       verify: verifier.verify,
+    }),
+  ),
+);
+
+export const pantryApi = onRequest(
+  { serviceAccount: pantryServiceAccount },
+  mount(
+    "/api",
+    toExpressApp(pantryRoutes(), {
+      repo: createFirestorePantryRepo(db),
+      verify: verifier.verify,
+      // Resolves the caller's active household, as the Fastify side does.
+      resolveScope: resolvePantryScope,
     }),
   ),
 );
