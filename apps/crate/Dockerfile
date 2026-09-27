@@ -13,6 +13,7 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/db-clients/package.json packages/db-clients/
 COPY packages/auth-client/package.json packages/auth-client/
 COPY packages/auth-ui/package.json packages/auth-ui/
+COPY packages/service-kit/package.json packages/service-kit/
 COPY apps/crate/package.json apps/crate/
 
 RUN pnpm install --frozen-lockfile
@@ -20,6 +21,7 @@ RUN pnpm install --frozen-lockfile
 COPY packages/db-clients packages/db-clients
 COPY packages/auth-client packages/auth-client
 COPY packages/auth-ui packages/auth-ui
+COPY packages/service-kit packages/service-kit
 COPY apps/crate apps/crate
 
 RUN pnpm --filter @stack/crate build:web
@@ -37,6 +39,7 @@ COPY --from=builder /repo/pnpm-workspace.yaml /repo/package.json ./
 COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages/db-clients ./packages/db-clients
 COPY --from=builder /repo/packages/auth-client ./packages/auth-client
+COPY --from=builder /repo/packages/service-kit ./packages/service-kit
 COPY --from=builder /repo/apps/crate/package.json ./apps/crate/package.json
 COPY --from=builder /repo/apps/crate/src ./apps/crate/src
 COPY --from=builder /repo/apps/crate/migrations ./apps/crate/migrations
