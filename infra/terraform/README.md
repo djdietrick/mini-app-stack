@@ -17,10 +17,33 @@ envs/
   prod/           another GCP project
 ```
 
+```bash
+cd infra/terraform/bootstrap
+terraform init
+terraform apply \
+  -var admin_project=dash-mini-app-stack-prod \
+  -var 'managed_projects=["dash-mini-app-stack-staging","dash-mini-app-stack-prod"]' \
+  -var github_repo=djdietrick/mini-app-stack \
+  -var state_bucket=dash-mini-app-stack-state-bucket
+
+deployer_service_account = "gh-deployer@dash-mini-app-stack-prod.iam.gserviceaccount.com"
+state_bucket = "dash-mini-app-stack-state-bucket"
+workload_identity_provider = "projects/207970918044/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+cd ../envs/staging
+terraform init -backend-config=bucket=dash-mini-app-stack-state-bucket
+terraform apply
+
+
+cd ../prod
+terraform init -backend-config=bucket=dash-mini-app-stack-state-bucket
+terraform apply
+```
+
 ## Division of labour
 
 Terraform owns **GCP resources**: enabled APIs, the Firestore database, Identity
-Platform config, Hosting *sites*, service accounts, IAM bindings, Secret Manager
+Platform config, Hosting _sites_, service accounts, IAM bindings, Secret Manager
 entries.
 
 `firebase.json` / `.firebaserc` / `firestore.rules` / `firestore.indexes.json` own
@@ -70,7 +93,7 @@ run by CI.
 
 ## Secret values
 
-Terraform creates Secret Manager *secrets* but never their *versions* — no
+Terraform creates Secret Manager _secrets_ but never their _versions_ — no
 secret values live in this repo or in state. Add them once per environment:
 
 ```bash

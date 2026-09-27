@@ -1,2 +1,2 @@
-project = "mini-app-stack-staging"
+project = "dash-mini-app-stack-staging"
 region  = "us-central1"

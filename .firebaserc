@@ -1,18 +1,22 @@
 {
   "projects": {
-    "default": "mini-app-stack-staging",
-    "staging": "mini-app-stack-staging",
-    "prod": "mini-app-stack-prod"
+    "default": "dash-mini-app-stack-prod",
+    "staging": "dash-mini-app-stack-staging",
+    "prod": "dash-mini-app-stack-prod"
   },
   "targets": {
-    "mini-app-stack-staging": {
+    "dash-mini-app-stack-staging": {
       "hosting": {
-        "crate": ["crate-staging"]
+        "crate": [
+          "crate-staging"
+        ]
       }
     },
-    "mini-app-stack-prod": {
+    "dash-mini-app-stack-prod": {
       "hosting": {
-        "crate": ["crate-prod"]
+        "crate": [
+          "crate-prod-5c26a"
+        ]
       }
     }
   }
