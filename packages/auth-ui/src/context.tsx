@@ -19,7 +19,7 @@ export type AuthState =
   | { status: "signed-in"; user: SessionUser }
   | { status: "signed-out"; user: null };
 
-interface AuthContextValue {
+export interface AuthContextValue {
   state: AuthState;
   /** Re-fetch /me. Useful after a login/signup completes. */
   refresh: () => Promise<void>;
@@ -31,7 +31,13 @@ interface AuthContextValue {
   logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+/**
+ * Exported so a second provider can satisfy the same contract. FirebaseAuthProvider
+ * in ./firebase.tsx does exactly that, which is why AuthGate, LoginForm and
+ * SignupForm need no changes between deployment targets — they only ever
+ * consume this context.
+ */
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export interface AuthProviderProps {
   /**

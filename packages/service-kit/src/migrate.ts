@@ -1,11 +1,16 @@
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import type { PostgresClient } from "@stack/db-clients";
 
-const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
-
-export async function runMigrations(client: PostgresClient): Promise<void> {
+/**
+ * Applies `<dir>/*.sql` in lexicographic order, once each, tracked in the
+ * app's own `_migrations` table (search_path scopes it to the app schema).
+ *
+ * Hoisted out of apps/{crate,pantry,ytdigest}/src/migrate.ts, where it was
+ * byte-identical three times. Postgres only — the Firestore backend is
+ * schemaless and has nothing to migrate.
+ */
+export async function runMigrations(client: PostgresClient, migrationsDir: string): Promise<void> {
   const { sql } = client;
 
   await sql`
@@ -15,9 +20,7 @@ export async function runMigrations(client: PostgresClient): Promise<void> {
     )
   `;
 
-  const files = (await readdir(migrationsDir))
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
+  const files = (await readdir(migrationsDir)).filter((f) => f.endsWith(".sql")).sort();
 
   const applied = new Set(
     (await sql<{ name: string }[]>`SELECT name FROM _migrations`).map((r) => r.name),

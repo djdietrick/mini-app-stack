@@ -1,0 +1,43 @@
+{
+  "indexes": [
+    {
+      "//": "GET /api/queue — filter by user, newest first.",
+      "collectionGroup": "crate_queue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "addedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "GET /api/queue?status= — same, with the status filter.",
+      "collectionGroup": "crate_queue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "addedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "GET /api/queue/random?genre= — queued albums in one genre.",
+      "collectionGroup": "crate_queue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "genre", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "POST /api/queue and /api/queue/status — dedupe and badge lookups.",
+      "collectionGroup": "crate_queue",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "providerAlbumId", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

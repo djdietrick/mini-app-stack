@@ -1,0 +1,23 @@
+{
+  "projects": {
+    "default": "dash-mini-app-stack-prod",
+    "staging": "dash-mini-app-stack-staging",
+    "prod": "dash-mini-app-stack-prod"
+  },
+  "targets": {
+    "dash-mini-app-stack-staging": {
+      "hosting": {
+        "crate": [
+          "crate-staging-40765"
+        ]
+      }
+    },
+    "dash-mini-app-stack-prod": {
+      "hosting": {
+        "crate": [
+          "crate-prod-5c26a"
+        ]
+      }
+    }
+  }
+}

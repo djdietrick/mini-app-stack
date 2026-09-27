@@ -6,14 +6,18 @@ Monorepo of small self-hosted microservices and the shared data infrastructure t
 
 ```
 .
-├── docker-compose.yml          # Postgres + Mongo + Redis
+├── docker-compose.yml          # Postgres + Redis (+ optional Firebase emulators)
+├── firebase.json               # Hosting rewrites, Firestore rules/indexes, emulators
 ├── .env.example                # copy to .env and edit
+├── .github/workflows/          # CI, Terraform plan/apply, Firebase deploys
 ├── infra/
 │   ├── postgres/init/          # extensions + per-app schema/role provisioning
-│   ├── mongo/init/             # per-app db/user provisioning
-│   └── redis/redis.conf        # lean redis config
+│   ├── redis/redis.conf        # lean redis config
+│   └── terraform/              # GCP/Firebase infrastructure as code
+├── functions/                  # Firebase Functions codebase (cloud transport)
 ├── packages/
-│   └── db-clients/             # shared TS clients (Drizzle, mongodb, ioredis)
+│   ├── service-kit/            # transport-agnostic routes + Fastify/Express adapters
+│   └── db-clients/             # shared TS clients (Drizzle, Firestore, ioredis)
 └── apps/                       # individual services live here
 ```
 
@@ -22,7 +26,6 @@ Monorepo of small self-hosted microservices and the shared data infrastructure t
 Everything lives in a single shared database per engine so apps can join across each other's data and share a single user identity.
 
 - **PostgreSQL 16** — shared database `appstack`. One schema per app (`notes`, `timer`, …) plus a `shared` schema for cross-app tables (users, sessions, app config). Each app role is read-only on `shared`; writes go through the future auth service.
-- **MongoDB 7** — shared database `appstack`. Apps namespace via collection prefixes (`notes_items`, `timer_sessions`). One app user (`appstack`) with `readWrite` on the db.
 - **Redis 7** — caching, sessions, pub/sub. AOF persistence, `maxmemory 256mb` with `allkeys-lru` eviction. Apps namespace via `keyPrefix`.
 
 ### First-time setup
@@ -35,7 +38,7 @@ docker compose up -d
 docker compose ps
 ```
 
-The Postgres and Mongo init scripts only run when their data volume is empty. To re-run them after editing, either reset (`pnpm infra:reset` — destroys data) or apply the SQL/JS manually.
+The Postgres init scripts only run when the data volume is empty. To re-run them after editing, either reset (`pnpm infra:reset` — destroys data) or apply the SQL manually.
 
 To add a new app to a live Postgres without resetting, run the equivalent of `infra/postgres/init/10-app-schemas.sh` by hand (substituting the new app name):
 
@@ -57,7 +60,7 @@ Take a backup first with `docker compose exec -T postgres pg_dump -U "$POSTGRES_
 ### Adding a new app to the data layer
 
 1. **Postgres** — add the app name to the `APPS=()` array in [infra/postgres/init/10-app-schemas.sh](infra/postgres/init/10-app-schemas.sh#L17). Add `APP_<NAME>_PASSWORD` to `.env` and pass it through to the `postgres` service env in `docker-compose.yml`. The script grants the app role read access to the `shared` schema automatically.
-2. **Mongo** — no provisioning needed. Use the shared `appstack` user and prefix your collection names (e.g. `notes_items`).
+2. **Firestore** (cloud only) — no provisioning needed. Prefix your collection names (e.g. `notes_items`) via `createFirestoreClient({ collectionPrefix })`.
 3. **Redis** — no provisioning needed. Pick a logical db index (0-15) or use `keyPrefix` to namespace keys.
 
 ### Shared identity / config
@@ -86,7 +89,7 @@ See [CLAUDE.md](CLAUDE.md) for the integration pattern.
 ```ts
 import {
   createPostgresClient,
-  createMongoClient,
+  createFirestoreClient,
   createRedisClient,
 } from "@stack/db-clients";
 
@@ -95,9 +98,9 @@ const pg = createPostgresClient({
   schema: "notes",
 });
 
-const mongo = await createMongoClient({
-  url: process.env.MONGO_URL!,           // mongodb://appstack:pw@mongo:27017/appstack?authSource=appstack
-  database: "appstack",
+// Cloud only. Picks up FIRESTORE_EMULATOR_HOST automatically when set.
+const fs = createFirestoreClient({
+  projectId: process.env.GOOGLE_CLOUD_PROJECT,
   collectionPrefix: "notes_",            // every collection access auto-prefixes
 });
 
@@ -121,10 +124,114 @@ pnpm infra:up       # start all data services
 pnpm infra:down     # stop, keep data
 pnpm infra:logs     # tail logs
 pnpm infra:reset    # stop AND delete all data volumes (destructive)
+
+pnpm emulators:up   # Firebase emulator suite (the cloud path, locally)
+pnpm emulators:down
+
+pnpm typecheck      # every workspace
+pnpm build:web      # every SPA
+pnpm test           # every workspace with tests
 ```
 
-## Choosing SQL vs NoSQL per app
+Run the tests with a Firestore emulator so the Firestore contract tests
+actually execute instead of self-skipping:
 
-- Default to **Postgres**. JSONB columns handle most document-shaped data while keeping you in one system.
-- Reach for **Mongo** when the data is genuinely schema-flexible, deeply nested, or you want per-document TTLs / change streams.
-- Use **Redis** for ephemeral state (sessions, rate limits, queues, pub/sub) — not as a primary store.
+```bash
+pnpm exec firebase emulators:exec --only firestore --project demo-ci "pnpm test"
+```
+
+## Choosing a store
+
+- Self-hosted, the primary store is **Postgres**. JSONB columns handle most document-shaped data while keeping you in one system.
+- In the cloud the same apps run on **Firestore** via a second repository implementation behind the same port. See "Deploying to Firebase".
+- Use **Redis** for ephemeral state (caches, locks, rate limits) — not as a primary store. Firestore documents with a TTL policy play that role in the cloud.
+
+
+## Deploying to Firebase
+
+The stack has two deployment targets and both are permanent. The same domain
+code and the same route tables serve both; only the implementations wired
+underneath differ.
+
+|                | Self-hosted (Docker)        | Cloud (Firebase)                  |
+|----------------|-----------------------------|-----------------------------------|
+| Compute        | Fastify on your server      | Cloud Functions (2nd gen)         |
+| Data           | Postgres                    | Firestore                         |
+| Identity       | `apps/auth` + `shared.*`    | Firebase Auth (session cookies)   |
+| Cache / locks  | Redis                       | Firestore docs with a TTL policy  |
+| Static SPA     | `@fastify/static`           | Firebase Hosting                  |
+| Config         | `docker-compose.yml`        | `infra/terraform/` + `firebase.json` |
+
+### The three seams
+
+Everything that differs between the two targets is behind one of three ports,
+and nothing else in the codebase knows which target it is running on.
+
+1. **Transport** — `@stack/service-kit`. Routes are declarative descriptors
+   (`method`, `path`, zod `input`, `handler(ctx, input)`); `toFastifyPlugin`
+   serves them self-hosted and `toExpressApp` serves them inside a Function.
+   Handlers never see a request or reply object.
+2. **Data** — a per-app repository port (`apps/<app>/src/repo/types.ts`) with a
+   Postgres and a Firestore implementation, selected by `DATA_BACKEND`.
+3. **Identity** — `SessionVerifier` in `@stack/auth-client`, either
+   `stackVerifier` (calls `apps/auth`) or `firebaseVerifier` (verifies a
+   Firebase session cookie), selected by `AUTH_MODE`.
+
+Adding an endpoint means adding one route descriptor and one method on the
+repo port, then implementing that method twice. That second implementation is
+the standing cost of keeping both targets.
+
+### Environment selection
+
+```
+DATA_BACKEND=postgres|firestore
+AUTH_MODE=stack|firebase
+CACHE_BACKEND=redis|firestore
+MAIL_TRANSPORT=smtp|http
+```
+
+Frontends pick their auth provider at build time via `VITE_AUTH_MODE`; the
+Firebase SDK is tree-shaken out of the self-hosted bundle.
+
+### Infrastructure
+
+**First-time setup: [docs/firebase-setup.md](docs/firebase-setup.md)** — the
+two GCP projects, the one-time bootstrap, and the nine GitHub variables.
+
+`infra/terraform/` owns the GCP resources — see
+[infra/terraform/README.md](infra/terraform/README.md) for the division of
+labour with `firebase.json`. Deploys run from
+GitHub Actions authenticating over Workload Identity Federation; there is no
+long-lived service account key anywhere.
+
+### Environments
+
+Two GCP projects: `mini-app-stack-staging` and `mini-app-stack-prod`. Every
+pull request gets a Firebase Hosting **preview channel** with its own URL.
+
+Be clear about what a preview is: **preview channels fork the frontend only.**
+Functions, Firestore data and Auth users are shared across the whole staging
+project, so two PRs that change the API incompatibly will break each other,
+and PR previews share data. That is fine for frontend-only and additive
+changes. For an API-breaking PR, deploy its functions under a suffixed id
+(`crateApi-pr123`) and point that PR's rewrite at it.
+
+Terraform is never applied from a pull request — PRs get a plan comment, and
+apply happens on merge to `main`.
+
+### Migration status
+
+| App        | Self-hosted | Firebase |
+|------------|-------------|----------|
+| `crate`    | yes         | yes      |
+| `pantry`   | yes         | not yet  |
+| `ytdigest` | yes         | not yet  |
+| `auth`     | yes         | replaced by Firebase Auth in the cloud |
+
+`pantry` and `ytdigest` still run only on the self-hosted path. Porting them
+means the same three steps `crate` went through: extract routes into
+`src/domain/`, define the repo port with a Postgres implementation, then add
+the Firestore implementation and export the function. `ytdigest` additionally
+needs its in-process `setInterval`/`node-cron` schedulers replaced with
+`onSchedule` functions, and an HTTP mail transport — Cloud Functions cannot
+open SMTP ports.

@@ -1,4 +1,4 @@
-import type { RedisClient } from "@stack/db-clients";
+import type { CacheStore } from "@stack/service-kit";
 
 export interface NormalizedAlbum {
   providerAlbumId: string;
@@ -89,13 +89,13 @@ function normalizeArtist(raw: ITunesArtistResult): NormalizedArtist {
   };
 }
 
-export async function search(query: string, redis: RedisClient): Promise<SearchResponse> {
+async function search(query: string, cache: CacheStore): Promise<SearchResponse> {
   const trimmed = query.trim().toLowerCase();
   if (!trimmed) return { artists: [], albums: [] };
 
   const cacheKey = `search:v3:${trimmed}`;
-  const cached = await redis.get(cacheKey);
-  if (cached) return JSON.parse(cached) as SearchResponse;
+  const cached = await cache.get<SearchResponse>(cacheKey);
+  if (cached) return cached;
 
   const albumUrl = new URL("https://itunes.apple.com/search");
   albumUrl.searchParams.set("entity", "album");
@@ -118,7 +118,7 @@ export async function search(query: string, redis: RedisClient): Promise<SearchR
     artists: artistData.results.map(normalizeArtist),
     albums: albumData.results.map(normalizeAlbum),
   };
-  await redis.set(cacheKey, JSON.stringify(response), "EX", CACHE_TTL_SECONDS);
+  await cache.set(cacheKey, response, CACHE_TTL_SECONDS);
   return response;
 }
 
@@ -127,13 +127,13 @@ export interface ArtistAlbumsResponse {
   albums: NormalizedAlbum[];
 }
 
-export async function getArtistAlbums(
+async function getArtistAlbums(
   artistId: string,
-  redis: RedisClient,
+  cache: CacheStore,
 ): Promise<ArtistAlbumsResponse> {
   const cacheKey = `artist:v1:${artistId}`;
-  const cached = await redis.get(cacheKey);
-  if (cached) return JSON.parse(cached) as ArtistAlbumsResponse;
+  const cached = await cache.get<ArtistAlbumsResponse>(cacheKey);
+  if (cached) return cached;
 
   const url = new URL("https://itunes.apple.com/lookup");
   url.searchParams.set("id", artistId);
@@ -160,6 +160,23 @@ export async function getArtistAlbums(
   albums.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
 
   const response: ArtistAlbumsResponse = { artist, albums };
-  await redis.set(cacheKey, JSON.stringify(response), "EX", CACHE_TTL_SECONDS);
+  await cache.set(cacheKey, response, CACHE_TTL_SECONDS);
   return response;
+}
+
+/**
+ * Bundles the cache so routes take a plain gateway. Backed by Redis
+ * self-hosted and by Firestore-with-a-TTL-policy in Cloud Functions, where
+ * there is no Redis to reach.
+ */
+export interface ItunesGateway {
+  search(query: string): Promise<SearchResponse>;
+  artistAlbums(artistId: string): Promise<ArtistAlbumsResponse>;
+}
+
+export function createItunesGateway(cache: CacheStore): ItunesGateway {
+  return {
+    search: (query) => search(query, cache),
+    artistAlbums: (artistId) => getArtistAlbums(artistId, cache),
+  };
 }

@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Typecheck and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build SPAs
+        run: pnpm build:web
+
+      - name: Build functions bundle
+        run: pnpm --filter @stack/functions build
+
+      # The Firestore emulator is a Java program, and firebase-tools refuses
+      # to start it on anything older than Java 21. The runner's default Java
+      # is older, so pin it rather than rely on the image.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Run the suite inside the Firestore emulator so the Firestore repo's
+      # contract test actually executes. Without it that suite self-skips and
+      # the cloud data layer would go untested.
+      - name: Test
+        run: >
+          pnpm exec firebase emulators:exec
+          --only firestore --project demo-ci
+          "pnpm test"
