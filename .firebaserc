@@ -8,7 +8,7 @@
     "dash-mini-app-stack-staging": {
       "hosting": {
         "crate": [
-          "crate-staging"
+          "crate-staging-40765"
         ]
       }
     },
