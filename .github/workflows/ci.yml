@@ -37,10 +37,17 @@ jobs:
       - name: Build functions bundle
         run: pnpm --filter @stack/functions build
 
+      # The Firestore emulator is a Java program, and firebase-tools refuses
+      # to start it on anything older than Java 21. The runner's default Java
+      # is older, so pin it rather than rely on the image.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
       # Run the suite inside the Firestore emulator so the Firestore repo's
       # contract test actually executes. Without it that suite self-skips and
-      # the cloud data layer would go untested. Java for the emulator is
-      # preinstalled on the GitHub-hosted ubuntu image.
+      # the cloud data layer would go untested.
       - name: Test
         run: >
           pnpm exec firebase emulators:exec
