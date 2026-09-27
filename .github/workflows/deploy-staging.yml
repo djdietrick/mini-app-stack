@@ -32,6 +32,10 @@ permissions:
 jobs:
   preview:
     name: Build and deploy preview
+    # Staging is opt-in: until the STAGING_PROJECT_ID repository variable is
+    # set there is no project to deploy to, and the job is skipped rather than
+    # failing every PR.
+    if: vars.STAGING_PROJECT_ID != ''
     runs-on: ubuntu-latest
     environment: staging
 

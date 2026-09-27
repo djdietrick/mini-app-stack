@@ -50,8 +50,10 @@ jobs:
       # Infrastructure first: functions and hosting deploys below assume the
       # sites, service accounts and Firestore database already exist.
       # Staging is applied here rather than from a PR so that a pull request
-      # can never mutate infrastructure.
+      # can never mutate infrastructure. Skipped until STAGING_PROJECT_ID is
+      # set, so prod can run on its own.
       - name: Apply staging infrastructure
+        if: vars.STAGING_PROJECT_ID != ''
         working-directory: infra/terraform/envs/staging
         run: |
           terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"

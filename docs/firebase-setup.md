@@ -19,6 +19,36 @@ zero and sit inside the free tier — but a billing account must be attached.
 Set a budget alert on both projects before the first deploy. `maxInstances` caps
 concurrency, not spend.
 
+## Prod only
+
+Staging is opt-in. Every staging step in CI is gated on the
+`STAGING_PROJECT_ID` repository variable, so while it is unset:
+
+- `deploy-staging.yml` and `pr-cleanup.yml` are skipped
+- `terraform.yml` plans prod only
+- `deploy-prod.yml` skips the staging apply
+
+To run prod alone, follow the steps below and leave out every staging item:
+
+- create only the prod project
+- bootstrap with `managed_projects=["PROD_ID"]`
+- apply only `envs/prod`
+- set only the non-`STAGING_*` variables
+- create only the `production` environment
+
+There are no PR previews in this mode. The first automated deploy happens on
+merge to `main`, so use [Deploying by hand](#deploying-by-hand) with prod values
+to try it out before merging.
+
+To add staging later:
+
+1. Create the project.
+2. Re-run the bootstrap with both projects in `managed_projects`.
+3. Apply `envs/staging`.
+4. Set the `STAGING_*` variables, with `STAGING_PROJECT_ID` **last**. Setting
+   it is what switches the staging workflows on, and they need the other
+   variables already in place.
+
 ---
 
 ## Step 1 — Create the projects and link billing
@@ -164,8 +194,9 @@ The `*_FUNCTION_SA` variables make each function run as its own identity.
 Without them the functions fall back to the default compute service account,
 which carries project Editor.
 
-**Set all of these before opening the pull request.** `terraform.yml` plans both
-environments on any PR touching `infra/terraform/**` and fails without them.
+**Set all of these before opening the pull request.** `terraform.yml` plans on
+any PR touching `infra/terraform/**` and fails without them. It plans staging
+only when `STAGING_PROJECT_ID` is set; see [Prod only](#prod-only).
 
 ## Step 8 — GitHub environments
 

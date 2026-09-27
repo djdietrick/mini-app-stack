@@ -23,7 +23,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [staging, prod]
+        # Staging is opt-in: plan it only once STAGING_PROJECT_ID is set, so a
+        # prod-only setup does not get a permanently red staging leg.
+        env: ${{ fromJSON(vars.STAGING_PROJECT_ID != '' && '["staging","prod"]' || '["prod"]') }}
 
     defaults:
       run:

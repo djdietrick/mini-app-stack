@@ -11,6 +11,8 @@ permissions:
 jobs:
   cleanup:
     name: Delete preview channel
+    # No staging project means no preview channels to delete.
+    if: vars.STAGING_PROJECT_ID != ''
     runs-on: ubuntu-latest
 
     steps:

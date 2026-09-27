@@ -82,6 +82,8 @@ Selected by env: `DATA_BACKEND=postgres|firestore`, `AUTH_MODE=stack|firebase`, 
 
 Terraform is never applied from a pull request. PRs get a plan comment; apply happens on merge to `main`.
 
+Staging is opt-in. Every staging job or step in `.github/workflows/` is gated on `vars.STAGING_PROJECT_ID != ''`, so prod runs on its own until that variable is set. Any new staging step needs the same guard.
+
 ### Auth / identity boundary
 
 Shared identity is the load-bearing piece of the design — a user signs up once and has access to every app. To make this safe:
