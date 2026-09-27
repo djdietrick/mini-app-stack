@@ -51,13 +51,24 @@ module "firestore" {
   depends_on = [module.services]
 }
 
+/**
+ * Hosting site ids share one namespace across every Firebase project, so a
+ * plain `crate-prod` collides with somebody else's. A short hash of the project
+ * id is stable across applies and unique per project, and needs no choosing or
+ * coordinating. The site's real URL comes out of the hosting_sites output.
+ */
+locals {
+  site_suffix = substr(sha1(var.project), 0, 5)
+}
+
 module "sites" {
   source   = "../app-site"
   for_each = toset(var.apps)
 
-  project = var.project
-  app     = each.key
-  env     = var.env
+  project     = var.project
+  app         = each.key
+  env         = var.env
+  site_suffix = local.site_suffix
 
   depends_on = [module.firebase]
 }
@@ -68,7 +79,7 @@ module "identity" {
 
   authorized_domains = concat(
     ["localhost", "${var.project}.firebaseapp.com", "${var.project}.web.app"],
-    [for app in var.apps : "${app}-${var.env}.web.app"],
+    [for app, site in module.sites : "${site.site_id}.web.app"],
     var.extra_authorized_domains,
   )
 

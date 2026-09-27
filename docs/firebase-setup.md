@@ -97,9 +97,10 @@ Three files. The third is the one that is easy to get half-right:
 `projects` entries, `firebase hosting:channel:deploy` cannot resolve the `crate`
 target and the preview step fails.
 
-Hosting site ids (`crate-staging`, `crate-prod`) are globally unique too. If
-either is taken, change `site_id` in `infra/terraform/modules/app-site/main.tf`
-and the matching entry in `.firebaserc`.
+The site ids inside `targets` are filled in later, at step 6. Hosting site ids
+are global across all of Firebase, so Terraform appends a five-character hash
+of the project id (`crate-prod-3f2a1`). That hash doesn't exist until you
+choose the project id.
 
 ## Step 4 — Bootstrap (once, by hand)
 
@@ -160,7 +161,12 @@ terraform output -json function_service_accounts
 cd ../prod
 terraform output -json web_config
 terraform output -json function_service_accounts
+terraform output -json hosting_sites
 ```
+
+Put each environment's `hosting_sites.crate` value into `.firebaserc`, under
+`targets.<PROJECT_ID>.hosting.crate`. Commit that change. It is how
+`firebase deploy` knows which site the `crate` target means.
 
 ## Step 7 — GitHub repository variables
 

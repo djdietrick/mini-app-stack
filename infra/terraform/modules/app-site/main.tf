@@ -7,6 +7,10 @@ variable "env" {
   description = "staging | prod. Part of the site id so both can exist in one org."
   type        = string
 }
+variable "site_suffix" {
+  description = "Appended to the site id. Site ids are global across all of Firebase, so `crate-prod` alone is already taken."
+  type        = string
+}
 
 /**
  * Per-app cloud footprint: one Firebase Hosting site and one service account
@@ -22,7 +26,7 @@ variable "env" {
 resource "google_firebase_hosting_site" "this" {
   provider = google-beta
   project  = var.project
-  site_id  = "${var.app}-${var.env}"
+  site_id  = "${var.app}-${var.env}-${var.site_suffix}"
 }
 
 /**

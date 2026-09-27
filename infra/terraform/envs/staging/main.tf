@@ -18,14 +18,23 @@ terraform {
   }
 }
 
+# Bill API quota to this project rather than to the caller's credentials.
+# Local Application Default Credentials otherwise attribute calls to Google's
+# own gcloud client project, and identitytoolkit.googleapis.com (Firebase Auth
+# config) rejects that with "requires a quota project". Harmless under CI's
+# service account, which already belongs to a project.
 provider "google" {
-  project = var.project
-  region  = var.region
+  project               = var.project
+  region                = var.region
+  billing_project       = var.project
+  user_project_override = true
 }
 
 provider "google-beta" {
-  project = var.project
-  region  = var.region
+  project               = var.project
+  region                = var.region
+  billing_project       = var.project
+  user_project_override = true
 }
 
 module "env" {
