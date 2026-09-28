@@ -84,6 +84,15 @@ A single sign-on flow across every app in the stack:
 
 See [CLAUDE.md](CLAUDE.md) for the integration pattern.
 
+#### Google sign-in
+
+Every app's login and signup screens offer **Continue with Google** above the email form, wherever the backend supports it. Nothing per-app is needed; it lives in `@stack/auth-ui`.
+
+- **Firebase** — the Google provider is enabled in the Firebase console (Authentication → Sign-in method). The SPA signs in with a popup and exchanges the ID token for the same session cookie as email/password.
+- **Self-hosted** — off until you configure it. In the Google Cloud console, create an OAuth client of type *Web application*, add `<origin>/auth/google/callback` as an authorized redirect URI for every origin an app is served from (e.g. `http://localhost:3101/auth/google/callback`), then set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_ALLOWED_ORIGINS` (those same origins, comma-separated) in `.env` and restart `auth`. The button appears once `GET /auth/providers` reports it.
+
+Accounts are matched by email on both targets, so a Google sign-in lands in the same account as an earlier email/password signup. If that account's email was never verified, its password stops working and Google becomes the way in — otherwise anyone could pre-register someone else's address and keep a password to their account. Firebase Auth does the same.
+
 ### Using the shared client from an app
 
 ```ts
@@ -112,6 +121,7 @@ const redis = createRedisClient({
 
 ## Apps
 
+- [apps/landing](apps/landing/) — static page listing every app and linking to it (port `3000` self-hosted; its own `landing` Hosting site in the cloud). The list is [`src/catalog.ts`](apps/landing/src/catalog.ts); add an entry there when adding an app.
 - [apps/auth](apps/auth/) — shared identity service (port `3100`). Owns writes to `shared.users`, `shared.user_credentials`, `shared.sessions`.
 - [apps/crate](apps/crate/) — music queue / rating app backed by the iTunes search API (port `3101`).
 - [apps/pantry](apps/pantry/) — kitchen inventory + grocery list builder (port `3102`). Items track quantity, size, and a 3-state status (stocked / low / out); tags are typed (`store` / `section` / `general`); grocery lists are generated on demand from low/out items, checked off at the store, and reconciled back into inventory on finish.
@@ -228,6 +238,7 @@ apply happens on merge to `main`.
 | `pantry`   | yes         | yes      |
 | `ytdigest` | yes         | yes      |
 | `auth`     | yes         | replaced by Firebase Auth in the cloud |
+| `landing`  | yes (nginx) | yes (Hosting only, no function) |
 
 `ytdigest`'s background work runs from each target's own scheduler: an
 in-process timer and `node-cron` self-hosted, two `onSchedule` functions

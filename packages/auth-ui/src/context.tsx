@@ -29,6 +29,18 @@ export interface AuthContextValue {
   signup: (email: string, password: string, displayName?: string) => Promise<void>;
   /** POST authUrl/logout and refresh. */
   logout: () => Promise<void>;
+  /**
+   * Sign in with Google. Absent when the backend has no Google sign-in
+   * configured, so the forms only offer the button where it can work. May
+   * navigate away (self-hosted redirects to Google), in which case the promise
+   * never settles.
+   */
+  loginWithGoogle?: () => Promise<void>;
+  /**
+   * An error from a sign-in that finished outside a form submit — the
+   * self-hosted Google flow returns from a redirect — for the forms to show.
+   */
+  authError?: string | null;
 }
 
 /**
@@ -62,6 +74,8 @@ async function authFetch(authUrl: string, path: string, init?: RequestInit) {
 
 export function AuthProvider({ authUrl, children }: AuthProviderProps) {
   const [state, setState] = useState<AuthState>({ status: "loading", user: null });
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [authError] = useState(readRedirectError);
 
   const refresh = useCallback(async () => {
     const res = await authFetch(authUrl, "/me");
@@ -75,6 +89,28 @@ export function AuthProvider({ authUrl, children }: AuthProviderProps) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Strip it once read, so a reload does not show it again. In an effect rather
+  // than the state initializer, which StrictMode runs twice.
+  useEffect(() => {
+    if (authError !== null) clearRedirectError();
+  }, [authError]);
+
+  // Google sign-in is optional self-hosted; apps/auth says whether it is set up.
+  useEffect(() => {
+    authFetch(authUrl, "/providers")
+      .then((res) => (res.ok ? res.json() : { google: false }))
+      .then((body: { google?: boolean }) => setGoogleEnabled(body.google === true))
+      .catch(() => setGoogleEnabled(false));
+  }, [authUrl]);
+
+  const loginWithGoogle = useCallback(async () => {
+    // A full-page redirect through Google and back. apps/auth checks the
+    // origin of returnTo against GOOGLE_ALLOWED_ORIGINS before redirecting.
+    const returnTo = window.location.href;
+    window.location.assign(`${authUrl}/google/start?returnTo=${encodeURIComponent(returnTo)}`);
+    await new Promise<never>(() => undefined);
+  }, [authUrl]);
 
   const login = useCallback<AuthContextValue["login"]>(
     async (email, password) => {
@@ -112,11 +148,31 @@ export function AuthProvider({ authUrl, children }: AuthProviderProps) {
   }, [authUrl]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, refresh, login, signup, logout }),
-    [state, refresh, login, signup, logout],
+    () => ({
+      state,
+      refresh,
+      login,
+      signup,
+      logout,
+      loginWithGoogle: googleEnabled ? loginWithGoogle : undefined,
+      authError,
+    }),
+    [state, refresh, login, signup, logout, googleEnabled, loginWithGoogle, authError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+/** apps/auth reports a failed Google sign-in by redirecting back with `?auth_error=`. */
+function readRedirectError(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URL(window.location.href).searchParams.get("auth_error");
+}
+
+function clearRedirectError() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("auth_error");
+  window.history.replaceState(window.history.state, "", url.toString());
 }
 
 export function useAuth(): AuthContextValue {

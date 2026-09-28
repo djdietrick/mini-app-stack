@@ -3,7 +3,9 @@ import {
   createUserWithEmailAndPassword,
   connectAuthEmulator,
   getAuth,
+  GoogleAuthProvider,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   updateProfile,
 } from "firebase/auth";
@@ -103,6 +105,20 @@ export function FirebaseAuthProvider({
     [auth, exchange],
   );
 
+  // A popup rather than a redirect: the redirect flow needs third-party storage
+  // on authDomain (<project>.firebaseapp.com), which Safari and Firefox block,
+  // whereas the popup hands the result back to this page directly.
+  const loginWithGoogle = useCallback(async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const cred = await signInWithPopup(auth, provider);
+      await exchange(await cred.user.getIdToken());
+    } catch (err) {
+      throw new Error(describe(err, "Google sign-in failed"));
+    }
+  }, [auth, exchange]);
+
   const logout = useCallback<AuthContextValue["logout"]>(async () => {
     await signOut(auth).catch(() => undefined);
     await fetch(`${authUrl}/logout`, { method: "POST", credentials: "include" });
@@ -110,8 +126,8 @@ export function FirebaseAuthProvider({
   }, [auth, authUrl]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, refresh, login, signup, logout }),
-    [state, refresh, login, signup, logout],
+    () => ({ state, refresh, login, signup, logout, loginWithGoogle }),
+    [state, refresh, login, signup, logout, loginWithGoogle],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -136,6 +152,15 @@ function describe(err: unknown, fallback: string): string {
       return "invalid credentials";
     case "auth/too-many-requests":
       return "too many attempts, try again later";
+    case "auth/popup-closed-by-user":
+    case "auth/cancelled-popup-request":
+      return "sign-in cancelled";
+    case "auth/popup-blocked":
+      return "allow pop-ups for this site to sign in with Google";
+    case "auth/account-exists-with-different-credential":
+      return "this email already has an account; sign in with your password";
+    case "auth/unauthorized-domain":
+      return "Google sign-in is not enabled for this address";
     default:
       return fallback;
   }

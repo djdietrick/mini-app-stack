@@ -153,12 +153,28 @@ Tokens are 32 random bytes stored hashed (SHA-256) in `shared.sessions.token_has
 
 The cookie is HttpOnly + SameSite=Lax. In production, set `AUTH_COOKIE_SECURE=true` and `AUTH_COOKIE_DOMAIN=.your-domain` so subdomain apps share the session.
 
+#### Google sign-in
+
+`AuthContextValue.loginWithGoogle` is optional: each provider sets it only when Google sign-in can work, and `<GoogleButton>` (rendered by `LoginForm`/`SignupForm`) shows nothing without it. So no app code changes for Google, and a backend without it looks exactly as before.
+
+- **Firebase**: `FirebaseAuthProvider` uses `signInWithPopup` (not redirect: the redirect flow needs third-party storage on `authDomain`, which Safari/Firefox block), then the usual `POST /auth/session`. The provider is enabled in the Firebase console, not Terraform — its resource takes the client secret. The page's domain must be in `authorized_domains` (`modules/environment` lists every app site's `.web.app` and `.firebaseapp.com`).
+- **Self-hosted**: `apps/auth` runs an authorization-code + PKCE flow (`src/google.ts`): `GET /google/start?returnTo=` → Google → `GET /google/callback` → session cookie → back to `returnTo`. Reached through each app's `/auth/*` proxy, so the redirect URI is `<app origin>/auth/google/callback`. Enabled by `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`; `returnTo` must be an origin in `GOOGLE_ALLOWED_ORIGINS` (it is a redirect target — never loosen that check). `GET /providers` tells the SPA whether to show the button; failures come back as `?auth_error=`, which `AuthProvider` reads into `authError`.
+- **Accounts are matched by verified email on both targets.** Taking over an existing account whose email was never verified drops its password and sessions (`src/users.ts`), matching Firebase's behaviour. Keep that: it is what stops pre-registering someone else's address.
+
 ## Conventions
 
 - **Package manager**: pnpm (declared in `packageManager`). Node ≥ 20.
 - **Module system**: ESM throughout (`"type": "module"`). TS imports use `.js` extensions for relative paths so the same source works after compilation.
 - **Env handling**: `.env` at the repo root drives `docker-compose.yml`. Required vars use the `${VAR:?message}` form so compose fails fast if they're missing.
 - When scaffolding a new app, follow the shared-everything pattern above, depend on `@stack/db-clients` and `@stack/service-kit`, and structure it like `apps/crate`: route descriptors in `src/domain/`, a repository port in `src/repo/types.ts` with `postgres.ts` and `firestore.ts` implementations, and `src/index.ts` as wiring only. The Fastify backend serves its own Vite/React SPA, proxies `/auth/*` to `apps/auth`, and runs SQL migrations from `migrations/*.sql` on boot via `runMigrations` from `@stack/service-kit`.
+
+### apps/landing
+
+Static page listing every app, with links. Vanilla TS + Vite, no React and no auth: it is on its own origin, so it cannot see any app's session anyway.
+
+- The list is `src/catalog.ts`. **Adding an app to the stack means adding it here too.**
+- URLs are fixed at build time by `src/urls.ts`: `VITE_APP_URL_<ID>` if set, else the app's Hosting site for `VITE_FIREBASE_PROJECT_ID` from `.firebaserc` (`https://<site>.web.app`), else `http://localhost:<compose port>`. CI needs no extra variables.
+- Cloud: its own `landing` Hosting target/site (`google_firebase_hosting_site.landing` in `modules/environment`), no function. Self-hosted: the `landing` compose service, nginx on `LANDING_PORT` (3000).
 
 ### apps/pantry
 

@@ -66,6 +66,10 @@ services:
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-2592000}
       AUTH_VERIFY_SECRET: ${AUTH_VERIFY_SECRET:?set AUTH_VERIFY_SECRET in .env}
+      # Optional Google sign-in; off unless both client values are set.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_ALLOWED_ORIGINS: ${GOOGLE_ALLOWED_ORIGINS:-}
     ports:
       - "${AUTH_PORT:-3100}:3100"
     depends_on:
@@ -164,6 +168,26 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3103/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [appnet]
+
+  # Static page linking to every app. Same page as the `landing` Hosting
+  # target in the cloud.
+  landing:
+    build:
+      context: .
+      dockerfile: apps/landing/Dockerfile
+      args:
+        VITE_APP_URL_CRATE: ${VITE_APP_URL_CRATE:-}
+        VITE_APP_URL_PANTRY: ${VITE_APP_URL_PANTRY:-}
+        VITE_APP_URL_YTDIGEST: ${VITE_APP_URL_YTDIGEST:-}
+    <<: *default-restart
+    ports:
+      - "${LANDING_PORT:-3000}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
       interval: 15s
       timeout: 5s
       retries: 5

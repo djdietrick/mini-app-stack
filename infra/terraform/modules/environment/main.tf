@@ -73,13 +73,29 @@ module "sites" {
   depends_on = [module.firebase]
 }
 
+/**
+ * The landing page: a static list of the apps above, with no function, no
+ * service account and no web app registration, because it never signs anyone
+ * in. Same naming scheme as the app sites, so .firebaserc can be filled in
+ * before the first apply creates it.
+ */
+resource "google_firebase_hosting_site" "landing" {
+  provider = google-beta
+  project  = var.project
+  site_id  = "landing-${var.env}-${local.site_suffix}"
+
+  depends_on = [module.firebase]
+}
+
 module "identity" {
   source  = "../identity"
   project = var.project
 
   authorized_domains = concat(
     ["localhost", "${var.project}.firebaseapp.com", "${var.project}.web.app"],
-    [for app, site in module.sites : "${site.site_id}.web.app"],
+    # Every Hosting site answers on both of these; Google sign-in fails on
+    # whichever one is missing here.
+    flatten([for app, site in module.sites : ["${site.site_id}.web.app", "${site.site_id}.firebaseapp.com"]]),
     var.extra_authorized_domains,
   )
 
@@ -157,11 +173,17 @@ module "secrets" {
 }
 
 output "hosting_sites" {
-  value = { for app, site in module.sites : app => site.site_id }
+  value = merge(
+    { for app, site in module.sites : app => site.site_id },
+    { landing = google_firebase_hosting_site.landing.site_id },
+  )
 }
 
 output "hosting_urls" {
-  value = { for app, site in module.sites : app => site.default_url }
+  value = merge(
+    { for app, site in module.sites : app => site.default_url },
+    { landing = google_firebase_hosting_site.landing.default_url },
+  )
 }
 
 /**

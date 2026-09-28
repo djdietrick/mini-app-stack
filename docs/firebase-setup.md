@@ -164,9 +164,15 @@ terraform output -json function_service_accounts
 terraform output -json hosting_sites
 ```
 
-Put each environment's `hosting_sites.crate` value into `.firebaserc`, under
-`targets.<PROJECT_ID>.hosting.crate`. Commit that change. It is how
-`firebase deploy` knows which site the `crate` target means.
+Put each environment's `hosting_sites` values into `.firebaserc`, under
+`targets.<PROJECT_ID>.hosting.<target>` — one per app plus `landing`. Commit
+that change. It is how `firebase deploy` knows which site each target means.
+
+Because site ids are `<target>-<env>-<hash>` and the hash depends only on the
+project id, a new target's site id can be written into `.firebaserc` before the
+apply that creates it (that is how `landing` was added). The preview workflow
+skips any target whose site does not exist yet, and the prod deploy applies
+Terraform before deploying Hosting.
 
 ## Step 7 — GitHub repository variables
 
@@ -253,7 +259,10 @@ emulator could not.
 6. **Rate, mark listened, requeue, delete.** The ownership-scoped transactional
    mutations.
 7. **Reload the page.** Still signed in — cookie persistence.
-8. **In the console:** Firestore shows `crate_queue`, `crate_albums` and `users`
+8. **Sign out, then Continue with Google.** A popup opens, and you land signed
+   in. If it says the address is not authorized, the page's domain is missing
+   from Firebase Auth's authorized domains (see Known limitations).
+9. **In the console:** Firestore shows `crate_queue`, `crate_albums` and `users`
    documents. Cloud Run shows `crateApi` running as `fn-crate-staging@…`, not
    the default compute account.
 
@@ -329,11 +338,16 @@ AUTH_FUNCTION_SA=fn-auth-staging@STAGING_ID.iam.gserviceaccount.com \
   the API incompatibly will break each other, and previews share data. Fine for
   frontend-only and additive changes; for an API-breaking PR, deploy its
   functions under a suffixed id and point that PR's rewrite at it.
-- **Preview channel domains are not in Firebase Auth's authorized-domains
-  list.** Harmless today because email/password sign-in does not check it. If
-  you later add Google or Apple sign-in, preview URLs will fail to complete the
-  OAuth redirect, because preview hostnames are generated per deploy and cannot
-  be pre-authorized.
+- **Google sign-in needs the page's domain in Firebase Auth's authorized
+  domains.** Terraform lists every app site's `.web.app` and `.firebaseapp.com`
+  domain. `firebase hosting:channel:deploy` adds each preview channel's domain
+  itself, but the next staging `terraform apply` (on any merge) resets the list,
+  so Google sign-in on an older preview may fail until that PR is pushed again.
+  Email/password is unaffected.
+- **Google sign-in is enabled by hand**, in the Firebase console (Authentication
+  → Sign-in method), once per project. Terraform does not manage it because its
+  resource takes the OAuth client secret as an argument, which would land in
+  state. Enable it in staging as well as prod.
 - **Custom domains** are attached in the Firebase console, then added to
   `extra_authorized_domains` in `envs/prod/terraform.tfvars` — otherwise
   Firebase Auth refuses sign-in from them.

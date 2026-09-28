@@ -123,8 +123,24 @@ jobs:
       - name: Deploy frontend to a preview channel
         id: preview
         run: |
+          # Only targets whose site already exists. A PR that adds a Hosting
+          # target also adds its site in Terraform, which is not applied until
+          # merge, so its preview would otherwise fail on a missing site.
+          pnpm exec firebase hosting:sites:list --project "${{ vars.STAGING_PROJECT_ID }}" --json > sites.json
+          ONLY=$(node -e "
+            const fs = require('fs');
+            const existing = new Set((JSON.parse(fs.readFileSync('sites.json', 'utf8')).result?.sites ?? [])
+              .map((s) => s.name.split('/').pop()));
+            const targets = JSON.parse(fs.readFileSync('.firebaserc', 'utf8')).targets?.[process.argv[1]]?.hosting ?? {};
+            const ready = [];
+            for (const [target, sites] of Object.entries(targets)) {
+              if (sites.every((s) => existing.has(s))) ready.push(target);
+              else console.error('::notice::No preview for ' + target + ': its site is created when this PR merges.');
+            }
+            process.stdout.write(ready.join(','));
+          " "${{ vars.STAGING_PROJECT_ID }}")
           pnpm exec firebase hosting:channel:deploy "pr-${{ github.event.number }}" \
-            --project "${{ vars.STAGING_PROJECT_ID }}" \
+            --project "${{ vars.STAGING_PROJECT_ID }}" --only "$ONLY" \
             --expires 7d --json > channel.json
           node -e "
             const r = require('./channel.json').result ?? {};
