@@ -199,6 +199,24 @@ output "function_service_accounts" {
 }
 
 /**
+ * Register every one of these as an "Authorized redirect URI" on the Google
+ * OAuth client Firebase uses for Google sign-in (Google Cloud console → APIs &
+ * Services → Credentials → "Web client (auto created by Google Service)").
+ *
+ * Each app is its own authDomain, so Google sign-in completes on the app's own
+ * origin (see sameOriginAuthDomain in @stack/auth-ui). OAuth clients have no
+ * API, so this list cannot be applied from here.
+ */
+output "oauth_redirect_uris" {
+  value = flatten([
+    for app, site in module.sites : [
+      "https://${site.site_id}.web.app/__/auth/handler",
+      "https://${site.site_id}.firebaseapp.com/__/auth/handler",
+    ]
+  ])
+}
+
+/**
  * Frontend build config. Set these as the VITE_FIREBASE_* GitHub variables;
  * they are public values that ship in the SPA bundle, not secrets.
  */

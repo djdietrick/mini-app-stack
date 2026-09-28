@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "./context.js";
 import { GoogleButton } from "./GoogleButton.js";
 import { styles } from "./styles.js";
@@ -16,6 +16,11 @@ export function LoginForm({ title = "Sign in", onSuccess, onSwitchToSignup, clas
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(authError ?? null);
   const [submitting, setSubmitting] = useState(false);
+
+  // A Google sign-in finishes after a redirect, possibly after this mounted.
+  useEffect(() => {
+    if (authError) setError(authError);
+  }, [authError]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

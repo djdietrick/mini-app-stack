@@ -259,9 +259,11 @@ emulator could not.
 6. **Rate, mark listened, requeue, delete.** The ownership-scoped transactional
    mutations.
 7. **Reload the page.** Still signed in — cookie persistence.
-8. **Sign out, then Continue with Google.** A popup opens, and you land signed
-   in. If it says the address is not authorized, the page's domain is missing
-   from Firebase Auth's authorized domains (see Known limitations).
+8. **Sign out, then Continue with Google.** The page goes to Google and comes
+   back signed in (on the live staging sites, not the preview — see Known
+   limitations). `redirect_uri_mismatch` from Google means the redirect URIs
+   are not registered yet ([Google sign-in](#google-sign-in)); an error under
+   the form names the Firebase error code.
 9. **In the console:** Firestore shows `crate_queue`, `crate_albums` and `users`
    documents. Cloud Run shows `crateApi` running as `fn-crate-staging@…`, not
    the default compute account.
@@ -305,6 +307,38 @@ Only ytdigest's function can read these; `crate` and `pantry` need neither.
 
 ---
 
+## Google sign-in
+
+Once per environment, after the first apply that creates the sites:
+
+1. **Enable the provider.** Firebase console → Authentication → Sign-in method →
+   Google → Enable. Terraform does not manage it: its resource takes the OAuth
+   client secret as an argument, which would land in state.
+2. **Register the redirect URIs.** Each app finishes Google sign-in on its own
+   domain, so Google must accept each one:
+
+   ```bash
+   cd infra/terraform/envs/prod
+   terraform output -json oauth_redirect_uris
+   ```
+
+   Google Cloud console → APIs & Services → Credentials → **Web client (auto
+   created by Google Service)** → Authorized redirect URIs → add every URI from
+   that output → Save. Keep the existing
+   `https://<PROJECT_ID>.firebaseapp.com/__/auth/handler` entry. Changes can take
+   a few minutes to apply.
+
+Why each app's own domain: the Firebase SDK reads the sign-in result back
+through storage on `authDomain`. With the project's shared
+`<PROJECT_ID>.firebaseapp.com` that storage is third-party to the app, and
+Safari, Firefox, Chrome's storage partitioning and home-screen web apps block
+it. Google then succeeds, the result never arrives, and you are back at the
+login form with no user in the Authentication console. `@stack/auth-ui` sets
+`authDomain` to the page's host at runtime to keep the flow first-party.
+
+A custom domain needs its `https://<domain>/__/auth/handler` added the same way,
+as well as `extra_authorized_domains`.
+
 ## Deploying by hand
 
 Useful for a faster loop than pushing to a PR:
@@ -338,16 +372,13 @@ AUTH_FUNCTION_SA=fn-auth-staging@STAGING_ID.iam.gserviceaccount.com \
   the API incompatibly will break each other, and previews share data. Fine for
   frontend-only and additive changes; for an API-breaking PR, deploy its
   functions under a suffixed id and point that PR's rewrite at it.
-- **Google sign-in needs the page's domain in Firebase Auth's authorized
-  domains.** Terraform lists every app site's `.web.app` and `.firebaseapp.com`
-  domain. `firebase hosting:channel:deploy` adds each preview channel's domain
-  itself, but the next staging `terraform apply` (on any merge) resets the list,
-  so Google sign-in on an older preview may fail until that PR is pushed again.
-  Email/password is unaffected.
-- **Google sign-in is enabled by hand**, in the Firebase console (Authentication
-  → Sign-in method), once per project. Terraform does not manage it because its
-  resource takes the OAuth client secret as an argument, which would land in
-  state. Enable it in staging as well as prod.
+- **Google sign-in does not work on preview channels.** Each preview hostname
+  is new, so its `/__/auth/handler` is not a registered redirect URI and Google
+  refuses it (`redirect_uri_mismatch`). Test Google sign-in on the live staging
+  sites; email/password works on previews.
+- **Google sign-in is set up by hand**: the provider in the Firebase console and
+  the redirect URIs on the OAuth client. See [Google sign-in](#google-sign-in).
+  Do both in staging as well as prod.
 - **Custom domains** are attached in the Firebase console, then added to
   `extra_authorized_domains` in `envs/prod/terraform.tfvars` — otherwise
   Firebase Auth refuses sign-in from them.
