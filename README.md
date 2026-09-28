@@ -88,7 +88,7 @@ See [CLAUDE.md](CLAUDE.md) for the integration pattern.
 
 Every app's login and signup screens offer **Continue with Google** above the email form, wherever the backend supports it. Nothing per-app is needed; it lives in `@stack/auth-ui`.
 
-- **Firebase** — the Google provider is enabled in the Firebase console (Authentication → Sign-in method). The SPA signs in with a popup and exchanges the ID token for the same session cookie as email/password.
+- **Firebase** — the Google provider is enabled in the Firebase console (Authentication → Sign-in method). The SPA signs in with a full-page redirect that completes on the app's own domain, then exchanges the ID token for the same session cookie as email/password. Each app domain's `/__/auth/handler` must be registered on the OAuth client; see [docs/firebase-setup.md](docs/firebase-setup.md#google-sign-in).
 - **Self-hosted** — off until you configure it. In the Google Cloud console, create an OAuth client of type *Web application*, add `<origin>/auth/google/callback` as an authorized redirect URI for every origin an app is served from (e.g. `http://localhost:3101/auth/google/callback`), then set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_ALLOWED_ORIGINS` (those same origins, comma-separated) in `.env` and restart `auth`. The button appears once `GET /auth/providers` reports it.
 
 Accounts are matched by email on both targets, so a Google sign-in lands in the same account as an earlier email/password signup. If that account's email was never verified, its password stops working and Google becomes the way in — otherwise anyone could pre-register someone else's address and keep a password to their account. Firebase Auth does the same.

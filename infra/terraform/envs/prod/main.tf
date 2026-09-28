@@ -55,5 +55,8 @@ output "hosting_sites" { value = module.env.hosting_sites }
 output "hosting_urls" { value = module.env.hosting_urls }
 output "function_service_accounts" { value = module.env.function_service_accounts }
 
+# Google sign-in redirect URIs to register on the OAuth client; see docs/firebase-setup.md.
+output "oauth_redirect_uris" { value = module.env.oauth_redirect_uris }
+
 # Feed these into the VITE_FIREBASE_* GitHub variables.
 output "web_config" { value = module.env.web_config }
