@@ -7,9 +7,13 @@ variable "authorized_domains" {
 /**
  * Firebase Auth (Identity Platform) config.
  *
- * Email/password only, matching what apps/auth offers today. Adding Google or
- * Apple sign-in later is a provider block here plus a button in @stack/auth-ui;
- * nothing in the apps changes, because they only ever see a verified session.
+ * Email/password here. Google sign-in is also on, but enabled by hand in the
+ * Firebase console rather than managed from this module: its resource
+ * (google_identity_platform_default_supported_idp_config) needs the OAuth
+ * client secret as an argument, which would put it in Terraform state. The
+ * console-created provider does not conflict with anything below. Nothing in
+ * the apps depends on which providers exist, because they only ever see a
+ * verified session.
  */
 resource "google_identity_platform_config" "this" {
   project = var.project

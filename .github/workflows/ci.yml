@@ -75,9 +75,11 @@ jobs:
           PGDATABASE: appstack
           POSTGRES_USER: postgres
           POSTGRES_DB: appstack
+          APP_AUTH_PASSWORD: auth
         run: |
           psql -v ON_ERROR_STOP=1 -f 00-extensions.sql
           psql -v ON_ERROR_STOP=1 -f 05-shared-schema.sql
+          bash 07-auth-role.sh
           bash 10-app-schemas.sh
 
       # Run the suite inside the Firestore emulator so the Firestore repos'
@@ -87,6 +89,9 @@ jobs:
       # APP_<NAME>_PASSWORD is unset, which it is here.
       - name: Test
         env:
+          # apps/auth's Google sign-in tests run as auth_writer, so its grants
+          # are tested as well as its SQL.
+          AUTH_TEST_DATABASE_URL: postgres://auth_writer:auth@localhost:5432/appstack
           PANTRY_TEST_DATABASE_URL: postgres://pantry:pantry@localhost:5432/appstack
           PANTRY_TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@localhost:5432/appstack
           YTDIGEST_TEST_DATABASE_URL: postgres://ytdigest:ytdigest@localhost:5432/appstack

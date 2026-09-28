@@ -5,7 +5,19 @@ import argon2 from "argon2";
 import { z } from "zod";
 import { createPostgresClient } from "@stack/db-clients";
 import { config } from "./config.js";
+import {
+  FLOW_COOKIE,
+  FLOW_TTL_SECONDS,
+  beginFlow,
+  decodeFlow,
+  encodeFlow,
+  exchangeCode,
+  parseReturnTo,
+  stateMatches,
+  withAuthError,
+} from "./google.js";
 import { createSession, deleteSession, lookupSession } from "./sessions.js";
+import { upsertGoogleUser } from "./users.js";
 
 const pg = createPostgresClient({ url: config.databaseUrl, schema: "shared" });
 
@@ -113,6 +125,64 @@ app.get("/me", async (req, reply) => {
     return reply.code(401).send({ error: "not signed in" });
   }
   return session;
+});
+
+// ---------- Google sign-in ----------
+
+// Lets the shared login form decide whether to offer the Google button.
+app.get("/providers", async () => ({ google: config.google !== undefined }));
+
+const flowCookieOptions = {
+  httpOnly: true,
+  secure: config.cookieSecure,
+  // Lax, not Strict: the callback is a top-level navigation from Google, and
+  // Strict would withhold the cookie on exactly that request.
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: FLOW_TTL_SECONDS,
+};
+
+app.get("/google/start", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+  const google = config.google;
+  if (!google) return reply.code(404).send({ error: "Google sign-in is not configured" });
+  const returnTo = parseReturnTo((req.query as { returnTo?: unknown }).returnTo, google);
+  if (!returnTo) return reply.code(400).send({ error: "returnTo is not an allowed origin" });
+
+  const { flow, location } = beginFlow(returnTo, google);
+  reply.setCookie(FLOW_COOKIE, encodeFlow(flow), flowCookieOptions);
+  return reply.redirect(location);
+});
+
+app.get("/google/callback", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
+  const google = config.google;
+  if (!google) return reply.code(404).send({ error: "Google sign-in is not configured" });
+
+  const flow = decodeFlow(req.cookies[FLOW_COOKIE]);
+  reply.clearCookie(FLOW_COOKIE, { path: "/" });
+  // Re-checked here as well as at /start: the cookie is only as trustworthy
+  // as the browser that sent it.
+  const returnTo = flow ? parseReturnTo(flow.returnTo, google) : null;
+  if (!flow || !returnTo) return reply.code(400).send({ error: "sign-in expired, start again" });
+
+  const query = req.query as { code?: unknown; state?: unknown; error?: unknown };
+  if (!stateMatches(flow.state, query.state)) {
+    return reply.redirect(withAuthError(flow.returnTo, "sign-in expired, try again"));
+  }
+  if (typeof query.code !== "string" || !query.code) {
+    // e.g. error=access_denied when the user cancels on Google's screen.
+    return reply.redirect(withAuthError(flow.returnTo, "sign-in cancelled"));
+  }
+
+  try {
+    const identity = await exchangeCode(query.code, flow, google);
+    const user = await upsertGoogleUser(pg, identity.email, identity.name);
+    const { token, expiresAt } = await createSession(pg, user.id, config.sessionTtlSeconds);
+    setSessionCookie(reply, token, expiresAt);
+    return reply.redirect(flow.returnTo);
+  } catch (err) {
+    req.log.warn({ err }, "google sign-in failed");
+    return reply.redirect(withAuthError(flow.returnTo, "Google sign-in failed"));
+  }
 });
 
 // Service-to-service: an app's backend calls this with the user's cookie

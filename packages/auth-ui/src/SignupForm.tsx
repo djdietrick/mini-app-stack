@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "./context.js";
+import { GoogleButton } from "./GoogleButton.js";
 import { styles } from "./styles.js";
 
 export interface SignupFormProps {
@@ -10,11 +11,11 @@ export interface SignupFormProps {
 }
 
 export function SignupForm({ title = "Create account", onSuccess, onSwitchToLogin, className }: SignupFormProps) {
-  const { signup } = useAuth();
+  const { signup, authError } = useAuth();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(authError ?? null);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -34,6 +35,7 @@ export function SignupForm({ title = "Create account", onSuccess, onSwitchToLogi
   return (
     <form onSubmit={handleSubmit} className={className} style={className ? undefined : styles.card}>
       <h2 style={styles.title}>{title}</h2>
+      <GoogleButton onSuccess={onSuccess} onError={setError} disabled={submitting} />
       <div style={styles.field}>
         <label style={styles.label} htmlFor="signup-email">Email</label>
         <input

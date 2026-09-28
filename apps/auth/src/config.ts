@@ -1,3 +1,5 @@
+import type { GoogleConfig } from "./google.js";
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing required env var: ${name}`);
@@ -20,4 +22,26 @@ export const config = {
   // attacker on the same network cannot probe arbitrary tokens. Optional in
   // dev; required in production deploys.
   verifySecret: process.env.AUTH_VERIFY_SECRET || undefined,
+  // Google sign-in. Off unless both client values are set; see
+  // README "Google sign-in (self-hosted)".
+  google: googleConfig(),
 };
+
+function googleConfig(): GoogleConfig | undefined {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return undefined;
+  const allowedOrigins = (process.env.GOOGLE_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  if (allowedOrigins.length === 0) {
+    throw new Error("GOOGLE_ALLOWED_ORIGINS must list the app origins when Google sign-in is enabled");
+  }
+  return {
+    clientId,
+    clientSecret,
+    allowedOrigins,
+    mountPath: process.env.GOOGLE_AUTH_MOUNT_PATH ?? "/auth",
+  };
+}

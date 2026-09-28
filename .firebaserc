@@ -15,6 +15,9 @@
         ],
         "ytdigest": [
           "ytdigest-staging-40765"
+        ],
+        "landing": [
+          "landing-staging-40765"
         ]
       }
     },
@@ -28,6 +31,9 @@
         ],
         "ytdigest": [
           "ytdigest-prod-5c26a"
+        ],
+        "landing": [
+          "landing-prod-5c26a"
         ]
       }
     }
