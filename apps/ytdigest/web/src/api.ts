@@ -62,6 +62,8 @@ export interface DigestRun {
 
 export interface DigestItem {
   video_id: string;
+  /** Link with this; video_id is an internal id on the self-hosted backend. */
+  youtube_video_id: string;
   title: string;
   thumbnail_url: string | null;
   channel_title: string;

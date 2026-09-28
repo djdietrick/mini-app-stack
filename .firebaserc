@@ -12,6 +12,9 @@
         ],
         "pantry": [
           "pantry-staging-40765"
+        ],
+        "ytdigest": [
+          "ytdigest-staging-40765"
         ]
       }
     },
@@ -22,6 +25,9 @@
         ],
         "pantry": [
           "pantry-prod-5c26a"
+        ],
+        "ytdigest": [
+          "ytdigest-prod-5c26a"
         ]
       }
     }

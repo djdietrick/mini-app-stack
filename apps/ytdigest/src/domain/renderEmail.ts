@@ -1,4 +1,4 @@
-import type { DigestResult } from "./buildDigest.js";
+import type { DigestResult } from "./digest.js";
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -10,9 +10,18 @@ export interface RenderedEmail {
   text: string;
 }
 
-export function renderDigestEmail(digest: DigestResult, runDate: Date): RenderedEmail {
+export function renderDigestEmail(
+  digest: DigestResult,
+  runDate: Date,
+  timeZone?: string,
+): RenderedEmail {
   const totalVideos = digest.channels.reduce((n, c) => n + c.videos.length, 0);
-  const dateLabel = runDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const dateLabel = runDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone,
+  });
   const subject = `YouTube digest — ${totalVideos} new video${totalVideos === 1 ? "" : "s"} (${dateLabel})`;
 
   const channelHtml = digest.channels
@@ -27,7 +36,7 @@ export function renderDigestEmail(digest: DigestResult, runDate: Date): Rendered
             <tr>
               <td style="padding:8px 12px 8px 0;vertical-align:top">${thumb}</td>
               <td style="padding:8px 0;vertical-align:top">
-                <a href="https://www.youtube.com/watch?v=${escapeHtml(v.videoId)}" style="font-weight:600;color:#1a1a1a;text-decoration:none">${escapeHtml(v.title)}</a>
+                <a href="https://www.youtube.com/watch?v=${escapeHtml(v.youtubeVideoId)}" style="font-weight:600;color:#1a1a1a;text-decoration:none">${escapeHtml(v.title)}</a>
                 <div style="color:#666;font-size:13px;margin-top:4px">${v.viewCount.toLocaleString()} views${reason ? " · " + reason : ""}</div>
               </td>
             </tr>`;
@@ -51,7 +60,7 @@ export function renderDigestEmail(digest: DigestResult, runDate: Date): Rendered
       (g) =>
         `${g.channelTitle}\n` +
         g.videos
-          .map((v) => `- ${v.title} (${v.viewCount.toLocaleString()} views) https://www.youtube.com/watch?v=${v.videoId}`)
+          .map((v) => `- ${v.title} (${v.viewCount.toLocaleString()} views) https://www.youtube.com/watch?v=${v.youtubeVideoId}`)
           .join("\n"),
     )
     .join("\n\n");

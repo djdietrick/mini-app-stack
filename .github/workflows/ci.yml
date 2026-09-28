@@ -89,6 +89,8 @@ jobs:
         env:
           PANTRY_TEST_DATABASE_URL: postgres://pantry:pantry@localhost:5432/appstack
           PANTRY_TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@localhost:5432/appstack
+          YTDIGEST_TEST_DATABASE_URL: postgres://ytdigest:ytdigest@localhost:5432/appstack
+          YTDIGEST_TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@localhost:5432/appstack
         run: >
           pnpm exec firebase emulators:exec
           --only firestore --project demo-ci

@@ -13,6 +13,7 @@ COPY packages/db-clients/package.json packages/db-clients/
 COPY packages/auth-client/package.json packages/auth-client/
 COPY packages/auth-ui/package.json packages/auth-ui/
 COPY packages/mailer/package.json packages/mailer/
+COPY packages/service-kit/package.json packages/service-kit/
 COPY apps/ytdigest/package.json apps/ytdigest/
 
 RUN pnpm install --frozen-lockfile
@@ -21,6 +22,7 @@ COPY packages/db-clients packages/db-clients
 COPY packages/auth-client packages/auth-client
 COPY packages/auth-ui packages/auth-ui
 COPY packages/mailer packages/mailer
+COPY packages/service-kit packages/service-kit
 COPY apps/ytdigest apps/ytdigest
 
 RUN pnpm --filter @stack/ytdigest build:web
@@ -36,6 +38,7 @@ COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages/db-clients ./packages/db-clients
 COPY --from=builder /repo/packages/auth-client ./packages/auth-client
 COPY --from=builder /repo/packages/mailer ./packages/mailer
+COPY --from=builder /repo/packages/service-kit ./packages/service-kit
 COPY --from=builder /repo/apps/ytdigest/package.json ./apps/ytdigest/package.json
 COPY --from=builder /repo/apps/ytdigest/src ./apps/ytdigest/src
 COPY --from=builder /repo/apps/ytdigest/migrations ./apps/ytdigest/migrations

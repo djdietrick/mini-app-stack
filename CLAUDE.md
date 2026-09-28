@@ -56,9 +56,9 @@ Everything that differs between self-hosted and Firebase sits behind exactly thr
 2. **Data** — a per-app repository port at `apps/<app>/src/repo/types.ts`, implemented by `postgres.ts` and `firestore.ts`. Repo methods return `boolean` for "did it match" rather than throwing; the route decides the 404.
 3. **Identity** — `SessionVerifier` in `@stack/auth-client`: `stackVerifier` (calls `apps/auth`) or `firebaseVerifier` (verifies a Firebase session cookie).
 
-Selected by env: `DATA_BACKEND=postgres|firestore`, `AUTH_MODE=stack|firebase`, `CACHE_BACKEND=redis|firestore`, `MAIL_TRANSPORT=smtp|http`. Frontends pick their provider at build time with `VITE_AUTH_MODE`.
+Selected by entrypoint, not env: `apps/<app>/src/index.ts` wires the self-hosted implementations and `functions/src/index.ts` the cloud ones. There are no `DATA_BACKEND`-style runtime switches, and adding one would be the wrong fix for anything. Frontends pick their auth provider at build time with `VITE_AUTH_MODE`.
 
-`apps/crate` is the reference implementation; `apps/pantry` is ported too and is the example to copy for anything with per-request scope (its active household) or multi-user data. `apps/ytdigest` still runs self-hosted only.
+All three apps run on both targets. `apps/crate` is the reference implementation; `apps/pantry` is the example to copy for per-request scope (its active household) or multi-user data; `apps/ytdigest` is the example for scheduled work and secrets (`src/domain/poll.ts` and `digest.ts` are driven by `scheduler.ts` self-hosted and by `onSchedule` functions in the cloud).
 
 **Things that will bite you when writing a Firestore implementation:**
 
@@ -69,6 +69,8 @@ Selected by env: `DATA_BACKEND=postgres|firestore`, `AUTH_MODE=stack|firebase`, 
 - No `ORDER BY random()` and no `GROUP BY`; aggregate in memory when the set is per-user and small.
 - Document ids are app-generated UUIDs, not Firestore auto-ids, so `z.string().uuid()` route validation holds on both backends.
 - Firestore TTL is a per-collection policy on a timestamp field and deletes asynchronously, so code still checks `expiresAt` on read.
+
+**And one that bites the Postgres side:** timestamps from Postgres are strings, and Date parameters throw. `createPostgresClient` wraps postgres.js in Drizzle, which replaces its date parsers and serializers: `timestamptz` comes back as `"2026-09-27 16:40:17.324+00"`, `bigint` as a string, and passing a JS `Date` as a query parameter throws. Repos pass ISO strings in and convert to `Date`/`Number` on the way out wherever domain code does arithmetic (see `apps/ytdigest/src/repo/postgres.ts`).
 
 **Wire formats are contracts.** crate's queue rows are snake_case because they began as Postgres rows and `apps/crate/web/src/api.ts` reads those keys. The Firestore repo reproduces them exactly. Do not "clean up" field names.
 
@@ -156,7 +158,7 @@ The cookie is HttpOnly + SameSite=Lax. In production, set `AUTH_COOKIE_SECURE=tr
 - **Package manager**: pnpm (declared in `packageManager`). Node ≥ 20.
 - **Module system**: ESM throughout (`"type": "module"`). TS imports use `.js` extensions for relative paths so the same source works after compilation.
 - **Env handling**: `.env` at the repo root drives `docker-compose.yml`. Required vars use the `${VAR:?message}` form so compose fails fast if they're missing.
-- When scaffolding a new app, follow the shared-everything pattern above, depend on `@stack/db-clients` and `@stack/service-kit`, and structure it like `apps/crate`: route descriptors in `src/domain/`, a repository port in `src/repo/types.ts` with `postgres.ts` and `firestore.ts` implementations, and `src/index.ts` as wiring only. The Fastify backend serves its own Vite/React SPA, proxies `/auth/*` to `apps/auth`, and runs SQL migrations from `migrations/*.sql` on boot via `runMigrations` from `@stack/service-kit`. `apps/ytdigest` predates this structure and still has routes inline in `src/routes/`.
+- When scaffolding a new app, follow the shared-everything pattern above, depend on `@stack/db-clients` and `@stack/service-kit`, and structure it like `apps/crate`: route descriptors in `src/domain/`, a repository port in `src/repo/types.ts` with `postgres.ts` and `firestore.ts` implementations, and `src/index.ts` as wiring only. The Fastify backend serves its own Vite/React SPA, proxies `/auth/*` to `apps/auth`, and runs SQL migrations from `migrations/*.sql` on boot via `runMigrations` from `@stack/service-kit`.
 
 ### apps/pantry
 
@@ -171,3 +173,14 @@ Kitchen inventory + grocery lists. Runs as the `pantry` Postgres role on port `3
 - Firestore layout differs from the SQL on purpose: item tags are a `tagIds` array on the item, and grocery-list entries are embedded in the list document. Uniqueness is enforced on a lowercased `nameKey` (the columns are `citext`). See the header of `src/repo/firestore.ts`.
 - `src/domain/contract.test.ts` runs the whole HTTP contract against both real backends through both adapters. Postgres runs when `PANTRY_TEST_DATABASE_URL` (as the `pantry` role) and `PANTRY_TEST_ADMIN_DATABASE_URL` (a superuser, to seed `shared.users`) are set; Firestore when `FIRESTORE_EMULATOR_HOST` is. CI sets all three.
 - UX is mobile-first: flat filterable Pantry screen with inline 3-state status toggle; list builder pre-selects everything that's not `stocked` and groups results Out → Low → Other; Shopping view groups items by their first `section` tag for in-store flow.
+
+### apps/ytdigest
+
+YouTube channel digest emailer. Runs as the `ytdigest` Postgres role on port `3103`.
+
+- Two jobs, both in `src/domain/`: `pollChannels` (new uploads plus a stats snapshot per tracked video) and `runDailyDigest` (per user: due subscriptions → candidates since the last digest → rule evaluation → one email → `recordDigest`). Self-hosted, `src/scheduler.ts` runs them on a timer and `node-cron`; in the cloud, `ytdigestPoll` and `ytdigestDigest` in `functions/src/index.ts` are `onSchedule` functions at 08:00 America/New_York. A `Lease` (Redis or Firestore) stops two polls overlapping.
+- Time zone matters: the weekly digest's weekday and `run_date` come from `DigestOptions.timeZone` (`DIGEST_TIME_ZONE` self-hosted; unset means server time).
+- Secrets: `YOUTUBE_API_KEY` and `SMTP_PASSWORD`. Self-hosted they are env vars; in the cloud they are Secret Manager secrets bound with `defineSecret`, created by Terraform and filled in by hand. Non-secret SMTP settings reach the functions via `functions/.env`, which the deploy workflow writes from repository variables. Values are read at call time, never at module load, because the CLI loads the module during deploy without them.
+- Mail is SMTP on both targets via `@stack/mailer`. `nodemailer` must stay `--external` in the functions bundle: bundled into ESM output, its `require()` calls throw at runtime.
+- `video_id` is an internal UUID on Postgres; link to YouTube with `youtube_video_id`.
+- `src/domain/contract.test.ts` covers the HTTP contract and both jobs on both backends (fake YouTube, captured mail). Postgres runs when `YTDIGEST_TEST_DATABASE_URL` and `YTDIGEST_TEST_ADMIN_DATABASE_URL` are set; CI sets them.

@@ -17,6 +17,8 @@ coverage/
 .env
 .env.local
 .env.*.local
+# Firebase emulator secret values (functions/.secret.local). Never commit.
+*.secret.local
 
 # Logs
 *.log

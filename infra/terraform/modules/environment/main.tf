@@ -135,17 +135,23 @@ resource "google_service_account_iam_member" "auth_self_signer" {
  * Secrets every environment needs. AUTH_VERIFY_SECRET is absent on purpose —
  * it only exists for the self-hosted apps/auth service-to-service call, which
  * Firebase Auth replaces in the cloud.
+ *
+ * The ids are the names functions/src/index.ts binds with defineSecret(), and
+ * Firebase requires those to be valid env var names, so they are upper case.
+ * Only ytdigest's function can read them; no other app needs either.
  */
 module "secrets" {
   source  = "../secrets"
   project = var.project
 
   names = [
-    "youtube-api-key",
-    "mail-api-key",
+    "YOUTUBE_API_KEY",
+    "SMTP_PASSWORD",
   ]
 
-  accessor_members = [for app, site in module.sites : site.service_account_member]
+  accessor_members = [
+    for app, site in module.sites : site.service_account_member if app == "ytdigest"
+  ]
 
   depends_on = [module.services]
 }

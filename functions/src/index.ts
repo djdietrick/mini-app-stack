@@ -4,14 +4,22 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { firebaseVerifier } from "@stack/auth-client/firebase";
-import { firestoreCache } from "@stack/service-kit";
+import { createMailer } from "@stack/mailer";
+import { firestoreCache, firestoreLease } from "@stack/service-kit";
 import { toExpressApp } from "@stack/service-kit/express";
 import { crateRoutes } from "@stack/crate/domain";
 import { createItunesGateway } from "@stack/crate/domain/itunes";
 import { createFirestoreCrateRepo } from "@stack/crate/repo/firestore";
 import { pantryRoutes, resolvePantryScope } from "@stack/pantry/domain";
 import { createFirestorePantryRepo } from "@stack/pantry/repo/firestore";
+import { ytdigestRoutes } from "@stack/ytdigest/domain";
+import { type DigestMailer, type DigestOptions, runDailyDigest } from "@stack/ytdigest/domain/digest";
+import { pollChannels } from "@stack/ytdigest/domain/poll";
+import { createYouTubeClient, type YouTubeGateway } from "@stack/ytdigest/domain/youtube";
+import { createFirestoreYtdigestRepo } from "@stack/ytdigest/repo/firestore";
 import { createAuthApi } from "./auth.js";
 
 /**
@@ -49,6 +57,7 @@ const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // Firebase's maximum.
  */
 const crateServiceAccount = process.env.CRATE_FUNCTION_SA || undefined;
 const pantryServiceAccount = process.env.PANTRY_FUNCTION_SA || undefined;
+const ytdigestServiceAccount = process.env.YTDIGEST_FUNCTION_SA || undefined;
 const authServiceAccount = process.env.AUTH_FUNCTION_SA || undefined;
 
 // Module scope on purpose: these are reused across warm invocations.
@@ -104,4 +113,102 @@ export const pantryApi = onRequest(
       resolveScope: resolvePantryScope,
     }),
   ),
+);
+
+// ---------- ytdigest ----------
+
+/**
+ * Secret Manager secrets, created by Terraform (modules/environment) and given
+ * values out of band. Bound per function below, so only the functions that
+ * list a secret can read it.
+ */
+const YOUTUBE_API_KEY = defineSecret("YOUTUBE_API_KEY");
+const SMTP_PASSWORD = defineSecret("SMTP_PASSWORD");
+
+/**
+ * The daily send and the weekly-digest weekday follow this zone. Cloud
+ * Functions run in UTC; self-hosted, the server's own zone applies unless
+ * DIGEST_TIME_ZONE is set.
+ */
+const DIGEST_TIME_ZONE = "America/New_York";
+const digestOptions: DigestOptions = { timeZone: DIGEST_TIME_ZONE };
+
+/**
+ * Secret values exist only while a function is handling a call, not at
+ * module load (which is also when the CLI inspects this file during deploy).
+ * So the YouTube client and the SMTP transport are built on first use.
+ */
+let youtubeClient: YouTubeGateway | undefined;
+const youtube: YouTubeGateway = {
+  resolveChannel: (q) => (youtubeClient ??= createYouTubeClient(YOUTUBE_API_KEY.value())).resolveChannel(q),
+  listNewUploads: (...a) =>
+    (youtubeClient ??= createYouTubeClient(YOUTUBE_API_KEY.value())).listNewUploads(...a),
+  batchGetVideoStats: (ids) =>
+    (youtubeClient ??= createYouTubeClient(YOUTUBE_API_KEY.value())).batchGetVideoStats(ids),
+};
+
+let smtp: ReturnType<typeof createMailer> | undefined;
+const mailer: DigestMailer = {
+  send: (mail) =>
+    (smtp ??= createMailer({
+      // Non-secret settings, written to functions/.env by the deploy workflow
+      // from repository variables.
+      host: requiredEnv("SMTP_HOST"),
+      port: Number(process.env.SMTP_PORT || 587),
+      user: requiredEnv("SMTP_USER"),
+      password: SMTP_PASSWORD.value(),
+      from: requiredEnv("MAIL_FROM"),
+    })).send(mail),
+};
+
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set; see docs/firebase-setup.md`);
+  return value;
+}
+
+const ytdigestRepo = createFirestoreYtdigestRepo(db);
+
+export const ytdigestApi = onRequest(
+  // run-now sends mail, and subscribing resolves the channel on YouTube.
+  { serviceAccount: ytdigestServiceAccount, secrets: [YOUTUBE_API_KEY, SMTP_PASSWORD] },
+  mount(
+    "/api",
+    toExpressApp(ytdigestRoutes({ youtube, mailer, digest: digestOptions }), {
+      repo: ytdigestRepo,
+      verify: verifier.verify,
+    }),
+  ),
+);
+
+/**
+ * The self-hosted poll timer, as a Cloud Scheduler job. The Firestore lease
+ * still matters: Scheduler delivers at least once, so a retried trigger must
+ * not start a second poll over the first.
+ */
+export const ytdigestPoll = onSchedule(
+  {
+    schedule: "every 180 minutes",
+    timeZone: DIGEST_TIME_ZONE,
+    serviceAccount: ytdigestServiceAccount,
+    secrets: [YOUTUBE_API_KEY],
+    timeoutSeconds: 540,
+  },
+  async () => {
+    await pollChannels({ repo: ytdigestRepo, youtube, lease: firestoreLease(db) });
+  },
+);
+
+/** The self-hosted `DIGEST_SEND_CRON`, at 08:00 New York time. */
+export const ytdigestDigest = onSchedule(
+  {
+    schedule: "0 8 * * *",
+    timeZone: DIGEST_TIME_ZONE,
+    serviceAccount: ytdigestServiceAccount,
+    secrets: [SMTP_PASSWORD],
+    timeoutSeconds: 540,
+  },
+  async () => {
+    await runDailyDigest(ytdigestRepo, mailer, new Date(), digestOptions);
+  },
 );

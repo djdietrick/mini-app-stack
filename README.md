@@ -172,31 +172,32 @@ and nothing else in the codebase knows which target it is running on.
    serves them self-hosted and `toExpressApp` serves them inside a Function.
    Handlers never see a request or reply object.
 2. **Data** — a per-app repository port (`apps/<app>/src/repo/types.ts`) with a
-   Postgres and a Firestore implementation, selected by `DATA_BACKEND`.
+   Postgres and a Firestore implementation.
 3. **Identity** — `SessionVerifier` in `@stack/auth-client`, either
    `stackVerifier` (calls `apps/auth`) or `firebaseVerifier` (verifies a
-   Firebase session cookie), selected by `AUTH_MODE`.
+   Firebase session cookie).
 
 Adding an endpoint means adding one route descriptor and one method on the
 repo port, then implementing that method twice. That second implementation is
 the standing cost of keeping both targets.
 
-### Environment selection
+### How a target is selected
 
-```
-DATA_BACKEND=postgres|firestore
-AUTH_MODE=stack|firebase
-CACHE_BACKEND=redis|firestore
-MAIL_TRANSPORT=smtp|http
-```
+By entrypoint, not by environment variable. `apps/<app>/src/index.ts` wires
+the self-hosted implementations (Postgres, Redis, SMTP, `apps/auth`) into the
+shared domain code; `functions/src/index.ts` wires the cloud ones (Firestore,
+Firebase Auth, SMTP with its password from Secret Manager). There is no
+runtime switch to set or forget.
 
-Frontends pick their auth provider at build time via `VITE_AUTH_MODE`; the
-Firebase SDK is tree-shaken out of the self-hosted bundle.
+Frontends pick their auth provider at build time via `VITE_AUTH_MODE`. The
+Firebase SDK is only loaded in the Firebase build, so the self-hosted bundle
+carries none of it.
 
 ### Infrastructure
 
 **First-time setup: [docs/firebase-setup.md](docs/firebase-setup.md)** — the
-two GCP projects, the one-time bootstrap, and the nine GitHub variables.
+GCP projects, the one-time bootstrap, the GitHub variables and ytdigest's
+secrets.
 
 `infra/terraform/` owns the GCP resources — see
 [infra/terraform/README.md](infra/terraform/README.md) for the division of
@@ -225,13 +226,11 @@ apply happens on merge to `main`.
 |------------|-------------|----------|
 | `crate`    | yes         | yes      |
 | `pantry`   | yes         | yes      |
-| `ytdigest` | yes         | not yet  |
+| `ytdigest` | yes         | yes      |
 | `auth`     | yes         | replaced by Firebase Auth in the cloud |
 
-`ytdigest` still runs only on the self-hosted path. Porting it means the same
-three steps `crate` and `pantry` went through: extract routes into
-`src/domain/`, define the repo port with a Postgres implementation, then add
-the Firestore implementation and export the function. It additionally needs
-its in-process `setInterval`/`node-cron` schedulers replaced with `onSchedule`
-functions, and its SMTP password in Secret Manager. Cloud Functions can send
-SMTP on 587 and 465; only port 25 is blocked.
+`ytdigest`'s background work runs from each target's own scheduler: an
+in-process timer and `node-cron` self-hosted, two `onSchedule` functions
+(`ytdigestPoll`, `ytdigestDigest`) in the cloud. Both call the same
+`pollChannels` and `runDailyDigest`. Mail goes over SMTP on both; Cloud
+Functions can send on 587 and 465, and only port 25 is blocked.

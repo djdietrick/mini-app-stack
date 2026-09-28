@@ -89,6 +89,13 @@ jobs:
           # default compute service account.
           CRATE_FUNCTION_SA: ${{ vars.PROD_CRATE_FUNCTION_SA }}
           PANTRY_FUNCTION_SA: ${{ vars.PROD_PANTRY_FUNCTION_SA }}
+          YTDIGEST_FUNCTION_SA: ${{ vars.PROD_YTDIGEST_FUNCTION_SA }}
+          # ytdigest's non-secret mail settings. SMTP_PASSWORD is in Secret
+          # Manager, bound in functions/src/index.ts.
+          SMTP_HOST: ${{ vars.PROD_SMTP_HOST }}
+          SMTP_PORT: ${{ vars.PROD_SMTP_PORT }}
+          SMTP_USER: ${{ vars.PROD_SMTP_USER }}
+          MAIL_FROM: ${{ vars.PROD_MAIL_FROM }}
           AUTH_FUNCTION_SA: ${{ vars.PROD_AUTH_FUNCTION_SA }}
         run: |
           # Fail rather than silently fall back to the default compute
@@ -96,5 +103,17 @@ jobs:
           : "${CRATE_FUNCTION_SA:?set the PROD_CRATE_FUNCTION_SA repository variable}"
           : "${PANTRY_FUNCTION_SA:?set the PROD_PANTRY_FUNCTION_SA repository variable}"
           : "${AUTH_FUNCTION_SA:?set the PROD_AUTH_FUNCTION_SA repository variable}"
+          : "${YTDIGEST_FUNCTION_SA:?set the PROD_YTDIGEST_FUNCTION_SA repository variable}"
+          : "${SMTP_HOST:?set the PROD_SMTP_HOST repository variable}"
+          : "${SMTP_USER:?set the PROD_SMTP_USER repository variable}"
+          : "${MAIL_FROM:?set the PROD_MAIL_FROM repository variable}"
+          # The Firebase CLI deploys functions/.env as the functions' runtime
+          # environment. Git-ignored; it only ever exists on the runner.
+          {
+            printf 'SMTP_HOST=%s\n' "$SMTP_HOST"
+            printf 'SMTP_PORT=%s\n' "${SMTP_PORT:-587}"
+            printf 'SMTP_USER=%s\n' "$SMTP_USER"
+            printf 'MAIL_FROM="%s"\n' "$MAIL_FROM"
+          } > functions/.env
           pnpm exec firebase deploy --only functions,hosting \
             --project "${{ vars.PROD_PROJECT_ID }}" --non-interactive --force
