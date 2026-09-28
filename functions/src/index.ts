@@ -43,7 +43,11 @@ setGlobalOptions({
   concurrency: 40,
 });
 
-const COOKIE_NAME = process.env.AUTH_COOKIE_NAME ?? "stack_session";
+// Must be `__session`: Firebase Hosting strips every other cookie from requests
+// it rewrites to a function, so any other name reaches authApi and the app
+// APIs as "not signed in". The Hosting emulator does not strip cookies, so
+// this cannot be caught locally. Not configurable for the same reason.
+const COOKIE_NAME = "__session";
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // Firebase's maximum.
 
 /**

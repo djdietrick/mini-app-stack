@@ -367,6 +367,10 @@ AUTH_FUNCTION_SA=fn-auth-staging@STAGING_ID.iam.gserviceaccount.com \
 
 ## Known limitations
 
+- **The session cookie must be named `__session`.** Firebase Hosting strips
+  every other cookie from requests it rewrites to a function. The emulator
+  does not, so a different name works locally and fails in production (sign-in
+  succeeds, then `/auth/me` returns 401).
 - **Preview channels fork the frontend only.** Functions, Firestore data and
   Auth users are shared across the whole staging project. Two PRs that change
   the API incompatibly will break each other, and previews share data. Fine for
