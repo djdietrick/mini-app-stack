@@ -76,6 +76,8 @@ All three apps run on both targets. `apps/crate` is the reference implementation
 
 **Cloud routing.** Firebase Hosting forwards the *original* path to a rewritten function, so `/api/search` arrives as `/api/search`. Each function mounts its route table under the prefix Hosting rewrites to, mirroring Fastify's `{ prefix: "/api" }`.
 
+**Cloud cookies.** Hosting strips every cookie except `__session` from rewritten requests, so the cloud session cookie is `__session` (fixed in `functions/src/index.ts`), not `stack_session`. The emulator does not strip cookies, so a wrong name only fails in production: sign-in succeeds, then `/auth/me` returns 401.
+
 **`firestore.rules` is deny-all on purpose.** Browsers never touch Firestore; everything goes through Functions on the Admin SDK, which bypasses rules. That is what makes the public Firebase web API key harmless.
 
 ### Infrastructure as code
