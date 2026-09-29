@@ -31,7 +31,7 @@ A microphone hears a pitch, not where it was played. E4 is fret 0 on the high E,
 apps/fretwork/
   src/theory/      pure TS, no deps: notes, tuning, positions, formulas, patterns,
                    pitch.ts (MPM detector) and onsets.ts (frames → note events)
-  src/practice/    each engine's grading as a pure reducer (find.ts), node-tested
+  src/practice/    each engine's grading as a pure reducer (find.ts, respond.ts), node-tested
   src/domain/      types.ts (zod exercise/run model), catalog.ts (built-ins), routes.ts
   src/repo/        types.ts (the port), postgres.ts, firestore.ts
   migrations/      Postgres schema `fretwork`
@@ -66,6 +66,18 @@ apps/fretwork/
 - **Clean** means found with no miss, and no hint showing, since the previous find. The clock starts on the screen and restarts when the mic comes on, as long as nothing has been played. Time is per slot, from the previous find.
 - Run results hold one note per slot at the target position (the found one, or the first when time ran out). The heatmap reads them later.
 - **Screen:** the prompt and feedback stick to the top while the neck scrolls. Below them are the compact mic bar, per-string chips with times, and the controls: Show positions, Restart, and Next note (up a fourth). The neck is always tappable, so the screen works without a mic.
+
+## Respond (#14)
+
+- **Grading** is in `src/practice/respond.ts`. Actions carry their own timestamps and random numbers, so the tests can replay any deck exactly.
+  - `note-on-string`: the exact pitch on that string. Either end of the window's octave counts (0 or 12). A tap of the same pitch on another string counts, with the usual explanation.
+  - `interval`: the root in any octave first, then the note exactly that far above it. Playing the root again restarts the interval from there, and is not a miss.
+  - `play-heard-note`: the exact pitch. Its grading is done, but its screen stays off until reference tones land (#16).
+- **`intervals`** is an optional config field. It defaults to the 3rds, the 4th, the 5th and the octave, and cards the window can't hold are dropped.
+- **`timeLimitSec` is per card** for this engine; it is per run for `find`.
+- **Adaptive deck:** each card is drawn at random, weighted by how that card went earlier in the deck (missed 4, slow 2, quick 0.5, unseen 1). The card just shown is never drawn next.
+- **Screen:** a big prompt card, a cents needle while the mic listens, the answer on a single-string strip (the whole neck for intervals), Skip and Next, and streak / score / average. A right answer moves on after 0.9 s; after a skip or timeout, the revealed answer waits for Next.
+- The strip's cells are at least 44 px and wrap into balanced rows, so frets 0–12 are two rows of 7 on a 360 px phone.
 
 - **Engine grading logic stays pure**, under `src/`, so `node --test` covers it. The SPA wires it to the mic and the UI.
 - The Firestore collections are `fretwork_exercises` and `fretwork_runs`. The cloud function is `fretworkApi`, and the Hosting target is `fretwork`.
@@ -110,7 +122,7 @@ apps/fretwork/
    - #12 fretboard component (done; real-phone check pending)
 2. **Practice**
    - #13 `find` engine (done)
-   - #14 `respond` engine
+   - #14 `respond` engine (done, apart from `play-heard-note`, which waits on #16)
    - #16 audio output (click, tones, drone)
    - #15 `sequence` engine
 3. **Make it yours**

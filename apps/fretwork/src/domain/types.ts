@@ -104,7 +104,15 @@ export const respondConfig = z.object({
   frets: fretWindow,
   strings,
   cards: z.number().int().min(1).max(100),
+  /** Per card, for this engine: a card not answered in time is missed. */
   timeLimitSec,
+  /** `interval` only: semitones above the root to ask for. Defaults to 3rds, 4th, 5th and octave. */
+  intervals: z
+    .array(z.number().int().min(1).max(12))
+    .min(1)
+    .max(12)
+    .refine((s) => new Set(s).size === s.length, { message: "intervals must be unique" })
+    .optional(),
 });
 
 export const exerciseConfig = z.discriminatedUnion("engine", [

@@ -9,8 +9,8 @@ import { useApi } from "../useApi";
 
 /**
  * What an exercise asks for, drawn on the neck. Start opens the engine's
- * practice screen (#/practice/:id): fretboard-first for find; flashcards for
- * respond and the lane for sequence as they land.
+ * practice screen (#/practice/:id): fretboard-first for find, flashcards for
+ * respond, and the lane for sequence once it lands.
  */
 export function ExerciseDetail({ id }: { id: string }) {
   const exercise = useApi(`exercise:${id}`, () => api.getExercise(id));
@@ -112,7 +112,7 @@ export function ExerciseDetail({ id }: { id: string }) {
         </section>
       )}
 
-      {canPractice(e.engine) ? (
+      {canPractice(e.config) ? (
         <a href={href({ name: "practice", id: e.id })} className="btn-primary focus-ring">
           Start practice
         </a>

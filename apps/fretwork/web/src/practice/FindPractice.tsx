@@ -16,6 +16,7 @@ import { type Dot, Fretboard } from "../components/Fretboard";
 import { MicPanel } from "../components/MicPanel";
 import { href } from "../router";
 import { formatDuration, useNow, useSaveRun, wallClock } from "./common";
+import { SaveLine } from "./SaveLine";
 
 /**
  * Direction A, fretboard first: the note to find, what was heard, progress by
@@ -129,18 +130,7 @@ function FindRound({ exercise, config, pc, onRestart, onNext }: RoundProps) {
           <p className="font-mono text-[15px]">
             {run?.notesClean}/{run?.notesTotal} clean · {formatDuration(elapsed)}
           </p>
-          <p className="text-[13px] text-faint">
-            {save.status === "saving" && "Saving…"}
-            {save.status === "saved" && "Saved to your runs."}
-            {save.status === "error" && (
-              <>
-                <span className="text-miss">Couldn't save this run.</span>{" "}
-                <button type="button" onClick={save.retry} className="focus-ring rounded underline">
-                  Try again
-                </button>
-              </>
-            )}
-          </p>
+          <SaveLine status={save.status} retry={save.retry} />
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={onNext} className="btn-primary">
               Next note: {noteName(nextPitchClass(pc))}

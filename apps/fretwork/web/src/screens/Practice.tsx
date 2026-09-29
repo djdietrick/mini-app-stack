@@ -1,5 +1,6 @@
-import { api } from "../api";
+import { type ExerciseConfig, api } from "../api";
 import { FindPractice } from "../practice/FindPractice";
+import { RespondPractice } from "../practice/RespondPractice";
 import { href } from "../router";
 import { useApi } from "../useApi";
 
@@ -20,7 +21,10 @@ export function Practice({ id }: { id: string }) {
   }
 
   const e = exercise.data;
-  if (e.config.engine === "find") return <FindPractice exercise={e} config={e.config} />;
+  if (canPractice(e.config)) {
+    if (e.config.engine === "find") return <FindPractice exercise={e} config={e.config} />;
+    if (e.config.engine === "respond") return <RespondPractice exercise={e} config={e.config} />;
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -33,7 +37,10 @@ export function Practice({ id }: { id: string }) {
   );
 }
 
-/** Whether an exercise's engine has a practice screen yet. */
-export function canPractice(engine: string): boolean {
-  return engine === "find";
+/**
+ * Whether an exercise has a practice screen yet. "Play what you hear" waits
+ * on audio output (reference tones); its grading is already in respond.ts.
+ */
+export function canPractice(config: ExerciseConfig): boolean {
+  return config.engine === "find" || (config.engine === "respond" && config.prompt !== "play-heard-note");
 }
