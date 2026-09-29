@@ -86,7 +86,8 @@ export function preview(e: ExerciseRow): Preview {
         dots: shape.map((n) => ({
           string: n.string,
           fret: n.fret,
-          label: n.degree,
+          name: noteName(n.midi, spelling),
+          degree: n.degree,
           tone: n.interval === 0 ? "root" : "note",
         })),
         sequence: applyPattern(shape, c.pattern).map((n) => ({
@@ -108,7 +109,7 @@ export function preview(e: ExerciseRow): Preview {
             : positionsOfPitchClass(pc, c.frets, c.strings).map((p) => ({
                 string: p.string,
                 fret: p.fret,
-                label: noteName(pc),
+                name: noteName(pc),
                 tone: "hint" as const,
               })),
         sequence: [],

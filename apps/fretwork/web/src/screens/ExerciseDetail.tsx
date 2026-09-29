@@ -3,6 +3,7 @@ import { api } from "../api";
 import { Fretboard } from "../components/Fretboard";
 import { CATEGORY_LABELS, ENGINE_LABELS, preview, summary } from "../describe";
 import { href } from "../router";
+import { updateSettings, useSettings } from "../settings";
 import { useApi } from "../useApi";
 
 /**
@@ -13,6 +14,7 @@ import { useApi } from "../useApi";
 export function ExerciseDetail({ id }: { id: string }) {
   const exercise = useApi(`exercise:${id}`, () => api.getExercise(id));
   const [deleting, setDeleting] = useState(false);
+  const { labels } = useSettings();
 
   if (exercise.loading && !exercise.data) return <p className="text-sm text-muted">Loading…</p>;
   if (exercise.error || !exercise.data) {
@@ -60,6 +62,24 @@ export function ExerciseDetail({ id }: { id: string }) {
           <span className="label-caps">On the neck</span>
           <span className="text-[13px] text-muted">{p.caption}</span>
         </div>
+        {e.config.engine === "sequence" && (
+          <div className="flex gap-1 self-start rounded-xl bg-raised p-1" role="group" aria-label="Dot labels">
+            {(["names", "degrees"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={labels === m}
+                onClick={() => updateSettings({ labels: m })}
+                className={
+                  "focus-ring min-h-[36px] rounded-lg px-3 text-[13px] " +
+                  (labels === m ? "bg-brass font-semibold text-brass-ink" : "text-muted")
+                }
+              >
+                {m === "names" ? "Notes" : "Degrees"}
+              </button>
+            ))}
+          </div>
+        )}
         <Fretboard
           frets={p.view}
           highlight={p.window}
