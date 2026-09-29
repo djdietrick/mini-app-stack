@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+/* Keep controls clear of the notch and the home indicator when installed. */
+.pt-safe { padding-top: max(1rem, env(safe-area-inset-top)); }
+.pb-safe { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+
+@layer components {
+  .label-caps {
+    @apply font-mono text-[11px] uppercase tracking-[0.12em] text-muted;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+  .btn {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-line bg-raised px-4 text-[15px] font-medium text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-brass px-5 text-[15px] font-semibold text-brass-ink transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .focus-ring {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass;
+  }
+}

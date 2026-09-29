@@ -58,7 +58,7 @@ Everything that differs between self-hosted and Firebase sits behind exactly thr
 
 Selected by entrypoint, not env: `apps/<app>/src/index.ts` wires the self-hosted implementations and `functions/src/index.ts` the cloud ones. There are no `DATA_BACKEND`-style runtime switches, and adding one would be the wrong fix for anything. Frontends pick their auth provider at build time with `VITE_AUTH_MODE`.
 
-All three apps run on both targets. `apps/crate` is the reference implementation; `apps/pantry` is the example to copy for per-request scope (its active household) or multi-user data; `apps/ytdigest` is the example for scheduled work and secrets (`src/domain/poll.ts` and `digest.ts` are driven by `scheduler.ts` self-hosted and by `onSchedule` functions in the cloud).
+All four apps run on both targets. `apps/crate` is the reference implementation; `apps/pantry` is the example to copy for per-request scope (its active household) or multi-user data; `apps/ytdigest` is the example for scheduled work and secrets (`src/domain/poll.ts` and `digest.ts` are driven by `scheduler.ts` self-hosted and by `onSchedule` functions in the cloud); `apps/fretwork` is the example for pure code shared between the server and its SPA (`src/theory/`).
 
 **Things that will bite you when writing a Firestore implementation:**
 
@@ -202,3 +202,16 @@ YouTube channel digest emailer. Runs as the `ytdigest` Postgres role on port `31
 - Mail is SMTP on both targets via `@stack/mailer`. `nodemailer` must stay `--external` in the functions bundle: bundled into ESM output, its `require()` calls throw at runtime.
 - `video_id` is an internal UUID on Postgres; link to YouTube with `youtube_video_id`.
 - `src/domain/contract.test.ts` covers the HTTP contract and both jobs on both backends (fake YouTube, captured mail). Postgres runs when `YTDIGEST_TEST_DATABASE_URL` and `YTDIGEST_TEST_ADMIN_DATABASE_URL` are set; CI sets them.
+
+### apps/fretwork
+
+Guitar fretboard trainer: find notes, play scales and arpeggios, graded from the microphone. Runs as the `fretwork` Postgres role on port `3104`. Build plan and status: [`apps/fretwork/PLAN.md`](apps/fretwork/PLAN.md) and the GitHub issues labelled `fretwork`.
+
+- Audio never leaves the browser. Pitch detection and grading run in the SPA; the API stores exercises and graded runs only.
+- `src/theory/` is pure, dependency-free TS (notes, tuning, fretboard positions, scale/arpeggio formulas, sequence patterns). The server and the SPA both import it, the SPA by relative path (`../../src/theory/index.js`), which Vite resolves to the `.ts` sources. Keep Node and DOM APIs out of it. `web/src/api.ts` imports the wire types from `src/domain/types.ts` type-only, so zod stays out of the bundle.
+- A microphone hears pitch, not position: E4 is fret 0, 5 or 9 depending on the string. Exercises are designed around that (see the header of `src/theory/fretboard.ts`). Do not build UI that claims to know which string was played.
+- An exercise is an engine (`find` | `sequence` | `respond`) plus a zod-validated config, stored verbatim as JSONB or a Firestore map. New config fields must be optional or defaulted, or old rows stop parsing.
+- Built-in exercises live in `src/domain/catalog.ts` with fixed UUIDs (never change one) and are read-only (403 `BUILTIN_READ_ONLY`); only user-created exercises are in the database. That is also why `runs.exercise_id` has no foreign key.
+- Phone first: `web/src/components/AppShell.tsx` swaps the bottom tab bar for a left rail at `lg`, and `Fretboard` is a viewBox SVG whose logical width grows with the frets shown, so screens scale without knowing the layout.
+- `typecheck` also checks `web/` (`tsc -p web`), unlike the older apps.
+- `src/domain/contract.test.ts` runs the HTTP contract on both backends through both adapters. Postgres runs when `FRETWORK_TEST_DATABASE_URL` (as the `fretwork` role) and `FRETWORK_TEST_ADMIN_DATABASE_URL` are set; CI sets both.

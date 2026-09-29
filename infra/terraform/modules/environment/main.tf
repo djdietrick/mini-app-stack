@@ -11,7 +11,7 @@ variable "firestore_location" {
 variable "apps" {
   description = "Apps that get a Hosting site and a function service account."
   type        = list(string)
-  default     = ["crate", "pantry", "ytdigest"]
+  default     = ["crate", "pantry", "ytdigest", "fretwork"]
 }
 variable "deletion_protection" {
   type    = bool

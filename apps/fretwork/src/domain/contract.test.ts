@@ -1,0 +1,389 @@
+import assert from "node:assert/strict";
+import { randomBytes, randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { after, before, describe, it } from "node:test";
+import { Firestore } from "@google-cloud/firestore";
+import Fastify from "fastify";
+import { createPostgresClient } from "@stack/db-clients";
+import { type SessionUser, runMigrations } from "@stack/service-kit";
+import { toExpressApp } from "@stack/service-kit/express";
+import { toFastifyPlugin } from "@stack/service-kit/fastify";
+import { createFirestoreFretworkRepo } from "../repo/firestore.js";
+import { createPostgresFretworkRepo } from "../repo/postgres.js";
+import type { FretworkRepo } from "../repo/types.js";
+import { BUILTIN_EXERCISES } from "./catalog.js";
+import { fretworkRoutes } from "./routes.js";
+import { exerciseConfig } from "./types.js";
+
+/**
+ * fretwork's HTTP contract, run end to end against each real backend through
+ * each adapter. The assertions pin what apps/fretwork/web/src/api.ts depends
+ * on: status codes, error bodies, row shapes and ISO timestamps.
+ *
+ * Each backend runs only when it is reachable:
+ *   Firestore  FIRESTORE_EMULATOR_HOST             (CI sets this)
+ *   Postgres   FRETWORK_TEST_DATABASE_URL          connects as the `fretwork` role
+ *              FRETWORK_TEST_ADMIN_DATABASE_URL    seeds shared.users, which the
+ *                                                  fretwork role can't write
+ */
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+interface Backend {
+  repo: FretworkRepo;
+  addUser(email: string): Promise<string>;
+  stop(): Promise<void>;
+}
+
+const backends: Record<string, { skip: string | false; start: () => Promise<Backend> }> = {
+  firestore: {
+    skip: process.env.FIRESTORE_EMULATOR_HOST ? false : "FIRESTORE_EMULATOR_HOST not set",
+    async start() {
+      const db = new Firestore({ projectId: "demo-fretwork" });
+      // A fresh prefix per run, so repeat runs never see each other's documents.
+      const prefix = `t${Date.now()}_${randomBytes(3).toString("hex")}_`;
+      return {
+        repo: createFirestoreFretworkRepo(db, prefix),
+        // Firebase uids are 28-char strings, not UUIDs.
+        addUser: async () => randomBytes(21).toString("base64url").slice(0, 28),
+        stop: () => db.terminate(),
+      };
+    },
+  },
+  postgres: {
+    skip:
+      process.env.FRETWORK_TEST_DATABASE_URL && process.env.FRETWORK_TEST_ADMIN_DATABASE_URL
+        ? false
+        : "FRETWORK_TEST_DATABASE_URL / FRETWORK_TEST_ADMIN_DATABASE_URL not set",
+    async start() {
+      const pg = createPostgresClient({
+        url: process.env.FRETWORK_TEST_DATABASE_URL!,
+        schema: "fretwork",
+      });
+      await runMigrations(pg, join(here, "..", "..", "migrations"));
+      const admin = createPostgresClient({
+        url: process.env.FRETWORK_TEST_ADMIN_DATABASE_URL!,
+        schema: "public",
+      });
+      return {
+        repo: createPostgresFretworkRepo(pg),
+        async addUser(email) {
+          const [u] = await admin.sql<{ id: string }[]>`
+            INSERT INTO shared.users (email) VALUES (${email}) RETURNING id
+          `;
+          return u.id;
+        },
+        async stop() {
+          await admin.close();
+          await pg.close();
+        },
+      };
+    },
+  },
+};
+
+type Res = { status: number; body: any };
+type Call = (method: string, path: string, body?: unknown) => Promise<Res>;
+
+const silent = { info() {}, warn() {}, error() {} };
+
+const pentatonic = {
+  engine: "sequence",
+  source: { kind: "scale", root: 4, formula: "minor-pentatonic" },
+  frets: { lo: 0, hi: 3 },
+  strings: [1, 2, 3, 4, 5, 6],
+  pattern: "up",
+  grading: "exact",
+  tempo: { start: 70, step: 4, cleanRunsToAdvance: 3 },
+};
+
+const hunt = {
+  engine: "find",
+  target: { kind: "pitch-class", pc: 7 },
+  order: "any",
+  frets: { lo: 0, hi: 12 },
+  strings: [6, 5],
+  grading: "pitch-class",
+  timeLimitSec: 60,
+};
+
+const run = (exerciseId: string, startedAt: string, extra: Record<string, unknown> = {}) => ({
+  exerciseId,
+  startedAt,
+  durationMs: 42_000,
+  tempo: 70,
+  notesTotal: 2,
+  notesClean: 1,
+  clean: false,
+  notes: [
+    { midi: 40, ok: true, ms: 800, string: 6, fret: 0 },
+    { midi: 43, ok: false, ms: 2100, string: 6, fret: 3 },
+  ],
+  ...extra,
+});
+
+describe("built-in catalog", () => {
+  it("has unique ids and valid configs", () => {
+    assert.equal(new Set(BUILTIN_EXERCISES.map((e) => e.id)).size, BUILTIN_EXERCISES.length);
+    for (const e of BUILTIN_EXERCISES) {
+      assert.ok(exerciseConfig.safeParse(e.config).success, e.name);
+      assert.equal(e.engine, e.config.engine);
+    }
+  });
+});
+
+for (const [backendName, backend] of Object.entries(backends)) {
+  for (const adapter of ["fastify", "express"] as const) {
+    describe(`fretwork contract (${backendName}, ${adapter})`, { skip: backend.skip }, () => {
+      let b: Backend;
+      let stopServer: () => Promise<void>;
+      let base: string;
+      const sessions = new Map<string, SessionUser>();
+      let player: SessionUser;
+      let outsider: SessionUser;
+
+      const as =
+        (user: SessionUser | null): Call =>
+        async (method, path, body) => {
+          const token = user ? [...sessions].find(([, u]) => u === user)![0] : null;
+          const res = await fetch(`${base}/api${path}`, {
+            method,
+            headers: {
+              ...(body !== undefined ? { "content-type": "application/json" } : {}),
+              ...(token ? { cookie: `stack_session=${token}` } : {}),
+            },
+            body: body !== undefined ? JSON.stringify(body) : undefined,
+          });
+          const text = await res.text();
+          return { status: res.status, body: text ? JSON.parse(text) : null };
+        };
+
+      // The verifier is the seam that differs between deployments; here each
+      // user gets a sentinel cookie so the tests exercise routes and repos.
+      const verify = async (headers: Record<string, string | string[] | undefined>) => {
+        const m = /stack_session=([^;]+)/.exec(String(headers["cookie"] ?? ""));
+        return (m && sessions.get(m[1])) ?? null;
+      };
+
+      const newUser = async (name: string): Promise<SessionUser> => {
+        const email = `${name}-${randomUUID()}@example.com`;
+        const user = { userId: await b.addUser(email), email, displayName: name };
+        sessions.set(randomUUID(), user);
+        return user;
+      };
+
+      before(async () => {
+        b = await backend.start();
+        const opts = { repo: b.repo, verify };
+        const routes = fretworkRoutes();
+
+        if (adapter === "fastify") {
+          const app = Fastify();
+          await app.register(toFastifyPlugin(routes, opts), { prefix: "/api" });
+          await app.listen({ port: 0, host: "127.0.0.1" });
+          base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
+          stopServer = () => app.close();
+        } else {
+          const outer = (await import("express")).default();
+          outer.use("/api", toExpressApp(routes, { ...opts, logger: silent }));
+          const server = outer.listen(0, "127.0.0.1");
+          await new Promise((r) => server.once("listening", r));
+          base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+          stopServer = () => new Promise<void>((r) => server.close(() => r()));
+        }
+
+        player = await newUser("Pat");
+        outsider = await newUser("Oz");
+      });
+
+      after(async () => {
+        await stopServer?.();
+        await b?.stop();
+      });
+
+      const builtin = BUILTIN_EXERCISES[0];
+      let mine: string;
+
+      it("serves /health publicly and 401s everything else without a session", async () => {
+        assert.deepEqual(await as(null)("GET", "/health"), { status: 200, body: { ok: true } });
+        for (const [method, path] of [
+          ["GET", "/exercises"],
+          ["POST", "/exercises"],
+          ["GET", "/runs"],
+          ["POST", "/runs"],
+        ] as const) {
+          assert.deepEqual(
+            await as(null)(method, path),
+            { status: 401, body: { error: "not signed in" } },
+            `${method} ${path}`,
+          );
+        }
+      });
+
+      it("lists the built-ins for a new user, and keeps them read-only", async () => {
+        const res = await as(player)("GET", "/exercises");
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body, BUILTIN_EXERCISES);
+
+        assert.deepEqual(await as(player)("GET", `/exercises/${builtin.id}`), {
+          status: 200,
+          body: builtin,
+        });
+        assert.deepEqual(
+          await as(player)("PATCH", `/exercises/${builtin.id}`, { name: "Mine now" }),
+          { status: 403, body: { error: "BUILTIN_READ_ONLY" } },
+        );
+        assert.deepEqual(await as(player)("DELETE", `/exercises/${builtin.id}`), {
+          status: 403,
+          body: { error: "BUILTIN_READ_ONLY" },
+        });
+      });
+
+      it("validates exercise configs", async () => {
+        const missing = await as(player)("POST", "/exercises", { name: "x" });
+        assert.equal(missing.status, 400);
+        assert.ok(missing.body.error.fieldErrors.category, "flattened zod error");
+
+        for (const config of [
+          { ...pentatonic, source: { ...pentatonic.source, formula: "major-triad" } },
+          { ...pentatonic, frets: { lo: 7, hi: 5 } },
+          { ...pentatonic, strings: [1, 1] },
+          { ...hunt, engine: "tapping" },
+        ]) {
+          const res = await as(player)("POST", "/exercises", { name: "Bad", category: "scales", config });
+          assert.equal(res.status, 400, JSON.stringify(config));
+        }
+      });
+
+      it("creates an exercise and lists it after the built-ins", async () => {
+        const res = await as(player)("POST", "/exercises", {
+          name: "  E minor pentatonic, open  ",
+          category: "scales",
+          config: pentatonic,
+        });
+        assert.equal(res.status, 201);
+        mine = res.body.id;
+        assert.deepEqual(Object.keys(res.body).sort(), [
+          "builtin",
+          "category",
+          "config",
+          "created_at",
+          "engine",
+          "id",
+          "name",
+          "updated_at",
+        ]);
+        assert.equal(res.body.name, "E minor pentatonic, open", "trimmed");
+        assert.equal(res.body.engine, "sequence");
+        assert.equal(res.body.builtin, false);
+        assert.deepEqual(res.body.config, pentatonic);
+        assert.equal(res.body.created_at, new Date(res.body.created_at).toISOString(), "ISO 8601");
+
+        const list = (await as(player)("GET", "/exercises")).body;
+        assert.equal(list.length, BUILTIN_EXERCISES.length + 1);
+        assert.deepEqual(list.at(-1), res.body);
+        assert.deepEqual((await as(player)("GET", `/exercises/${mine}`)).body, res.body);
+      });
+
+      it("hides one user's exercises from another", async () => {
+        assert.equal((await as(outsider)("GET", "/exercises")).body.length, BUILTIN_EXERCISES.length);
+        assert.deepEqual(await as(outsider)("GET", `/exercises/${mine}`), {
+          status: 404,
+          body: { error: "not found" },
+        });
+        assert.equal((await as(outsider)("PATCH", `/exercises/${mine}`, { name: "Stolen" })).status, 404);
+        assert.equal((await as(outsider)("DELETE", `/exercises/${mine}`)).status, 404);
+        assert.equal((await as(player)("GET", `/exercises/${mine}`)).body.name, "E minor pentatonic, open");
+        assert.equal((await as(player)("GET", `/exercises/${randomUUID()}`)).status, 404);
+      });
+
+      it("patches only the fields sent", async () => {
+        assert.equal((await as(player)("PATCH", `/exercises/${mine}`, {})).status, 400);
+
+        const renamed = await as(player)("PATCH", `/exercises/${mine}`, { name: "Open E box" });
+        assert.equal(renamed.status, 200);
+        assert.equal(renamed.body.name, "Open E box");
+        assert.deepEqual(renamed.body.config, pentatonic, "config untouched");
+        assert.ok(renamed.body.updated_at >= renamed.body.created_at);
+
+        const swapped = await as(player)("PATCH", `/exercises/${mine}`, {
+          category: "notes",
+          config: hunt,
+        });
+        assert.equal(swapped.status, 200);
+        assert.equal(swapped.body.name, "Open E box", "name untouched");
+        assert.equal(swapped.body.engine, "find");
+        assert.deepEqual(swapped.body.config, hunt);
+      });
+
+      it("records runs against built-ins and own exercises only", async () => {
+        const a = await as(player)("POST", "/runs", run(builtin.id, "2026-09-01T10:00:00.000Z"));
+        assert.equal(a.status, 201);
+        assert.deepEqual(Object.keys(a.body).sort(), [
+          "clean",
+          "created_at",
+          "duration_ms",
+          "exercise_id",
+          "id",
+          "notes_clean",
+          "notes_total",
+          "started_at",
+          "tempo",
+        ]);
+        assert.equal(a.body.started_at, "2026-09-01T10:00:00.000Z");
+        assert.equal(a.body.exercise_id, builtin.id);
+        assert.equal(a.body.duration_ms, 42_000);
+
+        const b2 = await as(player)(
+          "POST",
+          "/runs",
+          run(mine, "2026-09-02T10:00:00.000+02:00", { tempo: null, clean: true, notesClean: 2 }),
+        );
+        assert.equal(b2.status, 201);
+        assert.equal(b2.body.started_at, "2026-09-02T08:00:00.000Z", "normalised to UTC");
+        assert.equal(b2.body.tempo, null);
+
+        assert.deepEqual(await as(player)("POST", "/runs", run(randomUUID(), "2026-09-03T10:00:00Z")), {
+          status: 404,
+          body: { error: "exercise not found" },
+        });
+        assert.equal((await as(outsider)("POST", "/runs", run(mine, "2026-09-03T10:00:00Z"))).status, 404);
+        assert.equal(
+          (await as(player)("POST", "/runs", run(mine, "2026-09-03T10:00:00Z", { notesClean: 3 }))).status,
+          400,
+        );
+        assert.equal((await as(player)("POST", "/runs", run(mine, "yesterday"))).status, 400);
+      });
+
+      it("lists runs newest first, per exercise, and per user", async () => {
+        await as(player)("POST", "/runs", run(builtin.id, "2026-09-03T10:00:00.000Z"));
+
+        const all = (await as(player)("GET", "/runs")).body;
+        assert.deepEqual(
+          all.map((r: { started_at: string }) => r.started_at),
+          ["2026-09-03T10:00:00.000Z", "2026-09-02T08:00:00.000Z", "2026-09-01T10:00:00.000Z"],
+        );
+
+        const forBuiltin = (await as(player)("GET", `/runs?exerciseId=${builtin.id}`)).body;
+        assert.equal(forBuiltin.length, 2);
+        assert.ok(forBuiltin.every((r: { exercise_id: string }) => r.exercise_id === builtin.id));
+
+        assert.equal((await as(player)("GET", "/runs?limit=1")).body.length, 1);
+        assert.equal((await as(player)("GET", "/runs?limit=0")).status, 400);
+        assert.deepEqual((await as(outsider)("GET", "/runs")).body, []);
+      });
+
+      it("deletes an exercise but keeps its history", async () => {
+        assert.deepEqual(await as(player)("DELETE", `/exercises/${mine}`), {
+          status: 200,
+          body: { ok: true },
+        });
+        assert.equal((await as(player)("GET", `/exercises/${mine}`)).status, 404);
+        assert.equal((await as(player)("DELETE", `/exercises/${mine}`)).status, 404);
+        assert.equal((await as(player)("GET", `/runs?exerciseId=${mine}`)).body.length, 1);
+        assert.equal((await as(player)("POST", "/runs", run(mine, "2026-09-04T10:00:00Z"))).status, 404);
+      });
+    });
+  }
+}

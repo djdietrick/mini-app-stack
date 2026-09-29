@@ -41,4 +41,12 @@ export const catalog: CatalogApp[] = [
     accent: "#f59e0b",
     localPort: 3103,
   },
+  {
+    id: "fretwork",
+    name: "Fretwork",
+    tagline: "Learn the fretboard",
+    description: "Find notes, scales and arpeggios on the neck while the mic checks what you play.",
+    accent: "#e5a54b",
+    localPort: 3104,
+  },
 ];

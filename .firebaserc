@@ -18,6 +18,9 @@
         ],
         "landing": [
           "landing-staging-40765"
+        ],
+        "fretwork": [
+          "fretwork-staging-40765"
         ]
       }
     },
@@ -34,6 +37,9 @@
         ],
         "landing": [
           "landing-prod-5c26a"
+        ],
+        "fretwork": [
+          "fretwork-prod-5c26a"
         ]
       }
     }
