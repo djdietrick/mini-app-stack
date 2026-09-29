@@ -1,8 +1,11 @@
 import type { PostgresClient } from "@stack/db-clients";
+import { type ProgressState, foldPositions, foldProgress } from "../domain/progress.js";
 import type {
   Category,
   ExerciseConfig,
   ExerciseRow,
+  PositionStatRow,
+  ProgressRow,
   RunInput,
   RunRow,
 } from "../domain/types.js";
@@ -15,6 +18,7 @@ import type { FretworkRepo } from "./types.js";
  * Timestamps come back from the Drizzle-wrapped client as Postgres text
  * ("2026-09-27 16:40:17.324+00"); they are converted to ISO 8601 here so both
  * backends return the same format. JSONB is written as a JSON string and cast.
+ * `bigint` comes back as a string too, and is converted with Number().
  */
 export function createPostgresFretworkRepo(pg: PostgresClient): FretworkRepo {
   const { sql } = pg;
@@ -54,6 +58,32 @@ export function createPostgresFretworkRepo(pg: PostgresClient): FretworkRepo {
     notes_clean: r.notes_clean,
     clean: r.clean,
     created_at: iso(r.created_at),
+  });
+
+  interface ProgressDbRow {
+    exercise_id: string;
+    tempo: number | null;
+    clean_streak: number;
+    best_tempo: number | null;
+    runs: number;
+    last_practiced_at: string | null;
+  }
+
+  const toState = (r: ProgressDbRow): ProgressState => ({
+    tempo: r.tempo,
+    cleanStreak: r.clean_streak,
+    bestTempo: r.best_tempo,
+    runs: r.runs,
+    lastPracticedAt: r.last_practiced_at === null ? null : iso(r.last_practiced_at),
+  });
+
+  const toProgress = (r: ProgressDbRow): ProgressRow => ({
+    exercise_id: r.exercise_id,
+    tempo: r.tempo,
+    clean_streak: r.clean_streak,
+    best_tempo: r.best_tempo,
+    runs: r.runs,
+    last_practiced_at: iso(r.last_practiced_at!),
   });
 
   return {
@@ -106,17 +136,63 @@ export function createPostgresFretworkRepo(pg: PostgresClient): FretworkRepo {
       return rows.length > 0;
     },
 
-    async recordRun(userId, run: RunInput) {
-      const [row] = await sql<RunDbRow[]>`
-        INSERT INTO runs (user_id, exercise_id, started_at, duration_ms, tempo,
-                          notes_total, notes_clean, clean, notes)
-        VALUES (${userId}, ${run.exerciseId}, ${run.startedAt}::timestamptz, ${run.durationMs},
-                ${run.tempo}, ${run.notesTotal}, ${run.notesClean}, ${run.clean},
-                ${JSON.stringify(run.notes)}::jsonb)
-        RETURNING id, exercise_id, started_at, duration_ms, tempo,
-                  notes_total, notes_clean, clean, created_at
-      `;
-      return toRun(row);
+    async recordRun(userId, run: RunInput, effects) {
+      return sql.begin(async (tx) => {
+        const [row] = await tx<RunDbRow[]>`
+          INSERT INTO runs (user_id, exercise_id, started_at, duration_ms, tempo,
+                            notes_total, notes_clean, clean, notes)
+          VALUES (${userId}, ${run.exerciseId}, ${run.startedAt}::timestamptz, ${run.durationMs},
+                  ${run.tempo}, ${run.notesTotal}, ${run.notesClean}, ${run.clean},
+                  ${JSON.stringify(run.notes)}::jsonb)
+          RETURNING id, exercise_id, started_at, duration_ms, tempo,
+                    notes_total, notes_clean, clean, created_at
+        `;
+
+        // Make sure the row exists, then lock it, so two runs recorded at
+        // once fold one after the other instead of both from the same state.
+        await tx`
+          INSERT INTO exercise_progress (user_id, exercise_id)
+          VALUES (${userId}, ${run.exerciseId})
+          ON CONFLICT DO NOTHING
+        `;
+        const [prev] = await tx<ProgressDbRow[]>`
+          SELECT exercise_id, tempo, clean_streak, best_tempo, runs, last_practiced_at
+          FROM exercise_progress
+          WHERE user_id = ${userId} AND exercise_id = ${run.exerciseId}
+          FOR UPDATE
+        `;
+        const next = foldProgress(toState(prev), run, effects.ladder);
+        await tx`
+          UPDATE exercise_progress SET
+            tempo = ${next.tempo},
+            clean_streak = ${next.cleanStreak},
+            best_tempo = ${next.bestTempo},
+            runs = ${next.runs},
+            last_practiced_at = ${next.lastPracticedAt}::timestamptz
+          WHERE user_id = ${userId} AND exercise_id = ${run.exerciseId}
+        `;
+
+        const cells = effects.positions ? [...foldPositions(run.notes).values()] : [];
+        if (cells.length) {
+          const rows = cells.map((c) => ({
+            user_id: userId,
+            string: c.string,
+            fret: c.fret,
+            attempts: c.attempts,
+            hits: c.hits,
+            total_ms: c.totalMs,
+          }));
+          await tx`
+            INSERT INTO position_stats ${tx(rows, "user_id", "string", "fret", "attempts", "hits", "total_ms")}
+            ON CONFLICT (user_id, string, fret) DO UPDATE SET
+              attempts = position_stats.attempts + EXCLUDED.attempts,
+              hits     = position_stats.hits + EXCLUDED.hits,
+              total_ms = position_stats.total_ms + EXCLUDED.total_ms
+          `;
+        }
+
+        return toRun(row);
+      });
     },
 
     async listRuns(userId, { exerciseId, limit }) {
@@ -130,6 +206,35 @@ export function createPostgresFretworkRepo(pg: PostgresClient): FretworkRepo {
         LIMIT ${limit}
       `;
       return rows.map(toRun);
+    },
+
+    async listRunTimes(userId, since) {
+      const rows = await sql<{ started_at: string; duration_ms: number }[]>`
+        SELECT started_at, duration_ms
+        FROM runs
+        WHERE user_id = ${userId} AND started_at >= ${since}::timestamptz
+      `;
+      return rows.map((r) => ({ started_at: iso(r.started_at), duration_ms: r.duration_ms }));
+    },
+
+    async listProgress(userId) {
+      const rows = await sql<ProgressDbRow[]>`
+        SELECT exercise_id, tempo, clean_streak, best_tempo, runs, last_practiced_at
+        FROM exercise_progress
+        WHERE user_id = ${userId} AND runs > 0
+        ORDER BY last_practiced_at DESC, exercise_id
+      `;
+      return rows.map(toProgress);
+    },
+
+    async listPositionStats(userId) {
+      const rows = await sql<(Omit<PositionStatRow, "total_ms"> & { total_ms: string })[]>`
+        SELECT string, fret, attempts, hits, total_ms
+        FROM position_stats
+        WHERE user_id = ${userId}
+        ORDER BY string, fret
+      `;
+      return rows.map((r) => ({ ...r, total_ms: Number(r.total_ms) }));
     },
 
     close: () => pg.close(),

@@ -2,6 +2,7 @@ import { type AnyRoute, createRouteBuilder, forbidden, notFound } from "@stack/s
 import { z } from "zod";
 import type { FretworkRepo } from "../repo/types.js";
 import { BUILTIN_EXERCISES, builtinExercise } from "./catalog.js";
+import { practiceByDay, runEffects, weekQuery, weekSince } from "./progress.js";
 import { exerciseInput, exercisePatch, runInput } from "./types.js";
 
 /**
@@ -9,7 +10,8 @@ import { exerciseInput, exercisePatch, runInput } from "./types.js";
  * Fastify self-hosted and by an Express-backed Firebase Function in the cloud.
  *
  * Exercises are the starter catalog (read-only, in code) plus the user's own.
- * Runs are append-only results posted by the SPA after it has graded them.
+ * Runs are append-only results posted by the SPA after it has graded them;
+ * recording one also folds it into the aggregates in domain/progress.ts.
  */
 const route = createRouteBuilder<FretworkRepo>();
 
@@ -89,7 +91,8 @@ export function fretworkRoutes(): AnyRoute<FretworkRepo>[] {
           builtinExercise(body.exerciseId) ??
           (await ctx.repo.getExercise(ctx.user.userId, body.exerciseId));
         if (!known) throw notFound("exercise not found");
-        return ctx.repo.recordRun(ctx.user.userId, body);
+        // The ladder rule comes from the exercise as it is now.
+        return ctx.repo.recordRun(ctx.user.userId, body, runEffects(known.config));
       },
     }),
 
@@ -104,6 +107,30 @@ export function fretworkRoutes(): AnyRoute<FretworkRepo>[] {
       },
       handler: async (ctx, { query }) =>
         ctx.repo.listRuns(ctx.user.userId, { exerciseId: query.exerciseId, limit: query.limit }),
+    }),
+
+    route({
+      method: "GET",
+      path: "/progress",
+      handler: async (ctx) => ctx.repo.listProgress(ctx.user.userId),
+    }),
+
+    route({
+      method: "GET",
+      path: "/stats/positions",
+      handler: async (ctx) => ctx.repo.listPositionStats(ctx.user.userId),
+    }),
+
+    route({
+      method: "GET",
+      path: "/stats/week",
+      input: { query: weekQuery },
+      // Firestore has no GROUP BY, so both backends total the days here.
+      handler: async (ctx, { query }) => {
+        const now = new Date();
+        const runs = await ctx.repo.listRunTimes(ctx.user.userId, weekSince(query.days, now));
+        return practiceByDay(runs, { days: query.days, tz: query.tz, now });
+      },
     }),
   ];
 }

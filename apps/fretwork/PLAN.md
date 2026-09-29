@@ -32,8 +32,10 @@ apps/fretwork/
   src/theory/      pure TS, no deps: notes, tuning, positions, formulas, patterns,
                    pitch.ts (MPM detector) and onsets.ts (frames → note events)
   src/practice/    each engine's grading as a pure reducer (find.ts, respond.ts, sequence.ts),
-                   and the click's timing (metronome.ts); all node-tested
-  src/domain/      types.ts (zod exercise/run model), catalog.ts (built-ins), routes.ts
+                   the click's timing (metronome.ts), and reading the map (zones.ts);
+                   all node-tested
+  src/domain/      types.ts (zod exercise/run model), catalog.ts (built-ins), routes.ts,
+                   progress.ts (folding runs into the aggregates)
   src/repo/        types.ts (the port), postgres.ts, firestore.ts
   migrations/      Postgres schema `fretwork`
   web/src/         the SPA; imports ../../src/theory directly, and wire types type-only
@@ -100,8 +102,16 @@ apps/fretwork/
 
 - **Grading** (`src/practice/sequence.ts`): the notes are `applyPattern(shapeInWindow(...), pattern)`. Order and pitch count; rhythm doesn't (v1). A wrong note marks the note asked for as missed and the player stays on it. The note just played, heard again, is ignored (a re-pick, or a string still ringing). `exact` wants the shape's pitch and names the octave when it is wrong; `pitch-class` takes any octave. A clean run is every note right first time.
 - **The run starts on its first note played right.** Noodling before that is shown but never counted. After a run, playing its first note starts the next one, so a player can keep going without touching the phone.
-- **Tempo ladder:** `advanceLadder` (clean runs in a row; `cleanRunsToAdvance` of them add `step` bpm; an unclean run resets the streak; step 0 is off; capped at 300). Until #18 keeps progress on the server, the screen rebuilds the ladder from the exercise's last 50 runs (`ladderFromRuns`); a run at a tempo set by hand restarts the streak there. #18 should apply the same `advanceLadder` server-side.
+- **Tempo ladder:** `advanceLadder` (clean runs in a row; `cleanRunsToAdvance` of them add `step` bpm; an unclean run resets the streak; step 0 is off; capped at 300). The server keeps the ladder (#18) and the screen starts from `GET /progress`; an exercise with no progress row (last played before #18) rebuilds it from its last 50 runs (`ladderFromRuns`). A run at a tempo set by hand restarts the streak there, on both sides.
 - **Screen:** the lane (chips for played clean / played after a miss / now / to come, scrolled to keep the current one centred) and the feedback stick to the top. Below: the mic bar, the neck (shape per the Full → Roots → Hidden toggle, the next note ringed only in Full, the note just played lit, a tapped miss where it landed), then tempo ± with a beat indicator, the click toggle, the ladder's progress, the drone, and Restart. Runs post `{ tempo, clean, notes[] }` with each note at its shape position.
+
+## Progress screen (#19)
+
+- `#/progress`, from `GET /progress`, `/stats/positions` and `/stats/week`. One column on a phone; the map and the ladder side by side from `lg`. A new user sees one card pointing to the library instead of three empty charts.
+- **Fretboard map:** a strings × frets grid laid out like the vertical neck (low E on the left, mirrored for left-handers), frets 0–12 or further if played. Colour is one brass ramp in five **fixed** speed bins (≤1.5, 2.5, 4, 6 s, slower), light = fast, validated as an ordinal ramp against the surface; fixed so improvement shows as the map lightening. Never-found cells carry a ✕, untried cells stay empty. Tap a cell for its note, hits and average. The callout names the slowest two-string, four-fret zone with at least 3 tried cells (`weakestZone` in `src/practice/zones.ts`; a miss costs 10 s) and outlines it.
+- **Tempo ladder:** one row per sequence exercise practiced: start → current, best, and a bar from start to a goal of 1.5× start (configs have no goal field yet), with a tick for a best run ahead of the ladder.
+- **This week:** days practiced, total time, and a bar per day; tap a bar for its date, minutes and runs.
+- Every chart has a "Show numbers" table, and none relies on colour alone.
 
 - **Engine grading logic stays pure**, under `src/`, so `node --test` covers it. The SPA wires it to the mic and the UI.
 - The Firestore collections are `fretwork_exercises` and `fretwork_runs`. The cloud function is `fretworkApi`, and the Hosting target is `fretwork`.
@@ -118,11 +128,18 @@ apps/fretwork/
 - `notes[]` holds `{ midi, ok, ms, string, fret }` for each target. It is stored but not listed, and it feeds the heatmap.
 - `exercise_id` has no foreign key: built-ins are not rows, and a deleted exercise keeps its history.
 
-**Planned** (#18):
+**Progress** (#18). Folded from each run inside the transaction that inserts it, by the pure functions in `src/domain/progress.ts`, so both backends apply one rule. The ladder rule comes from the exercise's config as it is when the run is posted (built-ins from `catalog.ts`).
 
-- per-exercise progress (the tempo ladder: current, best, clean streak), updated atomically with each run
-- per-position stats (attempts, hits, total ms) for the fretboard map
-- routines (#20)
+- **Per exercise:** `{ tempo, clean_streak, best_tempo, runs, last_practiced_at }`. `foldProgress` is `advanceLadder`, with a run at another tempo than the ladder's restarting the streak there (as `ladderFromRuns` does). Engines without a click keep `tempo: null` and just count clean runs. `best_tempo` is the fastest clean run; `last_practiced_at` never moves back for a run posted late.
+  - Postgres: `exercise_progress (user_id, exercise_id)`. The row is inserted if missing, then locked `FOR UPDATE`, so runs posted at once fold one after the other.
+  - Firestore: `fretwork_progress/{userId}_{exerciseId}`, read and written in one `runTransaction` with the run.
+- **Per position:** `{ attempts, hits, total_ms }` per `(user, string, fret)`, where `total_ms` sums hits only (`total_ms / hits` is the time to find it). **Only find and respond runs feed it:** a sequence note's time is set by the click, not by recall. Notes without a position are skipped.
+  - Postgres: `position_stats`, one upsert for the run's cells. Firestore: one doc per user, `fretwork_position_stats/{userId}`, a map `"s:f" → { a, h, ms }`.
+- **Per day:** not stored. `GET /stats/week` reads run start and length since a cut-off early enough for any time zone and totals them per local date in memory (`practiceByDay`), which is also what Firestore needs (no `GROUP BY`).
+- **No new Firestore indexes:** progress is queried by `userId` alone and sorted in memory; the week query reuses `(userId, startedAt desc)`.
+- **No backfill (decided).** The aggregates start at the first run recorded after they shipped. The app had only just gone live, the week view reads runs directly, and the one thing players would miss (the ladder) is still rebuilt from runs on the client when an exercise has no progress row.
+
+**Planned:** routines (#20).
 
 ## API (as built)
 
@@ -136,6 +153,9 @@ apps/fretwork/
 | DELETE | `/exercises/:id` | 403 for built-ins; runs are kept |
 | POST | `/runs` | 201; 404 `exercise not found` unless built-in or yours |
 | GET | `/runs?exerciseId=&limit=` | newest first; limit 1–200, default 50 |
+| GET | `/progress` | one row per exercise practiced, most recent first |
+| GET | `/stats/positions` | every position tried, by string then fret |
+| GET | `/stats/week?days=&tz=` | practice per local day, oldest first, empty days included; days 1–92 (default 7), tz an IANA zone (default UTC; the SPA sends the device's) |
 
 ## Milestones
 
@@ -148,14 +168,14 @@ apps/fretwork/
    - #13 `find` engine (done)
    - #14 `respond` engine (done, apart from `play-heard-note`, which waits on #16)
    - #16 audio output (click, tones, drone; done; real-phone check pending)
-   - #15 `sequence` engine (done; the ladder moves server-side with #18)
+   - #15 `sequence` engine (done)
 3. **Make it yours**
    - #17 exercise builder
    - #20 suggested sessions and routines
    - #21 complete the starter catalog
 4. **Track it**
-   - #18 progress data
-   - #19 progress screen
+   - #18 progress data (done)
+   - #19 progress screen (done)
 5. **Polish**
    - #22 phone ergonomics (wake lock, PWA)
    - #23 larger screens
