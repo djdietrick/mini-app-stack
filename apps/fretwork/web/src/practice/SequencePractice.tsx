@@ -43,8 +43,8 @@ const SHAPE_VIEWS: { view: ShapeView; label: string }[] = [
  *
  * Each run is its own Round (keyed), so a new run starts from a clean
  * reducer. The click, the drone and the ladder live here and carry across
- * runs. The ladder starts from this exercise's past runs, until progress is
- * kept on the server.
+ * runs. The ladder starts where the server's progress left it, and moves
+ * here by the same rule (advanceLadder) the server applies to each run.
  */
 export function SequencePractice({ exercise, config }: { exercise: ExerciseRow; config: SequenceConfig }) {
   const [round, setRound] = useState(0);
@@ -57,13 +57,20 @@ export function SequencePractice({ exercise, config }: { exercise: ExerciseRow; 
   const { droneLevel, headphones } = useSettings();
   const { beat } = useMetronome(ladder.tempo, clickOn);
 
-  // Once the ladder has moved here, past runs arriving late mustn't undo it.
+  // The server keeps the ladder (GET /progress). An exercise last played
+  // before it did has no progress row, so rebuild it from its recent runs.
+  // Once the ladder has moved here, a late response mustn't undo it.
   const touched = useRef(false);
-  const past = useApi(`runs:${exercise.id}`, () => api.listRuns({ exerciseId: exercise.id, limit: 50 }));
+  const start = useApi(`ladder:${exercise.id}`, async (): Promise<Ladder | null> => {
+    const row = (await api.listProgress()).find((p) => p.exercise_id === exercise.id);
+    if (row?.tempo != null) return { tempo: row.tempo, streak: row.clean_streak };
+    const runs = await api.listRuns({ exerciseId: exercise.id, limit: 50 });
+    return runs.length ? ladderFromRuns(runs, config.tempo) : null;
+  });
   useEffect(() => {
-    if (past.data && !touched.current) setLadder(ladderFromRuns(past.data, config.tempo));
+    if (start.data && !touched.current) setLadder(start.data);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [past.data]);
+  }, [start.data]);
 
   useEffect(() => () => stopDrone(), []);
 

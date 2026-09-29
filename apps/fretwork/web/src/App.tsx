@@ -5,6 +5,7 @@ import { ExerciseDetail } from "./screens/ExerciseDetail";
 import { Home } from "./screens/Home";
 import { Library } from "./screens/Library";
 import { Practice } from "./screens/Practice";
+import { Progress } from "./screens/Progress";
 import { Settings } from "./screens/Settings";
 import { Tune } from "./screens/Tune";
 
@@ -25,12 +26,7 @@ export function App() {
       )}
       {route.name === "tune" && <Tune />}
       {route.name === "settings" && <Settings />}
-      {route.name === "progress" && (
-        <ComingSoon
-          title="Progress"
-          body="A fretboard map of how fast you find each position, your tempo ladder per exercise, and this week's practice. It fills in from your runs."
-        />
-      )}
+      {route.name === "progress" && <Progress />}
     </AppShell>
   );
 }

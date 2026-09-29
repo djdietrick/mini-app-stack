@@ -212,6 +212,9 @@ for (const [backendName, backend] of Object.entries(backends)) {
           ["POST", "/exercises"],
           ["GET", "/runs"],
           ["POST", "/runs"],
+          ["GET", "/progress"],
+          ["GET", "/stats/positions"],
+          ["GET", "/stats/week"],
         ] as const) {
           assert.deepEqual(
             await as(null)(method, path),
@@ -383,6 +386,137 @@ for (const [backendName, backend] of Object.entries(backends)) {
         assert.equal((await as(player)("DELETE", `/exercises/${mine}`)).status, 404);
         assert.equal((await as(player)("GET", `/runs?exerciseId=${mine}`)).body.length, 1);
         assert.equal((await as(player)("POST", "/runs", run(mine, "2026-09-04T10:00:00Z"))).status, 404);
+      });
+
+      it("keeps the tempo ladder per exercise as runs are recorded", async () => {
+        const lee = await newUser("Lee");
+        const seq = BUILTIN_EXERCISES.find((e) => e.config.engine === "sequence")!;
+        const { start, step, cleanRunsToAdvance } = (seq.config as { tempo: Record<string, number> }).tempo;
+        const at = (i: number) => new Date(Date.UTC(2026, 8, 10, 9, i)).toISOString();
+        const post = async (i: number, clean: boolean, tempo: number | null, id = seq.id) =>
+          assert.equal(
+            (await as(lee)("POST", "/runs", run(id, at(i), { clean, tempo, notesClean: clean ? 2 : 1 }))).status,
+            201,
+          );
+
+        assert.deepEqual(await as(lee)("GET", "/progress"), { status: 200, body: [] });
+
+        for (let i = 0; i < cleanRunsToAdvance; i++) await post(i, true, start);
+        let [row] = (await as(lee)("GET", "/progress")).body;
+        assert.deepEqual(row, {
+          exercise_id: seq.id,
+          tempo: start + step,
+          clean_streak: 0,
+          best_tempo: start,
+          runs: cleanRunsToAdvance,
+          last_practiced_at: at(cleanRunsToAdvance - 1),
+        });
+
+        await post(10, true, start + step);
+        [row] = (await as(lee)("GET", "/progress")).body;
+        assert.equal(row.clean_streak, 1);
+        await post(11, false, start + step);
+        [row] = (await as(lee)("GET", "/progress")).body;
+        assert.deepEqual(
+          { tempo: row.tempo, clean_streak: row.clean_streak, best_tempo: row.best_tempo },
+          { tempo: start + step, clean_streak: 0, best_tempo: start + step },
+          "an unclean run resets the streak",
+        );
+
+        // A run posted late does not move last_practiced_at back.
+        await post(-30, true, start + step);
+        [row] = (await as(lee)("GET", "/progress")).body;
+        assert.equal(row.last_practiced_at, at(11));
+
+        // A find exercise has no ladder; the most recently practiced lists first.
+        await post(20, true, null, builtin.id);
+        const rows = (await as(lee)("GET", "/progress")).body;
+        assert.deepEqual(
+          rows.map((r: { exercise_id: string }) => r.exercise_id),
+          [builtin.id, seq.id],
+        );
+        assert.deepEqual(rows[0], {
+          exercise_id: builtin.id,
+          tempo: null,
+          clean_streak: 1,
+          best_tempo: null,
+          runs: 1,
+          last_practiced_at: at(20),
+        });
+        assert.deepEqual((await as(outsider)("GET", "/progress")).body, []);
+      });
+
+      it("folds runs recorded at the same time one after the other", async () => {
+        const sam = await newUser("Sam");
+        await Promise.all(
+          Array.from({ length: 5 }, (_, i) =>
+            as(sam)("POST", "/runs", run(builtin.id, new Date(Date.UTC(2026, 8, 11, 9, i)).toISOString())),
+          ),
+        );
+        const [row] = (await as(sam)("GET", "/progress")).body;
+        assert.equal(row.runs, 5);
+        const cells = (await as(sam)("GET", "/stats/positions")).body;
+        assert.equal(cells.find((c: { fret: number }) => c.fret === 0).attempts, 5);
+      });
+
+      it("maps positions from find and respond runs, but not sequence runs", async () => {
+        const kim = await newUser("Kim");
+        assert.deepEqual(await as(kim)("GET", "/stats/positions"), { status: 200, body: [] });
+
+        const respond = BUILTIN_EXERCISES.find((e) => e.config.engine === "respond")!;
+        const seq = BUILTIN_EXERCISES.find((e) => e.config.engine === "sequence")!;
+        await as(kim)("POST", "/runs", run(builtin.id, "2026-09-12T10:00:00Z"));
+        await as(kim)(
+          "POST",
+          "/runs",
+          run(respond.id, "2026-09-12T10:05:00Z", {
+            tempo: null,
+            notes: [
+              { midi: 40, ok: true, ms: 1200, string: 6, fret: 0 },
+              { midi: 57, ok: false, ms: 9000, string: null, fret: null },
+            ],
+          }),
+        );
+        await as(kim)(
+          "POST",
+          "/runs",
+          run(seq.id, "2026-09-12T10:10:00Z", { notes: [{ midi: 45, ok: true, ms: 500, string: 5, fret: 0 }] }),
+        );
+
+        assert.deepEqual((await as(kim)("GET", "/stats/positions")).body, [
+          { string: 6, fret: 0, attempts: 2, hits: 2, total_ms: 2000 },
+          { string: 6, fret: 3, attempts: 1, hits: 0, total_ms: 0 },
+        ]);
+        assert.deepEqual((await as(outsider)("GET", "/stats/positions")).body, []);
+      });
+
+      it("totals practice per local day", async () => {
+        const ash = await newUser("Ash");
+        const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+        await as(ash)("POST", "/runs", run(builtin.id, ago(60_000), { durationMs: 90_000 }));
+        await as(ash)("POST", "/runs", run(builtin.id, ago(2 * 86_400_000), { durationMs: 30_000 }));
+        await as(ash)("POST", "/runs", run(builtin.id, ago(30 * 86_400_000), { durationMs: 45_000 }));
+
+        const res = await as(ash)("GET", "/stats/week?tz=UTC");
+        assert.equal(res.status, 200);
+        assert.equal(res.body.length, 7);
+        assert.deepEqual(Object.keys(res.body[0]).sort(), ["date", "duration_ms", "runs"]);
+        const day = (iso: string) => res.body.find((d: { date: string }) => d.date === iso.slice(0, 10));
+        assert.deepEqual(day(ago(60_000)), { date: ago(60_000).slice(0, 10), runs: 1, duration_ms: 90_000 });
+        assert.equal(day(ago(2 * 86_400_000)).runs, 1);
+        assert.equal(
+          res.body.reduce((n: number, d: { runs: number }) => n + d.runs, 0),
+          2,
+          "the run a month ago is outside the week",
+        );
+
+        assert.equal((await as(ash)("GET", "/stats/week?days=31&tz=Asia/Tokyo")).body.length, 31);
+        assert.equal((await as(ash)("GET", "/stats/week?tz=Nowhere/Special")).status, 400);
+        assert.equal((await as(ash)("GET", "/stats/week?days=0")).status, 400);
+        assert.equal(
+          (await as(outsider)("GET", "/stats/week")).body.reduce((n: number, d: { runs: number }) => n + d.runs, 0),
+          0,
+        );
       });
     });
   }

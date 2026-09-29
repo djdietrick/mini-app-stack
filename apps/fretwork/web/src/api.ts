@@ -5,15 +5,29 @@
  */
 import type {
   Category,
+  DayRow,
   ExerciseConfig,
   ExerciseInput,
   ExercisePatch,
   ExerciseRow,
+  PositionStatRow,
+  ProgressRow,
   RunInput,
   RunRow,
 } from "../../src/domain/types.js";
 
-export type { Category, ExerciseConfig, ExerciseInput, ExercisePatch, ExerciseRow, RunInput, RunRow };
+export type {
+  Category,
+  DayRow,
+  ExerciseConfig,
+  ExerciseInput,
+  ExercisePatch,
+  ExerciseRow,
+  PositionStatRow,
+  ProgressRow,
+  RunInput,
+  RunRow,
+};
 
 export class ApiError extends Error {
   constructor(
@@ -51,5 +65,12 @@ export const api = {
     if (opts.limit) q.set("limit", String(opts.limit));
     const qs = q.toString();
     return call<RunRow[]>("GET", `/runs${qs ? `?${qs}` : ""}`);
+  },
+  listProgress: () => call<ProgressRow[]>("GET", "/progress"),
+  positionStats: () => call<PositionStatRow[]>("GET", "/stats/positions"),
+  /** Practice per day in the device's time zone, oldest first. */
+  week: (days = 7) => {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    return call<DayRow[]>("GET", `/stats/week?${new URLSearchParams({ days: String(days), tz })}`);
   },
 };

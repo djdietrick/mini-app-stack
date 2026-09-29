@@ -194,3 +194,35 @@ export interface RunRow {
   clean: boolean;
   created_at: string;
 }
+
+// ---------- progress ----------
+
+/** One exercise's progress, kept up to date as runs are recorded. */
+export interface ProgressRow {
+  exercise_id: string;
+  /** The tempo ladder's current bpm; null for engines without a click. */
+  tempo: number | null;
+  clean_streak: number;
+  /** The fastest bpm with a clean run. */
+  best_tempo: number | null;
+  runs: number;
+  last_practiced_at: string;
+}
+
+/** One fretboard position's totals, from find and respond runs. */
+export interface PositionStatRow {
+  string: number;
+  fret: number;
+  attempts: number;
+  hits: number;
+  /** Time spent on the hits only: `total_ms / hits` is the average time to find it. */
+  total_ms: number;
+}
+
+/** Practice on one local calendar day. */
+export interface DayRow {
+  /** YYYY-MM-DD in the requested time zone. */
+  date: string;
+  runs: number;
+  duration_ms: number;
+}

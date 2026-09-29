@@ -1,5 +1,14 @@
 import type { Closable } from "@stack/service-kit";
-import type { ExerciseInput, ExercisePatch, ExerciseRow, RunInput, RunRow } from "../domain/types.js";
+import type { RunEffects } from "../domain/progress.js";
+import type {
+  ExerciseInput,
+  ExercisePatch,
+  ExerciseRow,
+  PositionStatRow,
+  ProgressRow,
+  RunInput,
+  RunRow,
+} from "../domain/types.js";
 
 /**
  * fretwork's data port. Implemented twice: postgres.ts (self-hosted) and
@@ -18,8 +27,19 @@ export interface FretworkRepo extends Closable {
   updateExercise(userId: string, id: string, patch: ExercisePatch): Promise<ExerciseRow | null>;
   deleteExercise(userId: string, id: string): Promise<boolean>;
 
-  /** Appends a finished run. Runs are never edited. */
-  recordRun(userId: string, run: RunInput): Promise<RunRow>;
+  /**
+   * Appends a finished run, and in the same transaction folds it into the
+   * exercise's progress (`foldProgress`) and, when `effects.positions`, the
+   * position stats (`foldPositions`). Runs are never edited.
+   */
+  recordRun(userId: string, run: RunInput, effects: RunEffects): Promise<RunRow>;
   /** Newest first by started_at. */
   listRuns(userId: string, opts: { exerciseId?: string; limit: number }): Promise<RunRow[]>;
+  /** Start and length of every run started at or after `since` (ISO 8601), in any order. */
+  listRunTimes(userId: string, since: string): Promise<{ started_at: string; duration_ms: number }[]>;
+
+  /** One row per exercise practiced, most recently practiced first. */
+  listProgress(userId: string): Promise<ProgressRow[]>;
+  /** Every position with at least one attempt, by string then fret. */
+  listPositionStats(userId: string): Promise<PositionStatRow[]>;
 }
