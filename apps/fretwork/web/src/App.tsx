@@ -4,6 +4,7 @@ import { ComingSoon } from "./screens/ComingSoon";
 import { ExerciseDetail } from "./screens/ExerciseDetail";
 import { Home } from "./screens/Home";
 import { Library } from "./screens/Library";
+import { Practice } from "./screens/Practice";
 import { Settings } from "./screens/Settings";
 import { Tune } from "./screens/Tune";
 
@@ -15,6 +16,7 @@ export function App() {
       {route.name === "home" && <Home />}
       {route.name === "library" && <Library />}
       {route.name === "exercise" && <ExerciseDetail key={route.id} id={route.id} />}
+      {route.name === "practice" && <Practice key={route.id} id={route.id} />}
       {route.name === "build" && (
         <ComingSoon
           title="Build an exercise"

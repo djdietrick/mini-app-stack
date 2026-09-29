@@ -4,9 +4,10 @@ import { useSettings } from "../settings";
 /**
  * The mic's permission states, explained before the browser asks and with a
  * way back when access was refused. `fallback` says what works without it
- * (tapping the neck, on practice screens).
+ * (tapping the neck, on practice screens). `compact` keeps the idle state to
+ * one row, so a practice screen's neck stays in view.
  */
-export function MicPanel({ mic, fallback }: { mic: NoteStream; fallback?: string }) {
+export function MicPanel({ mic, fallback, compact }: { mic: NoteStream; fallback?: string; compact?: boolean }) {
   switch (mic.status) {
     case "listening":
       return (
@@ -62,6 +63,16 @@ export function MicPanel({ mic, fallback }: { mic: NoteStream; fallback?: string
       );
 
     case "idle":
+      if (compact) {
+        return (
+          <div className="card flex items-center gap-3 p-3">
+            <button type="button" onClick={() => void mic.start()} className="btn-primary shrink-0 px-4">
+              Turn on mic
+            </button>
+            <p className="text-[13px] text-muted">{mic.error ?? fallback ?? "Nothing is recorded or uploaded."}</p>
+          </div>
+        );
+      }
       return (
         <div className="card flex flex-col gap-3 p-4">
           <h2 className="font-display text-lg font-bold">Let Fretwork listen</h2>
