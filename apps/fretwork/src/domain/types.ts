@@ -281,3 +281,50 @@ export interface DayRow {
   runs: number;
   duration_ms: number;
 }
+
+// ---------- routines and sessions ----------
+
+/** One step of a routine: an exercise, and how long to spend on it. */
+export const routineItem = z.object({
+  exerciseId: z.string().uuid(),
+  minutes: z.number().int().min(1).max(60),
+});
+
+export const routineInput = z.object({
+  name: z.string().trim().min(1).max(80),
+  items: z.array(routineItem).min(1).max(20),
+});
+export type RoutineInput = z.infer<typeof routineInput>;
+
+export const routinePatch = routineInput
+  .partial()
+  .refine((p) => Object.keys(p).length > 0, { message: "nothing to update" });
+export type RoutinePatch = z.infer<typeof routinePatch>;
+
+/**
+ * A player's own ordered practice list. Items are kept as given: an item whose
+ * exercise was deleted later stays, and the session runner skips it.
+ */
+export interface RoutineRow {
+  id: string;
+  name: string;
+  items: { exercise_id: string; minutes: number }[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Why the suggestion picked an item. */
+export type SuggestionSlot = "weak-spot" | "tempo" | "revisit";
+
+export interface SuggestedItem {
+  exercise_id: string;
+  minutes: number;
+  slot: SuggestionSlot;
+  /** One line for the player: "Your slowest patch: frets 7–10 on the G and B strings". */
+  reason: string;
+}
+
+export interface SuggestedSession {
+  minutes: number;
+  items: SuggestedItem[];
+}

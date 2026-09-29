@@ -6,6 +6,8 @@ import type {
   ExerciseRow,
   PositionStatRow,
   ProgressRow,
+  RoutineInput,
+  RoutineRow,
   RunInput,
   RunRow,
 } from "../domain/types.js";
@@ -85,6 +87,26 @@ export function createPostgresFretworkRepo(pg: PostgresClient): FretworkRepo {
     runs: r.runs,
     last_practiced_at: iso(r.last_practiced_at!),
   });
+
+  interface RoutineDbRow {
+    id: string;
+    name: string;
+    items: RoutineRow["items"];
+    created_at: string;
+    updated_at: string;
+  }
+
+  const toRoutine = (r: RoutineDbRow): RoutineRow => ({
+    id: r.id,
+    name: r.name,
+    items: r.items,
+    created_at: iso(r.created_at),
+    updated_at: iso(r.updated_at),
+  });
+
+  /** Stored snake_case, as the wire has them, in the order given. */
+  const itemsJson = (items: RoutineInput["items"]) =>
+    JSON.stringify(items.map((i) => ({ exercise_id: i.exerciseId, minutes: i.minutes })));
 
   return {
     async listExercises(userId) {
@@ -235,6 +257,54 @@ export function createPostgresFretworkRepo(pg: PostgresClient): FretworkRepo {
         ORDER BY string, fret
       `;
       return rows.map((r) => ({ ...r, total_ms: Number(r.total_ms) }));
+    },
+
+    async listRoutines(userId) {
+      const rows = await sql<RoutineDbRow[]>`
+        SELECT id, name, items, created_at, updated_at
+        FROM routines
+        WHERE user_id = ${userId}
+        ORDER BY created_at DESC
+      `;
+      return rows.map(toRoutine);
+    },
+
+    async getRoutine(userId, id) {
+      const rows = await sql<RoutineDbRow[]>`
+        SELECT id, name, items, created_at, updated_at
+        FROM routines
+        WHERE id = ${id} AND user_id = ${userId}
+      `;
+      return rows[0] ? toRoutine(rows[0]) : null;
+    },
+
+    async createRoutine(userId, input) {
+      const [row] = await sql<RoutineDbRow[]>`
+        INSERT INTO routines (user_id, name, items)
+        VALUES (${userId}, ${input.name}, ${itemsJson(input.items)}::jsonb)
+        RETURNING id, name, items, created_at, updated_at
+      `;
+      return toRoutine(row);
+    },
+
+    async updateRoutine(userId, id, patch) {
+      const rows = await sql<RoutineDbRow[]>`
+        UPDATE routines SET
+          name       = COALESCE(${patch.name ?? null}, name),
+          items      = COALESCE(${patch.items ? itemsJson(patch.items) : null}::jsonb, items),
+          updated_at = now()
+        WHERE id = ${id} AND user_id = ${userId}
+        RETURNING id, name, items, created_at, updated_at
+      `;
+      return rows[0] ? toRoutine(rows[0]) : null;
+    },
+
+    async deleteRoutine(userId, id) {
+      const rows = await sql`
+        DELETE FROM routines WHERE id = ${id} AND user_id = ${userId}
+        RETURNING id
+      `;
+      return rows.length > 0;
     },
 
     close: () => pg.close(),

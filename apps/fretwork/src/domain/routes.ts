@@ -1,9 +1,10 @@
-import { type AnyRoute, createRouteBuilder, forbidden, notFound } from "@stack/service-kit";
+import { type AnyRoute, type Ctx, createRouteBuilder, forbidden, notFound } from "@stack/service-kit";
 import { z } from "zod";
 import type { FretworkRepo } from "../repo/types.js";
 import { BUILTIN_EXERCISES, builtinExercise } from "./catalog.js";
 import { practiceByDay, runEffects, weekQuery, weekSince } from "./progress.js";
-import { exerciseInput, exercisePatch, runInput } from "./types.js";
+import { suggestSession } from "./suggest.js";
+import { exerciseInput, exercisePatch, routineInput, routinePatch, runInput } from "./types.js";
 
 /**
  * Every fretwork endpoint, transport-free. The same table is served by
@@ -12,10 +13,21 @@ import { exerciseInput, exercisePatch, runInput } from "./types.js";
  * Exercises are the starter catalog (read-only, in code) plus the user's own.
  * Runs are append-only results posted by the SPA after it has graded them;
  * recording one also folds it into the aggregates in domain/progress.ts.
+ * Routines are the user's own ordered lists of exercises; the suggested
+ * session is computed from progress on every request (domain/suggest.ts).
  */
 const route = createRouteBuilder<FretworkRepo>();
 
 const idParam = z.object({ id: z.string().uuid() });
+
+/** Every exercise a routine names must be a built-in or the user's own, like a run's. */
+async function checkExercises(ctx: Ctx<FretworkRepo>, items: readonly { exerciseId: string }[] | undefined) {
+  if (!items) return;
+  const own = new Set((await ctx.repo.listExercises(ctx.user.userId)).map((e) => e.id));
+  if (items.some((i) => !builtinExercise(i.exerciseId) && !own.has(i.exerciseId))) {
+    throw notFound("exercise not found");
+  }
+}
 
 export function fretworkRoutes(): AnyRoute<FretworkRepo>[] {
   return [
@@ -119,6 +131,69 @@ export function fretworkRoutes(): AnyRoute<FretworkRepo>[] {
       method: "GET",
       path: "/stats/positions",
       handler: async (ctx) => ctx.repo.listPositionStats(ctx.user.userId),
+    }),
+
+    route({
+      method: "GET",
+      path: "/sessions/suggested",
+      handler: async (ctx) => {
+        const [own, progress, positions] = await Promise.all([
+          ctx.repo.listExercises(ctx.user.userId),
+          ctx.repo.listProgress(ctx.user.userId),
+          ctx.repo.listPositionStats(ctx.user.userId),
+        ]);
+        return suggestSession({ exercises: [...BUILTIN_EXERCISES, ...own], progress, positions, now: new Date() });
+      },
+    }),
+
+    route({
+      method: "GET",
+      path: "/routines",
+      handler: async (ctx) => ctx.repo.listRoutines(ctx.user.userId),
+    }),
+
+    route({
+      method: "GET",
+      path: "/routines/:id",
+      input: { params: idParam },
+      handler: async (ctx, { params }) => {
+        const found = await ctx.repo.getRoutine(ctx.user.userId, params.id);
+        if (!found) throw notFound();
+        return found;
+      },
+    }),
+
+    route({
+      method: "POST",
+      path: "/routines",
+      input: { body: routineInput },
+      status: () => 201,
+      handler: async (ctx, { body }) => {
+        await checkExercises(ctx, body.items);
+        return ctx.repo.createRoutine(ctx.user.userId, body);
+      },
+    }),
+
+    route({
+      method: "PATCH",
+      path: "/routines/:id",
+      input: { params: idParam, body: routinePatch },
+      handler: async (ctx, { params, body }) => {
+        await checkExercises(ctx, body.items);
+        const updated = await ctx.repo.updateRoutine(ctx.user.userId, params.id, body);
+        if (!updated) throw notFound();
+        return updated;
+      },
+    }),
+
+    route({
+      method: "DELETE",
+      path: "/routines/:id",
+      input: { params: idParam },
+      handler: async (ctx, { params }) => {
+        if (!(await ctx.repo.deleteRoutine(ctx.user.userId, params.id))) throw notFound();
+        return { ok: true };
+      },
     }),
 
     route({

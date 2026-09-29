@@ -215,6 +215,9 @@ for (const [backendName, backend] of Object.entries(backends)) {
           ["GET", "/progress"],
           ["GET", "/stats/positions"],
           ["GET", "/stats/week"],
+          ["GET", "/sessions/suggested"],
+          ["GET", "/routines"],
+          ["POST", "/routines"],
         ] as const) {
           assert.deepEqual(
             await as(null)(method, path),
@@ -488,6 +491,124 @@ for (const [backendName, backend] of Object.entries(backends)) {
           { string: 6, fret: 3, attempts: 1, hits: 0, total_ms: 0 },
         ]);
         assert.deepEqual((await as(outsider)("GET", "/stats/positions")).body, []);
+      });
+
+      it("keeps routines per user, in order, on every write", async () => {
+        const rae = await newUser("Rae");
+        const [a, b] = [BUILTIN_EXERCISES[0].id, BUILTIN_EXERCISES[3].id];
+        assert.deepEqual(await as(rae)("GET", "/routines"), { status: 200, body: [] });
+
+        const created = await as(rae)("POST", "/routines", {
+          name: "  Warm-up  ",
+          items: [
+            { exerciseId: b, minutes: 5 },
+            { exerciseId: a, minutes: 10 },
+          ],
+        });
+        assert.equal(created.status, 201);
+        assert.deepEqual(Object.keys(created.body).sort(), ["created_at", "id", "items", "name", "updated_at"]);
+        assert.equal(created.body.name, "Warm-up", "trimmed");
+        assert.deepEqual(created.body.items, [
+          { exercise_id: b, minutes: 5 },
+          { exercise_id: a, minutes: 10 },
+        ]);
+        assert.equal(created.body.created_at, new Date(created.body.created_at).toISOString(), "ISO 8601");
+        const id = created.body.id;
+        assert.deepEqual((await as(rae)("GET", `/routines/${id}`)).body, created.body);
+
+        const second = (await as(rae)("POST", "/routines", { name: "Scales", items: [{ exerciseId: b, minutes: 15 }] })).body;
+        assert.deepEqual(
+          (await as(rae)("GET", "/routines")).body.map((r: { id: string }) => r.id),
+          [second.id, id],
+          "newest first",
+        );
+
+        const renamed = await as(rae)("PATCH", `/routines/${id}`, { name: "Morning" });
+        assert.equal(renamed.status, 200);
+        assert.equal(renamed.body.name, "Morning");
+        assert.deepEqual(renamed.body.items, created.body.items, "items untouched");
+        assert.ok(renamed.body.updated_at >= created.body.updated_at);
+
+        const reordered = await as(rae)("PATCH", `/routines/${id}`, {
+          items: [
+            { exerciseId: a, minutes: 3 },
+            { exerciseId: b, minutes: 4 },
+            { exerciseId: a, minutes: 2 },
+          ],
+        });
+        assert.equal(reordered.body.name, "Morning", "name untouched");
+        assert.deepEqual(
+          reordered.body.items.map((i: { minutes: number }) => i.minutes),
+          [3, 4, 2],
+        );
+
+        // Someone else's routine is not found, whatever the method.
+        assert.equal((await as(outsider)("GET", `/routines/${id}`)).status, 404);
+        assert.equal((await as(outsider)("PATCH", `/routines/${id}`, { name: "Mine" })).status, 404);
+        assert.equal((await as(outsider)("DELETE", `/routines/${id}`)).status, 404);
+        assert.deepEqual((await as(outsider)("GET", "/routines")).body, []);
+
+        assert.deepEqual(await as(rae)("DELETE", `/routines/${id}`), { status: 200, body: { ok: true } });
+        assert.equal((await as(rae)("GET", `/routines/${id}`)).status, 404);
+        assert.equal((await as(rae)("DELETE", `/routines/${id}`)).status, 404);
+        assert.equal((await as(rae)("GET", "/routines")).body.length, 1);
+      });
+
+      it("validates routines, and only takes exercises the user can see", async () => {
+        const ray = await newUser("Ray");
+        const item = { exerciseId: BUILTIN_EXERCISES[0].id, minutes: 5 };
+        for (const body of [
+          { name: "x" },
+          { name: "", items: [item] },
+          { name: "x", items: [] },
+          { name: "x", items: [{ ...item, minutes: 0 }] },
+          { name: "x", items: [{ ...item, exerciseId: "nope" }] },
+        ]) {
+          const res = await as(ray)("POST", "/routines", body);
+          assert.equal(res.status, 400, JSON.stringify(body));
+        }
+        assert.ok((await as(ray)("POST", "/routines", { name: "x" })).body.error.fieldErrors.items);
+
+        assert.deepEqual(
+          await as(ray)("POST", "/routines", { name: "x", items: [{ ...item, exerciseId: randomUUID() }] }),
+          { status: 404, body: { error: "exercise not found" } },
+        );
+        const theirs = (await as(outsider)("POST", "/exercises", { name: "Oz's", category: "scales", config: pentatonic })).body;
+        assert.equal(
+          (await as(ray)("POST", "/routines", { name: "x", items: [{ ...item, exerciseId: theirs.id }] })).status,
+          404,
+        );
+        const mineEx = (await as(ray)("POST", "/exercises", { name: "Ray's", category: "scales", config: pentatonic })).body;
+        const ok = await as(ray)("POST", "/routines", { name: "x", items: [item, { exerciseId: mineEx.id, minutes: 7 }] });
+        assert.equal(ok.status, 201);
+        assert.equal((await as(ray)("PATCH", `/routines/${ok.body.id}`, {})).status, 400);
+        assert.equal(
+          (await as(ray)("PATCH", `/routines/${ok.body.id}`, { items: [{ ...item, exerciseId: theirs.id }] })).status,
+          404,
+        );
+      });
+
+      it("suggests a session from the user's progress", async () => {
+        const sky = await newUser("Sky");
+        const first = await as(sky)("GET", "/sessions/suggested");
+        assert.equal(first.status, 200);
+        assert.deepEqual(Object.keys(first.body).sort(), ["items", "minutes"]);
+        assert.deepEqual(
+          first.body.items.map((i: { slot: string }) => i.slot),
+          ["weak-spot", "tempo", "revisit"],
+        );
+        assert.deepEqual(Object.keys(first.body.items[0]).sort(), ["exercise_id", "minutes", "reason", "slot"]);
+        assert.equal(first.body.minutes, 15);
+
+        // Two clean runs of a sequence put it one run from a tempo bump.
+        const box1 = BUILTIN_EXERCISES.find((e) => e.name === "A minor pentatonic · box 1")!;
+        const { start, cleanRunsToAdvance } = (box1.config as { tempo: Record<string, number> }).tempo;
+        for (let i = 0; i < cleanRunsToAdvance - 1; i++) {
+          await as(sky)("POST", "/runs", run(box1.id, new Date(Date.now() - (i + 1) * 60_000).toISOString(), { clean: true, notesClean: 2, tempo: start }));
+        }
+        const next = (await as(sky)("GET", "/sessions/suggested")).body;
+        assert.equal(next.items[1].exercise_id, box1.id);
+        assert.match(next.items[1].reason, /^One clean run from \d+ bpm$/);
       });
 
       it("totals practice per local day", async () => {

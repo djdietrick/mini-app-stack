@@ -1,51 +1,111 @@
-import { api, type ExerciseRow } from "../api";
+import { useState } from "react";
+import { api, type ExerciseRow, type RoutineRow } from "../api";
 import { href } from "../router";
 import { useApi } from "../useApi";
 
 /**
- * Today's practice. For now the suggestion is a fixed pick of one built-in per
- * category; it becomes a real suggestion (weak spots, due tempo bumps) once
- * progress tracking lands, with the player's own routines alongside it.
+ * Today's practice: the suggested session (GET /sessions/suggested, from
+ * progress and the fretboard map; the rule is src/domain/suggest.ts), the
+ * player's own routines, and recent runs. "Save as routine" copies the
+ * suggestion into a routine the player can then edit.
  */
 export function Home() {
   const exercises = useApi("exercises", api.listExercises);
+  const suggestion = useApi("session:suggested", api.suggestedSession);
+  const routines = useApi("routines", api.listRoutines);
   const runs = useApi("runs:recent", () => api.listRuns({ limit: 5 }));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   const byId = new Map((exercises.data ?? []).map((e) => [e.id, e]));
-  const suggestion = pickSuggestion(exercises.data ?? []);
+  const items = suggestion.data?.items ?? [];
+
+  const saveAsRoutine = async () => {
+    setSaving(true);
+    setSaveError(false);
+    try {
+      const day = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const r = await api.createRoutine({
+        name: `Session from ${day}`,
+        items: items.map((i) => ({ exerciseId: i.exercise_id, minutes: i.minutes })),
+      });
+      window.location.hash = href({ name: "routine", id: r.id });
+    } catch {
+      setSaveError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="card flex flex-col gap-4 p-5">
+      <section className="card flex flex-col gap-4 p-5" aria-labelledby="suggested-h">
         <div className="flex items-baseline justify-between">
-          <h1 className="font-display text-xl font-bold">Suggested session</h1>
-          <span className="font-mono text-[13px] text-muted">{suggestion.length * 5} min</span>
+          <h1 id="suggested-h" className="font-display text-xl font-bold">
+            Suggested session
+          </h1>
+          {suggestion.data && <span className="font-mono text-[13px] text-muted">{suggestion.data.minutes} min</span>}
         </div>
-        {exercises.loading && !exercises.data && <p className="text-sm text-muted">Loading…</p>}
-        {exercises.error && <p className="text-sm text-miss">Couldn't load exercises.</p>}
+        {suggestion.loading && !suggestion.data && <p className="text-sm text-muted">Loading…</p>}
+        {suggestion.error && <p className="text-sm text-miss">Couldn't load today's suggestion.</p>}
         <ol className="flex flex-col gap-2">
-          {suggestion.map((e, i) => (
-            <li key={e.id}>
+          {items.map((item, i) => (
+            <li key={item.exercise_id}>
               <a
-                href={href({ name: "exercise", id: e.id })}
-                className="focus-ring flex min-h-[44px] items-center gap-3 rounded-xl"
+                href={href({ name: "exercise", id: item.exercise_id })}
+                className="focus-ring flex min-h-[52px] items-center gap-3 rounded-xl"
               >
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-raised font-mono text-xs text-brass">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-raised font-mono text-xs text-brass">
                   {i + 1}
                 </span>
-                <span className="flex-1 text-[15px]">{e.name}</span>
-                <span className="text-[13px] text-muted">5 min</span>
+                <span className="flex flex-1 flex-col">
+                  <span className="text-[15px]">{byId.get(item.exercise_id)?.name ?? "…"}</span>
+                  <span className="text-[13px] text-muted">{item.reason}</span>
+                </span>
+                <span className="shrink-0 text-[13px] text-muted">{item.minutes} min</span>
               </a>
             </li>
           ))}
         </ol>
-        <a href={href({ name: "tune" })} className="btn focus-ring self-start">
-          Tune up first
-        </a>
-        <p className="text-[13px] text-faint">
-          Suggestions will follow your weak spots once progress tracking is in. You'll be able to save your
-          own routines too.
-        </p>
+        <div className="flex flex-wrap gap-2">
+          {items.length > 0 && (
+            <a href={href({ name: "session", source: "suggested" })} className="btn-primary focus-ring">
+              Start session
+            </a>
+          )}
+          {items.length > 0 && (
+            <button type="button" onClick={() => void saveAsRoutine()} disabled={saving} className="btn">
+              Save as routine
+            </button>
+          )}
+          <a href={href({ name: "tune" })} className="btn focus-ring">
+            Tune up first
+          </a>
+        </div>
+        {saveError && <p className="text-[13px] text-miss">Couldn't save it as a routine. Try again.</p>}
+      </section>
+
+      <section className="flex flex-col gap-3" aria-labelledby="routines-h">
+        <div className="flex items-center justify-between">
+          <h2 id="routines-h" className="font-display text-lg font-bold">
+            Your routines
+          </h2>
+          <a href={href({ name: "routine" })} className="btn focus-ring">
+            New routine
+          </a>
+        </div>
+        {routines.error && <p className="text-sm text-miss">Couldn't load your routines.</p>}
+        {routines.data && routines.data.length === 0 && (
+          <p className="text-sm text-muted">
+            A routine is your own list of exercises, each with a time. Build one, or save today's suggestion as a
+            starting point.
+          </p>
+        )}
+        <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2">
+          {(routines.data ?? []).map((r) => (
+            <RoutineCard key={r.id} routine={r} byId={byId} />
+          ))}
+        </ul>
       </section>
 
       <section className="flex flex-col gap-3">
@@ -69,11 +129,24 @@ export function Home() {
   );
 }
 
-function pickSuggestion(all: ExerciseRow[]): ExerciseRow[] {
-  const out: ExerciseRow[] = [];
-  for (const category of ["notes", "scales", "arpeggios"] as const) {
-    const first = all.find((e) => e.builtin && e.category === category);
-    if (first) out.push(first);
-  }
-  return out;
+function RoutineCard({ routine, byId }: { routine: RoutineRow; byId: Map<string, ExerciseRow> }) {
+  const minutes = routine.items.reduce((n, i) => n + i.minutes, 0);
+  const names = routine.items.map((i) => byId.get(i.exercise_id)?.name ?? "Deleted exercise");
+  return (
+    <li className="card flex flex-col gap-3 p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[15px] font-semibold">{routine.name}</span>
+        <span className="shrink-0 font-mono text-[13px] text-muted">{minutes} min</span>
+      </div>
+      <p className="text-[13px] text-muted">{names.join(" · ")}</p>
+      <div className="flex gap-2">
+        <a href={href({ name: "session", source: routine.id })} className="btn-primary focus-ring">
+          Start
+        </a>
+        <a href={href({ name: "routine", id: routine.id })} className="btn focus-ring">
+          Edit
+        </a>
+      </div>
+    </li>
+  );
 }

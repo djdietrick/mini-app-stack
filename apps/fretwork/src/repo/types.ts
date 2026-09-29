@@ -6,6 +6,9 @@ import type {
   ExerciseRow,
   PositionStatRow,
   ProgressRow,
+  RoutineInput,
+  RoutinePatch,
+  RoutineRow,
   RunInput,
   RunRow,
 } from "../domain/types.js";
@@ -42,4 +45,11 @@ export interface FretworkRepo extends Closable {
   listProgress(userId: string): Promise<ProgressRow[]>;
   /** Every position with at least one attempt, by string then fret. */
   listPositionStats(userId: string): Promise<PositionStatRow[]>;
+
+  /** The user's routines, newest first. */
+  listRoutines(userId: string): Promise<RoutineRow[]>;
+  getRoutine(userId: string, id: string): Promise<RoutineRow | null>;
+  createRoutine(userId: string, input: RoutineInput): Promise<RoutineRow>;
+  updateRoutine(userId: string, id: string, patch: RoutinePatch): Promise<RoutineRow | null>;
+  deleteRoutine(userId: string, id: string): Promise<boolean>;
 }

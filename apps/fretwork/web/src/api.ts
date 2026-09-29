@@ -12,8 +12,13 @@ import type {
   ExerciseRow,
   PositionStatRow,
   ProgressRow,
+  RoutineInput,
+  RoutinePatch,
+  RoutineRow,
   RunInput,
   RunRow,
+  SuggestedItem,
+  SuggestedSession,
 } from "../../src/domain/types.js";
 
 export type {
@@ -25,9 +30,22 @@ export type {
   ExerciseRow,
   PositionStatRow,
   ProgressRow,
+  RoutineInput,
+  RoutinePatch,
+  RoutineRow,
   RunInput,
   RunRow,
+  SuggestedItem,
+  SuggestedSession,
 };
+
+/** A 400's flattened zod error, when that is what the body holds. */
+export function fieldErrors(e: unknown): { form: string[]; fields: Record<string, string[]> } | null {
+  if (!(e instanceof ApiError) || e.status !== 400) return null;
+  const err = (e.body as { error?: { formErrors?: string[]; fieldErrors?: Record<string, string[]> } } | null)?.error;
+  if (!err || typeof err !== "object") return null;
+  return { form: err.formErrors ?? [], fields: err.fieldErrors ?? {} };
+}
 
 export class ApiError extends Error {
   constructor(
@@ -73,4 +91,10 @@ export const api = {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     return call<DayRow[]>("GET", `/stats/week?${new URLSearchParams({ days: String(days), tz })}`);
   },
+  suggestedSession: () => call<SuggestedSession>("GET", "/sessions/suggested"),
+  listRoutines: () => call<RoutineRow[]>("GET", "/routines"),
+  getRoutine: (id: string) => call<RoutineRow>("GET", `/routines/${id}`),
+  createRoutine: (input: RoutineInput) => call<RoutineRow>("POST", "/routines", input),
+  updateRoutine: (id: string, patch: RoutinePatch) => call<RoutineRow>("PATCH", `/routines/${id}`, patch),
+  deleteRoutine: (id: string) => call<{ ok: true }>("DELETE", `/routines/${id}`),
 };
