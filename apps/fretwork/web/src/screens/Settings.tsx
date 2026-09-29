@@ -1,4 +1,5 @@
 import { noteName, shapeInWindow } from "../../../src/theory/index.js";
+import { playNotes } from "../audio/output";
 import { useNoteStream } from "../audio/useNoteStream";
 import { type Dot, Fretboard } from "../components/Fretboard";
 import { LevelMeter, MicPanel } from "../components/MicPanel";
@@ -28,7 +29,10 @@ const gateToPos = (g: number) =>
   (Math.log(g / GATE_RANGE.min) / Math.log(GATE_RANGE.max / GATE_RANGE.min)) * 100;
 const posToGate = (p: number) => GATE_RANGE.min * (GATE_RANGE.max / GATE_RANGE.min) ** (p / 100);
 
-/** Settings for this device: how the neck is drawn and how the mic listens. */
+const SWITCH =
+  "focus-ring h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full bg-raised transition before:block before:h-5 before:w-5 before:translate-x-0.5 before:rounded-full before:bg-muted before:transition checked:bg-brass checked:before:translate-x-[22px] checked:before:bg-brass-ink";
+
+/** Settings for this device: how the neck is drawn, how the mic listens and how the app sounds. */
 export function Settings() {
   const settings = useSettings();
   const mic = useNoteStream();
@@ -47,7 +51,7 @@ export function Settings() {
               role="switch"
               checked={settings.leftHanded}
               onChange={(e) => updateSettings({ leftHanded: e.target.checked })}
-              className="focus-ring h-6 w-11 cursor-pointer appearance-none rounded-full bg-raised transition before:block before:h-5 before:w-5 before:translate-x-0.5 before:rounded-full before:bg-muted before:transition checked:bg-brass checked:before:translate-x-[22px] checked:before:bg-brass-ink"
+              className={SWITCH}
             />
           </label>
 
@@ -123,6 +127,56 @@ export function Settings() {
           >
             Reset sensitivity
           </button>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-3" aria-labelledby="sound-h">
+        <h2 id="sound-h" className="label-caps">Sound</h2>
+        <div className="card flex flex-col gap-4 p-4">
+          <label className="flex flex-col gap-2">
+            <span className="text-[15px]">Volume</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={settings.volume}
+              onChange={(e) => updateSettings({ volume: Number(e.target.value), muted: false })}
+              className="w-full accent-[#e5a54b]"
+            />
+          </label>
+          <label className="flex min-h-[44px] items-center justify-between gap-3">
+            <span className="text-[15px]">Mute</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={settings.muted}
+              onChange={(e) => updateSettings({ muted: e.target.checked })}
+              className={SWITCH}
+            />
+          </label>
+          <label className="flex min-h-[44px] items-center justify-between gap-3">
+            <span className="flex flex-col">
+              <span className="text-[15px]">I use headphones</span>
+              <span className="text-[13px] text-faint">
+                Off, the mic stops listening while the app plays a note, so it doesn't grade its own sound. On, it
+                keeps listening.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={settings.headphones}
+              onChange={(e) => updateSettings({ headphones: e.target.checked })}
+              className={SWITCH}
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn" onClick={() => playNotes([69])}>
+              Play A4
+            </button>
+            <span className="text-[13px] text-faint">At {settings.a4} Hz. Tones follow the reference pitch below.</span>
+          </div>
         </div>
       </section>
 

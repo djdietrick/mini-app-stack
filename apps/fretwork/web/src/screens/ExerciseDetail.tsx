@@ -3,14 +3,13 @@ import { api } from "../api";
 import { Fretboard } from "../components/Fretboard";
 import { CATEGORY_LABELS, ENGINE_LABELS, preview, summary } from "../describe";
 import { href } from "../router";
-import { canPractice } from "./Practice";
 import { updateSettings, useSettings } from "../settings";
 import { useApi } from "../useApi";
 
 /**
  * What an exercise asks for, drawn on the neck. Start opens the engine's
  * practice screen (#/practice/:id): fretboard-first for find, flashcards for
- * respond, and the lane for sequence once it lands.
+ * respond, and the lane for sequence.
  */
 export function ExerciseDetail({ id }: { id: string }) {
   const exercise = useApi(`exercise:${id}`, () => api.getExercise(id));
@@ -112,20 +111,9 @@ export function ExerciseDetail({ id }: { id: string }) {
         </section>
       )}
 
-      {canPractice(e.config) ? (
-        <a href={href({ name: "practice", id: e.id })} className="btn-primary focus-ring">
-          Start practice
-        </a>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <button type="button" className="btn-primary" disabled>
-            Start practice
-          </button>
-          <p className="text-center text-[13px] text-faint">
-            Practice for this kind of exercise is on the way.
-          </p>
-        </div>
-      )}
+      <a href={href({ name: "practice", id: e.id })} className="btn-primary focus-ring">
+        Start practice
+      </a>
 
       {!e.builtin && (
         <button type="button" onClick={() => void remove()} disabled={deleting} className="btn self-start text-miss">

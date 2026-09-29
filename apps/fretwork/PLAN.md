@@ -31,14 +31,17 @@ A microphone hears a pitch, not where it was played. E4 is fret 0 on the high E,
 apps/fretwork/
   src/theory/      pure TS, no deps: notes, tuning, positions, formulas, patterns,
                    pitch.ts (MPM detector) and onsets.ts (frames → note events)
-  src/practice/    each engine's grading as a pure reducer (find.ts, respond.ts), node-tested
+  src/practice/    each engine's grading as a pure reducer (find.ts, respond.ts, sequence.ts),
+                   and the click's timing (metronome.ts); all node-tested
   src/domain/      types.ts (zod exercise/run model), catalog.ts (built-ins), routes.ts
   src/repo/        types.ts (the port), postgres.ts, firestore.ts
   migrations/      Postgres schema `fretwork`
   web/src/         the SPA; imports ../../src/theory directly, and wire types type-only
-    audio/         noteStream.ts (the one mic), useNoteStream(), capture.ts
+    audio/         context.ts (the one AudioContext), noteStream.ts (the one mic),
+                   useNoteStream(), capture.ts, output.ts (tones, drone, click), useMetronome()
     practice/      one screen per engine, plus shared clock and run saving (common.ts)
-    settings.ts    per-device settings in localStorage: handedness, labels, A4, mic gate
+    settings.ts    per-device settings in localStorage: handedness, labels, A4, mic gate,
+                   volume, mute, drone level, headphones
   web/public/      capture.worklet.js (served as a file; see capture.ts)
 ```
 
@@ -72,12 +75,33 @@ apps/fretwork/
 - **Grading** is in `src/practice/respond.ts`. Actions carry their own timestamps and random numbers, so the tests can replay any deck exactly.
   - `note-on-string`: the exact pitch on that string. Either end of the window's octave counts (0 or 12). A tap of the same pitch on another string counts, with the usual explanation.
   - `interval`: the root in any octave first, then the note exactly that far above it. Playing the root again restarts the interval from there, and is not a miss.
-  - `play-heard-note`: the exact pitch. Its grading is done, but its screen stays off until reference tones land (#16).
+  - `play-heard-note`: the exact pitch. The card's note plays as it is dealt once sound is unlocked; before that, and to replay, a Play button.
 - **`intervals`** is an optional config field. It defaults to the 3rds, the 4th, the 5th and the octave, and cards the window can't hold are dropped.
 - **`timeLimitSec` is per card** for this engine; it is per run for `find`.
 - **Adaptive deck:** each card is drawn at random, weighted by how that card went earlier in the deck (missed 4, slow 2, quick 0.5, unseen 1). The card just shown is never drawn next.
-- **Screen:** a big prompt card, a cents needle while the mic listens, the answer on a single-string strip (the whole neck for intervals), Skip and Next, and streak / score / average. A right answer moves on after 0.9 s; after a skip or timeout, the revealed answer waits for Next.
+- **Screen:** a big prompt card, a cents needle while the mic listens, the answer on a single-string strip (the whole neck for intervals), Skip and Next, and streak / score / average. A right answer moves on after 0.9 s; after a skip or timeout, the revealed answer waits for Next. An answered interval card can be heard (root, then the upper note).
 - The strip's cells are at least 44 px and wrap into balanced rows, so frets 0–12 are two rows of 7 on a 360 px phone.
+
+## Sound (#16)
+
+- **One AudioContext** (`web/src/audio/context.ts`) for the mic and the output: one clock, one thing for iOS to unlock. It is created or resumed inside a tap and never closed. On iOS 17+ the Audio Session API is set to `playback` (tones sound with the silent switch on) and to `play-and-record` while the mic is on.
+- **Tones:** a sawtooth plus a sine through a closing low-pass, with a fast attack and an exponential decay. Oscillators are exactly in tune at the player's A4; Karplus–Strong would need a fractional delay to be. Settings has a Play A4 button, and the tuner's string chips play each open string.
+- **Click:** the look-ahead pattern. A 25 ms timer schedules the beats due in the next 120 ms on the audio clock; the arithmetic is `src/practice/metronome.ts` (tested: 1000 beats at 200 bpm with a jittery timer land exactly on the grid). A tempo change applies from the next unscheduled beat; beats missed while the timer was starved are skipped, not burst. Accented downbeat, 4 beats to a bar.
+- **Drone:** root and fifth in the lowest guitar octave, with its own level. Offered on the sequence screen.
+- **Self-hearing (decided):**
+  - Prompt tones hold the mic deaf while they sound, plus the output latency and a 150 ms tail (`holdInput` in noteStream.ts). The player is listening then anyway.
+  - The click is not gated: a 30 ms blip at 1.7–2.2 kHz is above the detector's 70–1400 Hz and shorter than the 60 ms a note must hold, so notes on the beat still count.
+  - The drone can't be gated (it sustains), so it is for headphones, and the screen says so.
+  - Settings → "I use headphones" turns the hold off. That is also how to check a tone's tuning with the app's own tuner.
+- Master volume and mute are per-device settings.
+- **Pending a real-phone check:** click timing over 5 minutes at 200 bpm, output level on iOS while the mic is on (iOS routes play-and-record audio differently), and whether the hold's tail is long enough in a live room.
+
+## Sequence (#15)
+
+- **Grading** (`src/practice/sequence.ts`): the notes are `applyPattern(shapeInWindow(...), pattern)`. Order and pitch count; rhythm doesn't (v1). A wrong note marks the note asked for as missed and the player stays on it. The note just played, heard again, is ignored (a re-pick, or a string still ringing). `exact` wants the shape's pitch and names the octave when it is wrong; `pitch-class` takes any octave. A clean run is every note right first time.
+- **The run starts on its first note played right.** Noodling before that is shown but never counted. After a run, playing its first note starts the next one, so a player can keep going without touching the phone.
+- **Tempo ladder:** `advanceLadder` (clean runs in a row; `cleanRunsToAdvance` of them add `step` bpm; an unclean run resets the streak; step 0 is off; capped at 300). Until #18 keeps progress on the server, the screen rebuilds the ladder from the exercise's last 50 runs (`ladderFromRuns`); a run at a tempo set by hand restarts the streak there. #18 should apply the same `advanceLadder` server-side.
+- **Screen:** the lane (chips for played clean / played after a miss / now / to come, scrolled to keep the current one centred) and the feedback stick to the top. Below: the mic bar, the neck (shape per the Full → Roots → Hidden toggle, the next note ringed only in Full, the note just played lit, a tapped miss where it landed), then tempo ± with a beat indicator, the click toggle, the ladder's progress, the drone, and Restart. Runs post `{ tempo, clean, notes[] }` with each note at its shape position.
 
 - **Engine grading logic stays pure**, under `src/`, so `node --test` covers it. The SPA wires it to the mic and the UI.
 - The Firestore collections are `fretwork_exercises` and `fretwork_runs`. The cloud function is `fretworkApi`, and the Hosting target is `fretwork`.
@@ -123,8 +147,8 @@ apps/fretwork/
 2. **Practice**
    - #13 `find` engine (done)
    - #14 `respond` engine (done, apart from `play-heard-note`, which waits on #16)
-   - #16 audio output (click, tones, drone)
-   - #15 `sequence` engine
+   - #16 audio output (click, tones, drone; done; real-phone check pending)
+   - #15 `sequence` engine (done; the ladder moves server-side with #18)
 3. **Make it yours**
    - #17 exercise builder
    - #20 suggested sessions and routines

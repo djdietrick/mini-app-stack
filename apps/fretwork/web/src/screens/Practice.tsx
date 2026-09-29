@@ -1,6 +1,7 @@
-import { type ExerciseConfig, api } from "../api";
+import { api } from "../api";
 import { FindPractice } from "../practice/FindPractice";
 import { RespondPractice } from "../practice/RespondPractice";
+import { SequencePractice } from "../practice/SequencePractice";
 import { href } from "../router";
 import { useApi } from "../useApi";
 
@@ -21,26 +22,12 @@ export function Practice({ id }: { id: string }) {
   }
 
   const e = exercise.data;
-  if (canPractice(e.config)) {
-    if (e.config.engine === "find") return <FindPractice exercise={e} config={e.config} />;
-    if (e.config.engine === "respond") return <RespondPractice exercise={e} config={e.config} />;
+  switch (e.config.engine) {
+    case "find":
+      return <FindPractice exercise={e} config={e.config} />;
+    case "respond":
+      return <RespondPractice exercise={e} config={e.config} />;
+    case "sequence":
+      return <SequencePractice exercise={e} config={e.config} />;
   }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <h1 className="font-display text-2xl font-bold">{e.name}</h1>
-      <p className="text-[15px] text-muted">Practice for this kind of exercise is on the way.</p>
-      <a href={href({ name: "exercise", id: e.id })} className="btn focus-ring self-start">
-        Back
-      </a>
-    </div>
-  );
-}
-
-/**
- * Whether an exercise has a practice screen yet. "Play what you hear" waits
- * on audio output (reference tones); its grading is already in respond.ts.
- */
-export function canPractice(config: ExerciseConfig): boolean {
-  return config.engine === "find" || (config.engine === "respond" && config.prompt !== "play-heard-note");
 }

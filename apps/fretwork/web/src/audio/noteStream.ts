@@ -7,11 +7,13 @@ import {
 } from "../../../src/theory/index.js";
 import { getSettings } from "../settings";
 import { type Capture, MIC_CONSTRAINTS, openCapture } from "./capture";
+import { audioContextCtor, setAudioSession, unlockAudio } from "./context";
 
 /**
  * One microphone for the whole app. Screens use it through useNoteStream();
- * this module owns the AudioContext, the detector and the tracker, and the
- * mic is released once no screen is using it.
+ * this module owns the capture, the detector and the tracker (the
+ * AudioContext is shared with the sound output, in context.ts), and the mic
+ * is released once no screen is using it.
  *
  * Audio never leaves the browser: frames go from the worklet to the detector
  * and are dropped. Only note events and a live pitch come out.
@@ -47,12 +49,6 @@ export interface NoteStreamState {
   mode?: Capture["mode"];
 }
 
-type AudioContextCtor = typeof AudioContext;
-
-function audioContextCtor(): AudioContextCtor | undefined {
-  return window.AudioContext ?? (window as unknown as { webkitAudioContext?: AudioContextCtor }).webkitAudioContext;
-}
-
 function supported(): boolean {
   return !!navigator.mediaDevices?.getUserMedia && !!audioContextCtor() && window.isSecureContext;
 }
@@ -61,7 +57,6 @@ let state: NoteStreamState = { status: supported() ? "idle" : "unsupported", liv
 const stateListeners = new Set<() => void>();
 const noteListeners = new Set<(n: StreamNote) => void>();
 
-let ctx: AudioContext | null = null;
 let media: MediaStream | null = null;
 let capture: Capture | null = null;
 let detector: PitchDetector | null = null;
@@ -71,6 +66,8 @@ let pending: NoteStreamState | null = null;
 let frameRequested = false;
 /** Bumped by stop(), so a start() still awaiting permission knows it was cancelled. */
 let generation = 0;
+/** performance.now() until which the mic is deaf: the app's own tone is playing (see holdInput). */
+let heldUntil = 0;
 
 /** How long the tuner keeps showing a pitch through unpitched frames. */
 const LIVE_HOLD_MS = 250;
@@ -106,6 +103,13 @@ function onFrame(frame: Float32Array): void {
     tracker = { t: new NoteTracker({ a4, gate }), a4, gate };
   }
   const now = performance.now();
+  if (now < heldUntil) {
+    // The app is sounding a note. Feed the tracker silence so that note never
+    // fires, and so the player's next note, after the hold, fires afresh.
+    tracker.t.push({ pitch: null, rms: 0, at: now });
+    set({ level: 0, live: null }, false);
+    return;
+  }
   const pitch = detector.detect(frame);
   const level = rms(frame, frame.length / 2);
   const ev = tracker.t.push({ pitch, rms: level, at: now });
@@ -148,14 +152,13 @@ function describeError(err: unknown): Pick<NoteStreamState, "status" | "error"> 
  */
 export async function start(): Promise<void> {
   if (state.status === "listening" || state.status === "asking") return;
-  const Ctor = audioContextCtor();
-  if (!supported() || !Ctor) {
+  if (supported()) setAudioSession("play-and-record");
+  const ctx = supported() ? unlockAudio() : null;
+  if (!ctx) {
     set({ status: "unsupported" });
     return;
   }
   const gen = ++generation;
-  ctx = new Ctor({ latencyHint: "interactive" });
-  void ctx.resume();
   set({ status: "asking", error: undefined });
 
   try {
@@ -191,8 +194,7 @@ function teardown(): void {
   capture = null;
   media?.getTracks().forEach((t) => t.stop());
   media = null;
-  void ctx?.close().catch(() => undefined);
-  ctx = null;
+  setAudioSession("playback");
   detector = null;
   tracker = null;
 }
@@ -207,6 +209,15 @@ export function stop(): void {
     level: 0,
     mode: undefined,
   });
+}
+
+/**
+ * Makes the mic deaf until `until` (a performance.now() time), so a tone the
+ * app plays is not graded as the player's note. output.ts calls it for every
+ * prompt tone unless the player wears headphones.
+ */
+export function holdInput(until: number): void {
+  heldUntil = Math.max(heldUntil, until);
 }
 
 /** A note from the tap fallback, graded exactly like one from the mic. */
@@ -227,11 +238,6 @@ export function onNote(listener: (n: StreamNote) => void): () => void {
   noteListeners.add(listener);
   return () => noteListeners.delete(listener);
 }
-
-// iOS suspends the context when the page is hidden; pick it back up on return.
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && ctx?.state !== "running") void ctx?.resume();
-});
 
 // Show "denied" before the first tap when the browser already knows.
 void navigator.permissions
