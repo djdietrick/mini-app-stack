@@ -35,7 +35,7 @@ apps/fretwork/
                    the click's timing (metronome.ts), and reading the map (zones.ts);
                    all node-tested
   src/domain/      types.ts (zod exercise/run model), catalog.ts (built-ins), routes.ts,
-                   progress.ts (folding runs into the aggregates)
+                   progress.ts (folding runs into the aggregates), suggest.ts (the suggested session)
   src/repo/        types.ts (the port), postgres.ts, firestore.ts
   migrations/      Postgres schema `fretwork`
   web/src/         the SPA; imports ../../src/theory directly, and wire types type-only
@@ -114,7 +114,7 @@ apps/fretwork/
 - Every chart has a "Show numbers" table, and none relies on colour alone.
 
 - **Engine grading logic stays pure**, under `src/`, so `node --test` covers it. The SPA wires it to the mic and the UI.
-- The Firestore collections are `fretwork_exercises` and `fretwork_runs`. The cloud function is `fretworkApi`, and the Hosting target is `fretwork`.
+- The Firestore collections are `fretwork_exercises`, `fretwork_runs`, `fretwork_progress`, `fretwork_position_stats` and `fretwork_routines`. The cloud function is `fretworkApi`, and the Hosting target is `fretwork`.
 
 ## Data model
 
@@ -139,7 +139,31 @@ apps/fretwork/
 - **No new Firestore indexes:** progress is queried by `userId` alone and sorted in memory; the week query reuses `(userId, startedAt desc)`.
 - **No backfill (decided).** The aggregates start at the first run recorded after they shipped. The app had only just gone live, the week view reads runs directly, and the one thing players would miss (the ladder) is still rebuilt from runs on the client when an exercise has no progress row.
 
-**Planned:** routines (#20).
+**Routine** (#20). `{ id, name, items: [{ exercise_id, minutes }], created_at, updated_at }`, items in order, 1–20 of them, 1–60 minutes each. On write every item must name a built-in or one of the user's own exercises (404 `exercise not found`, as for runs); an exercise deleted later stays in the list and the session runner skips it.
+
+- Postgres: `routines`, items as JSONB. Firestore: `fretwork_routines/{uuid}`, listed by `userId` alone and sorted in memory, so no new index.
+
+## Exercise sources and shapes (#21)
+
+All additions are optional fields or new union members, so stored configs keep parsing.
+
+- **Sequence `source`** is one of: `scale` / `arpeggio` (a formula from a root, as before); `notes` (explicit pitch classes in order, each placed nearest the note before: the cycle of 4ths); `parts` (formulas played in turn, each optionally in its own window, optionally filtered to `degrees` by number, so "3 and 7" means the ♭3 of Dm7 and the 3 of G7: ii–V–I, guide tones, the five CAGED shapes). Parts play one after another with the pattern applied per part; a pitch shared at a part boundary is played once. The key (spelling, drone) is the last part: a progression resolves to its last chord. The sequence screen shows only the current part's shape.
+- **Sequence `shape`**: `lower-fret` (default; the box shapes), `higher-fret` (a window spanning two boxes climbs into the upper one), `three-per-string`.
+- **Respond prompts** `octave` (a note on a string, then exactly 12 above it on a higher string; results carry the lower note's position) and `target-degree` (a drone on each card's root; any octave of the degree counts; the drone's own root and fifth are ignored, not missed). `intervals` doubles as the degrees for `target-degree`, defaulting to both 3rds.
+- The catalog has 23 built-ins: the eight from the scaffold plus octave jumps, two one-string major scales, the cycle of 4ths, pentatonic boxes 2–5 and a box 1→2 connector, G major 3nps, CAGED, ii–V–I sevenths, guide tones, the interval finder, and landing on the 3rd over a drone.
+
+## Builder (#17)
+
+- `#/build` makes a new exercise, `#/build/edit/:id` edits one of yours, `#/build/copy/:id` copies any (the way to customise a built-in). The detail screen links to all three.
+- The form edits the config directly; the preview (neck, note chips, `previewNotes` in `web/src/builder.ts`) follows every change and warns when the window holds too few notes or cards, and explains what a string restriction does under each grading. The name is generated (`autoName`) until edited, the library section likewise.
+- A `notes` or `parts` source can't be edited in the form yet; copying one keeps its source and edits everything else.
+- Validation stays on the server (zod stays out of the bundle); 400 field errors show inline.
+
+## Sessions (#20)
+
+- **Suggested:** `src/domain/suggest.ts`, pure and unit-tested, served at `GET /sessions/suggested`. Three slots, ~15 minutes: a note-finder aimed at `weakestZone` (most coverage of the zone, then most focused on it; before the map has a zone, the least recently practiced finder), a sequence one clean run from a tempo bump (else unplayed for 3+ days, else never played), and whatever has gone longest untouched (never played counts as longest, in library order).
+- **Runner:** `#/session/suggested` or `#/session/:routineId`. The items are fixed on load (the suggestion changes as runs post). Each item renders its practice screen under a per-item countdown with Next and Skip; time running out never interrupts a run. The summary counts the runs posted since the session started.
+- **Home** shows the suggestion, the routines (Start, Edit) and recent runs. "Save as routine" copies the suggestion into a new routine and opens it in the editor (`#/routine/:id`; `#/routine/new`).
 
 ## API (as built)
 
@@ -156,6 +180,12 @@ apps/fretwork/
 | GET | `/progress` | one row per exercise practiced, most recent first |
 | GET | `/stats/positions` | every position tried, by string then fret |
 | GET | `/stats/week?days=&tz=` | practice per local day, oldest first, empty days included; days 1–92 (default 7), tz an IANA zone (default UTC; the SPA sends the device's) |
+| GET | `/sessions/suggested` | `{ minutes, items: [{ exercise_id, minutes, slot, reason }] }` |
+| GET | `/routines` | yours, newest first |
+| GET | `/routines/:id` | 404 unless yours |
+| POST | `/routines` | 201; 400 with flattened zod errors; 404 `exercise not found` |
+| PATCH | `/routines/:id` | partial; items replace the list |
+| DELETE | `/routines/:id` | |
 
 ## Milestones
 
@@ -170,9 +200,9 @@ apps/fretwork/
    - #16 audio output (click, tones, drone; done; real-phone check pending)
    - #15 `sequence` engine (done)
 3. **Make it yours**
-   - #17 exercise builder
-   - #20 suggested sessions and routines
-   - #21 complete the starter catalog
+   - #17 exercise builder (done)
+   - #20 suggested sessions and routines (done)
+   - #21 complete the starter catalog (done)
 4. **Track it**
    - #18 progress data (done)
    - #19 progress screen (done)
