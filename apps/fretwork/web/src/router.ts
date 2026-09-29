@@ -8,6 +8,7 @@ export type Route =
   | { name: "home" }
   | { name: "library" }
   | { name: "exercise"; id: string }
+  | { name: "practice"; id: string }
   | { name: "build" }
   | { name: "progress" }
   | { name: "tune" }
@@ -17,6 +18,7 @@ export function parseRoute(hash: string): Route {
   const [head, arg] = hash.replace(/^#\/?/, "").split("/");
   if (head === "library") return { name: "library" };
   if (head === "exercise" && arg) return { name: "exercise", id: arg };
+  if (head === "practice" && arg) return { name: "practice", id: arg };
   if (head === "build") return { name: "build" };
   if (head === "progress") return { name: "progress" };
   if (head === "tune") return { name: "tune" };
@@ -25,7 +27,8 @@ export function parseRoute(hash: string): Route {
 }
 
 export function href(route: Route): string {
-  return route.name === "exercise" ? `#/exercise/${route.id}` : route.name === "home" ? "#/" : `#/${route.name}`;
+  if (route.name === "exercise" || route.name === "practice") return `#/${route.name}/${route.id}`;
+  return route.name === "home" ? "#/" : `#/${route.name}`;
 }
 
 export function useRoute(): Route {

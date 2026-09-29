@@ -3,13 +3,14 @@ import { api } from "../api";
 import { Fretboard } from "../components/Fretboard";
 import { CATEGORY_LABELS, ENGINE_LABELS, preview, summary } from "../describe";
 import { href } from "../router";
+import { canPractice } from "./Practice";
 import { updateSettings, useSettings } from "../settings";
 import { useApi } from "../useApi";
 
 /**
- * What an exercise asks for, drawn on the neck. The practice screens for each
- * engine (fretboard-first for find, flashcards for respond, the lane for
- * sequence) hang off the Start button as they land.
+ * What an exercise asks for, drawn on the neck. Start opens the engine's
+ * practice screen (#/practice/:id): fretboard-first for find, flashcards for
+ * respond, and the lane for sequence once it lands.
  */
 export function ExerciseDetail({ id }: { id: string }) {
   const exercise = useApi(`exercise:${id}`, () => api.getExercise(id));
@@ -111,14 +112,20 @@ export function ExerciseDetail({ id }: { id: string }) {
         </section>
       )}
 
-      <div className="flex flex-col gap-2">
-        <button type="button" className="btn-primary" disabled>
+      {canPractice(e.config) ? (
+        <a href={href({ name: "practice", id: e.id })} className="btn-primary focus-ring">
           Start practice
-        </button>
-        <p className="text-center text-[13px] text-faint">
-          Practice mode, with the microphone grading each note, is on the way.
-        </p>
-      </div>
+        </a>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <button type="button" className="btn-primary" disabled>
+            Start practice
+          </button>
+          <p className="text-center text-[13px] text-faint">
+            Practice for this kind of exercise is on the way.
+          </p>
+        </div>
+      )}
 
       {!e.builtin && (
         <button type="button" onClick={() => void remove()} disabled={deleting} className="btn self-start text-miss">

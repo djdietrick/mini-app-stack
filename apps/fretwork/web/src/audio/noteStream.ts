@@ -32,6 +32,8 @@ export interface LivePitch {
 
 export interface StreamNote extends NoteEvent {
   source: "mic" | "tap";
+  /** Where a tap landed on the neck. Never set for the mic, which hears pitch, not position. */
+  position?: { string: number; fret: number };
 }
 
 export interface NoteStreamState {
@@ -208,8 +210,8 @@ export function stop(): void {
 }
 
 /** A note from the tap fallback, graded exactly like one from the mic. */
-export function tap(midi: number): void {
-  emit({ midi, cents: 0, at: performance.now(), source: "tap" });
+export function tap(midi: number, position?: { string: number; fret: number }): void {
+  emit({ midi, cents: 0, at: performance.now(), source: "tap", position });
 }
 
 export function getState(): NoteStreamState {

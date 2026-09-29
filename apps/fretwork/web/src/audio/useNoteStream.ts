@@ -12,8 +12,8 @@ export interface NoteStream extends NoteStreamState {
   /** Turn the mic on. Call it from a tap: iOS needs a user gesture. */
   start: () => Promise<void>;
   stop: () => void;
-  /** Feed a note from the tap-the-fretboard fallback. */
-  tap: (midi: number) => void;
+  /** Feed a note from the tap-the-fretboard fallback, with where it was tapped. */
+  tap: (midi: number, position?: { string: number; fret: number }) => void;
 }
 
 /**

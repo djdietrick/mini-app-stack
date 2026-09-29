@@ -52,3 +52,24 @@ const DEGREE_LABELS = ["R", "♭2", "2", "♭3", "3", "4", "♭5", "5", "♭6", 
 export function degreeLabel(interval: number): string {
   return DEGREE_LABELS[((interval % 12) + 12) % 12];
 }
+
+const INTERVAL_NAMES = [
+  "unison",
+  "minor 2nd",
+  "major 2nd",
+  "minor 3rd",
+  "major 3rd",
+  "perfect 4th",
+  "tritone",
+  "perfect 5th",
+  "minor 6th",
+  "major 6th",
+  "minor 7th",
+  "major 7th",
+  "octave",
+] as const;
+
+/** "minor 3rd", "perfect 5th", "octave" for 0–12 semitones. */
+export function intervalName(semitones: number): string {
+  return INTERVAL_NAMES[Math.max(0, Math.min(12, semitones))];
+}

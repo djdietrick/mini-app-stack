@@ -64,7 +64,7 @@ const TUNE = (
 );
 
 function isActive(tab: Route, current: Route): boolean {
-  if (current.name === "exercise") return tab.name === "library";
+  if (current.name === "exercise" || current.name === "practice") return tab.name === "library";
   return tab.name === current.name;
 }
 
