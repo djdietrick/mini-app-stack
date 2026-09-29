@@ -4,6 +4,8 @@ import { ComingSoon } from "./screens/ComingSoon";
 import { ExerciseDetail } from "./screens/ExerciseDetail";
 import { Home } from "./screens/Home";
 import { Library } from "./screens/Library";
+import { Settings } from "./screens/Settings";
+import { Tune } from "./screens/Tune";
 
 export function App() {
   const route = useRoute();
@@ -19,6 +21,8 @@ export function App() {
           body="Pick scale or arpeggio, root, fret window, strings, pattern, tempo and grading, with a live preview on the neck. Until then, the library's built-ins are ready to go."
         />
       )}
+      {route.name === "tune" && <Tune />}
+      {route.name === "settings" && <Settings />}
       {route.name === "progress" && (
         <ComingSoon
           title="Progress"

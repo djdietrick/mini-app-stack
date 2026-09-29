@@ -29,13 +29,31 @@ A microphone hears a pitch, not where it was played. E4 is fret 0 on the high E,
 
 ```
 apps/fretwork/
-  src/theory/      pure TS, no deps: notes, tuning, positions, formulas, patterns
-                   (the pitch detector and onset logic go here too, #11)
+  src/theory/      pure TS, no deps: notes, tuning, positions, formulas, patterns,
+                   pitch.ts (MPM detector) and onsets.ts (frames → note events)
   src/domain/      types.ts (zod exercise/run model), catalog.ts (built-ins), routes.ts
   src/repo/        types.ts (the port), postgres.ts, firestore.ts
   migrations/      Postgres schema `fretwork`
   web/src/         the SPA; imports ../../src/theory directly, and wire types type-only
+    audio/         noteStream.ts (the one mic), useNoteStream(), capture.ts
+    settings.ts    per-device settings in localStorage: handedness, labels, A4, mic gate
+  web/public/      capture.worklet.js (served as a file; see capture.ts)
 ```
+
+## Listening (#11)
+
+- **Detector:** McLeod Pitch Method on 2048-sample frames at 44.1/48 kHz (4096 at 96 kHz), 70–1400 Hz. It uses an FFT autocorrelation and costs about 0.3 ms per frame on a laptop. It runs on the main thread; move it into a Worker if a phone struggles.
+- **Tracker:** a note fires once it has held within ±50 cents for 60 ms. It won't fire again while that note rings. A re-pick of the same note (RMS 1.6× the level it had fallen to) makes it fire again. The noise gate has hysteresis.
+- **Capture:** an AudioWorklet posts the newest frame every quarter frame (~11 ms), with an AnalyserNode on a timer as the fallback. Phone voice DSP is switched off in `getUserMedia`. The AudioContext is created inside the tap that starts the mic, because iOS requires it.
+- **One stream:** `useNoteStream()` gives screens the status (`idle | asking | listening | denied | unsupported`), a live pitch for the tuner, and note events. Taps on the neck go through the same stream (`tap(midi)`), so engines never branch on input source. The mic is released when the last screen using it unmounts.
+- Settings (`#/settings`): A4 reference, mic sensitivity with a level meter, handedness, and dot labels. A tuner is at `#/tune`.
+
+## The neck (#12)
+
+- **Vertical on narrow screens, not pan/zoom.** The player's hands are on the guitar, so a neck that needs a gesture to see is no use mid-exercise. Vertical fits frets 0–12 at 360 px with ≥44 px targets. `orientation="auto"` picks vertical whenever horizontal cells would be narrower than a thumb (48 px to tap; 28 px just to look at, 18 px in landscape).
+- **Feedback:** `target` pulses. `correct` and `miss` flash when they appear or change tone. Under `prefers-reduced-motion` the pulse becomes a still ring. Hit and miss never rely on colour: a light filled dot with a tick against a dark ring with a cross. `activeString` shades one string.
+- **Labels:** dots carry `name` and `degree`; the label mode (names / degrees / none) picks one. **Left-handed** mirrors either orientation.
+- **Keyboard:** the neck is one tab stop. Arrow keys follow the picture, and Enter or Space presses.
 
 - **Engine grading logic stays pure**, under `src/`, so `node --test` covers it. The SPA wires it to the mic and the UI.
 - The Firestore collections are `fretwork_exercises` and `fretwork_runs`. The cloud function is `fretworkApi`, and the Hosting target is `fretwork`.
@@ -76,8 +94,8 @@ apps/fretwork/
 1. **Foundation**
    - #10 scaffold (this branch)
    - #24 first cloud deploy
-   - #11 pitch detection
-   - #12 fretboard component
+   - #11 pitch detection (done; real-phone check pending)
+   - #12 fretboard component (done; real-phone check pending)
 2. **Practice**
    - #13 `find` engine
    - #14 `respond` engine

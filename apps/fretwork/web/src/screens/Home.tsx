@@ -39,6 +39,9 @@ export function Home() {
             </li>
           ))}
         </ol>
+        <a href={href({ name: "tune" })} className="btn focus-ring self-start">
+          Tune up first
+        </a>
         <p className="text-[13px] text-faint">
           Suggestions will follow your weak spots once progress tracking is in. You'll be able to save your
           own routines too.

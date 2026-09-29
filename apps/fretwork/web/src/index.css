@@ -32,3 +32,35 @@ body {
     @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass;
   }
 }
+
+/* Fretboard feedback. SVG transforms need fill-box to scale about the dot. */
+.fb-pulse,
+.fb-flash,
+.fb-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.fb-pulse { animation: fb-pulse 1.4s ease-out infinite; }
+.fb-flash { animation: fb-flash 0.35s ease-out; }
+.fb-halo { animation: fb-halo 0.55s ease-out forwards; }
+
+@keyframes fb-pulse {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(1.9); opacity: 0; }
+}
+@keyframes fb-flash {
+  0% { transform: scale(1.45); }
+  60% { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
+@keyframes fb-halo {
+  from { transform: scale(1); opacity: 0.8; }
+  to { transform: scale(2.2); opacity: 0; }
+}
+
+/* No motion: the target keeps a still outer ring, hits and misses just appear. */
+@media (prefers-reduced-motion: reduce) {
+  .fb-pulse { animation: none; transform: scale(1.45); opacity: 0.7; }
+  .fb-flash { animation: none; }
+  .fb-halo { animation: none; opacity: 0; }
+}

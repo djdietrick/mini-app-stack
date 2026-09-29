@@ -50,6 +50,19 @@ const TABS: { route: Route; label: string; icon: ReactNode }[] = [
   },
 ];
 
+const GEAR = (
+  <svg viewBox="0 0 24 24" className="h-[22px] w-[22px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1" />
+  </svg>
+);
+
+const TUNE = (
+  <svg viewBox="0 0 24 24" className="h-[22px] w-[22px]" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+    <path d="M4 17a8 8 0 0 1 16 0M12 17l4-6" />
+  </svg>
+);
+
 function isActive(tab: Route, current: Route): boolean {
   if (current.name === "exercise") return tab.name === "library";
   return tab.name === current.name;
@@ -81,6 +94,23 @@ export function AppShell({ route, children }: { route: Route; children: ReactNod
           </a>
         ))}
         <div className="mt-auto flex flex-col gap-2 text-sm text-muted">
+          {[
+            { route: { name: "tune" } as Route, label: "Tune up", icon: TUNE },
+            { route: { name: "settings" } as Route, label: "Settings", icon: GEAR },
+          ].map((t) => (
+            <a
+              key={t.label}
+              href={href(t.route)}
+              aria-current={route.name === t.route.name ? "page" : undefined}
+              className={
+                "focus-ring flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-[15px] " +
+                (route.name === t.route.name ? "bg-raised text-brass" : "text-muted hover:text-ink")
+              }
+            >
+              {t.icon}
+              {t.label}
+            </a>
+          ))}
           <span className="truncate">{who}</span>
           <button type="button" onClick={() => void logout()} className="btn">
             Sign out
@@ -93,13 +123,31 @@ export function AppShell({ route, children }: { route: Route; children: ReactNod
           <a href="#/" className="font-display text-2xl font-bold focus-ring rounded">
             Fretwork
           </a>
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="focus-ring min-h-[44px] rounded-xl px-3 text-sm text-muted"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center">
+            <a
+              href={href({ name: "tune" })}
+              aria-label="Tune up"
+              aria-current={route.name === "tune" ? "page" : undefined}
+              className={"focus-ring flex h-11 w-11 items-center justify-center rounded-xl " + (route.name === "tune" ? "text-brass" : "text-muted")}
+            >
+              {TUNE}
+            </a>
+            <a
+              href={href({ name: "settings" })}
+              aria-label="Settings"
+              aria-current={route.name === "settings" ? "page" : undefined}
+              className={"focus-ring flex h-11 w-11 items-center justify-center rounded-xl " + (route.name === "settings" ? "text-brass" : "text-muted")}
+            >
+              {GEAR}
+            </a>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="focus-ring min-h-[44px] rounded-xl px-3 text-sm text-muted"
+            >
+              Sign out
+            </button>
+          </div>
         </header>
 
         <main className="mx-auto w-full max-w-xl flex-1 px-5 pb-28 pt-2 lg:max-w-5xl lg:px-10 lg:pb-10 lg:pt-10">
