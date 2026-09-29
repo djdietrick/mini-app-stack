@@ -1,7 +1,7 @@
 # Setting up the Firebase deployment
 
-One-time setup to get `crate` deploying to staging and prod, and to verify a
-staging deploy from a pull request before merging.
+One-time setup to deploy the full stack to staging and production, and to
+verify a staging deploy from a pull request before merging.
 
 Budget about an hour, most of it waiting on GCP. You need a GCP billing account
 and `gcloud` + `terraform` locally.
@@ -94,8 +94,8 @@ Three files. The third is the one that is easy to get half-right:
 | `.firebaserc` | the `projects` values **and** the `targets` object keys |
 
 `.firebaserc`'s `targets` map is keyed by project id. If you rename only the
-`projects` entries, `firebase hosting:channel:deploy` cannot resolve the `crate`
-target and the preview step fails.
+`projects` entries, `firebase hosting:channel:deploy` cannot resolve the app
+targets and the preview step fails.
 
 The site ids inside `targets` are filled in later, at step 6. Hosting site ids
 are global across all of Firebase, so Terraform appends a five-character hash
@@ -196,6 +196,10 @@ leak or rotate.
 | `STAGING_YTDIGEST_FUNCTION_SA` | staging `function_service_accounts` → `ytdigest` |
 | `STAGING_FRETWORK_FUNCTION_SA` | staging `function_service_accounts` → `fretwork` |
 | `STAGING_AUTH_FUNCTION_SA` | staging `function_service_accounts` → `auth` |
+| `STAGING_SMTP_HOST` | your staging SMTP server, e.g. `smtp.gmail.com` |
+| `STAGING_SMTP_PORT` | optional, defaults to `587` (`465` also works; `25` is blocked on GCP) |
+| `STAGING_SMTP_USER` | staging SMTP login |
+| `STAGING_MAIL_FROM` | staging sender, e.g. `YouTube Digest <you@example.com>` (no surrounding quotes) |
 | `PROD_FIREBASE_API_KEY` | prod `web_config` → `crate.apiKey` |
 | `PROD_FIREBASE_AUTH_DOMAIN` | prod `web_config` → `crate.authDomain` |
 | `PROD_CRATE_FUNCTION_SA` | prod `function_service_accounts` → `crate` |
@@ -274,27 +278,28 @@ Then, before merging: check the prod `terraform plan` comment contains only
 resources you expect, and close/reopen the PR once to confirm `pr-cleanup.yml`
 deletes the preview channel.
 
-## Step 11 — ytdigest's secrets (before merging the change that adds it)
+## Step 11 — ytdigest's secrets (before the first functions deploy)
 
-ytdigest needs two secrets: a YouTube Data API key, and your SMTP password.
+ytdigest needs two secrets in every configured environment: a YouTube Data API
+key and your SMTP password.
 Terraform creates the Secret Manager *secrets* but never their values, because
 a value passed as a Terraform variable is written to state in plaintext, and
 CI can read the state bucket.
 
-The deploy fails if a function binds a secret that has no value. The prod
-deploy applies Terraform (which creates the secrets) and then deploys the
-functions in the same run, so the values have to be added in between: apply
-Terraform yourself first, then add them.
+The deploy fails if a function binds a secret that has no value. Apply
+Terraform to create the empty secrets, then add their values before the first
+staging preview or production deploy. Repeat this for staging and production,
+substituting the appropriate environment directory and project id.
 
 ```bash
-cd infra/terraform/envs/prod
+cd infra/terraform/envs/ENVIRONMENT
 terraform init -backend-config=bucket=SOME-GLOBALLY-UNIQUE-BUCKET
 terraform apply          # creates YOUTUBE_API_KEY and SMTP_PASSWORD, empty
 
 printf '%s' "$YOUTUBE_API_KEY" | \
-  gcloud secrets versions add YOUTUBE_API_KEY --project PROD_ID --data-file=-
+  gcloud secrets versions add YOUTUBE_API_KEY --project PROJECT_ID --data-file=-
 printf '%s' "$SMTP_PASSWORD" | \
-  gcloud secrets versions add SMTP_PASSWORD --project PROD_ID --data-file=-
+  gcloud secrets versions add SMTP_PASSWORD --project PROJECT_ID --data-file=-
 ```
 
 `printf '%s'` rather than `echo`, so no trailing newline ends up in the value.

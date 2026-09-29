@@ -81,8 +81,10 @@ permissions, and its state file is not committed.
 cd bootstrap
 terraform init
 terraform apply \
-  -var billing_account=XXXXXX-XXXXXX-XXXXXX \
-  -var github_repo=djdietrick/mini-app-stack
+  -var admin_project=PROD_PROJECT_ID \
+  -var 'managed_projects=["STAGING_PROJECT_ID","PROD_PROJECT_ID"]' \
+  -var github_repo=OWNER/REPOSITORY \
+  -var state_bucket=GLOBALLY_UNIQUE_BUCKET
 ```
 
 It outputs the values to paste into GitHub repository variables:
@@ -98,5 +100,7 @@ secret values live in this repo or in state. Add them once per environment:
 
 ```bash
 printf '%s' "$YOUTUBE_API_KEY" | \
-  gcloud secrets versions add youtube-api-key --project mini-app-stack-staging --data-file=-
+  gcloud secrets versions add YOUTUBE_API_KEY --project PROJECT_ID --data-file=-
+printf '%s' "$SMTP_PASSWORD" | \
+  gcloud secrets versions add SMTP_PASSWORD --project PROJECT_ID --data-file=-
 ```

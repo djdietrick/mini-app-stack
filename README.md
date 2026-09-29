@@ -25,7 +25,7 @@ Monorepo of small self-hosted microservices and the shared data infrastructure t
 
 Everything lives in a single shared database per engine so apps can join across each other's data and share a single user identity.
 
-- **PostgreSQL 16** — shared database `appstack`. One schema per app (`notes`, `timer`, …) plus a `shared` schema for cross-app tables (users, sessions, app config). Each app role is read-only on `shared`; writes go through the future auth service.
+- **PostgreSQL 16** — shared database `appstack`. One schema per data-backed app (`crate`, `pantry`, `ytdigest`) plus a `shared` schema for cross-app tables (users, sessions, app config). Each app role is read-only on `shared`; writes to identity data go through `apps/auth`.
 - **Redis 7** — caching, sessions, pub/sub. AOF persistence, `maxmemory 256mb` with `allkeys-lru` eviction. Apps namespace via `keyPrefix`.
 
 ### First-time setup
@@ -60,7 +60,7 @@ Take a backup first with `docker compose exec -T postgres pg_dump -U "$POSTGRES_
 ### Adding a new app to the data layer
 
 1. **Postgres** — add the app name to the `APPS=()` array in [infra/postgres/init/10-app-schemas.sh](infra/postgres/init/10-app-schemas.sh#L17). Add `APP_<NAME>_PASSWORD` to `.env` and pass it through to the `postgres` service env in `docker-compose.yml`. The script grants the app role read access to the `shared` schema automatically.
-2. **Firestore** (cloud only) — no provisioning needed. Prefix your collection names (e.g. `notes_items`) via `createFirestoreClient({ collectionPrefix })`.
+2. **Firestore** (cloud only) — no provisioning needed. Prefix your collection names (e.g. `myapp_items`) via `createFirestoreClient({ collectionPrefix })`.
 3. **Redis** — no provisioning needed. Pick a logical db index (0-15) or use `keyPrefix` to namespace keys.
 
 ### Shared identity / config
@@ -104,18 +104,18 @@ import {
 
 const pg = createPostgresClient({
   url: process.env.DATABASE_URL!,        // postgres://notes:pw@postgres:5432/appstack
-  schema: "notes",
+  schema: "myapp",
 });
 
 // Cloud only. Picks up FIRESTORE_EMULATOR_HOST automatically when set.
 const fs = createFirestoreClient({
   projectId: process.env.GOOGLE_CLOUD_PROJECT,
-  collectionPrefix: "notes_",            // every collection access auto-prefixes
+  collectionPrefix: "myapp_",            // every collection access auto-prefixes
 });
 
 const redis = createRedisClient({
   url: process.env.REDIS_URL!,           // redis://:pw@redis:6379
-  keyPrefix: "notes:",
+  keyPrefix: "myapp:",
 });
 ```
 
@@ -218,8 +218,10 @@ long-lived service account key anywhere.
 
 ### Environments
 
-Two GCP projects: `mini-app-stack-staging` and `mini-app-stack-prod`. Every
-pull request gets a Firebase Hosting **preview channel** with its own URL.
+Production uses one GCP project; staging uses a second, optional project.
+Project ids are configured during setup because GCP project ids are globally
+unique. When staging is configured, every pull request gets a Firebase Hosting
+**preview channel** with its own URL.
 
 Be clear about what a preview is: **preview channels fork the frontend only.**
 Functions, Firestore data and Auth users are shared across the whole staging
