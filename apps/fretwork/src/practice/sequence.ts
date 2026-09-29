@@ -1,7 +1,7 @@
 import type { NoteResult, RunInput, SequenceConfig } from "../domain/types.js";
-import { pitchClass } from "../theory/notes.js";
-import { findFormula } from "../theory/scales.js";
-import { type ShapeNote, applyPattern, shapeInWindow } from "../theory/sequence.js";
+import { type PitchClass, pitchClass } from "../theory/notes.js";
+import { degreeNumber, findFormula, isMinorFormula } from "../theory/scales.js";
+import { type ShapeNote, applyPattern, notesInOrder, shapeFor } from "../theory/sequence.js";
 import { TEMPO_RANGE } from "./metronome.js";
 import type { Heard } from "./find.js";
 
@@ -29,8 +29,13 @@ import type { Heard } from "./find.js";
  * same rule when it keeps progress.
  */
 
+/** A note to play, and which part of a multi-part source it belongs to (0 otherwise). */
+export interface SeqTarget extends ShapeNote {
+  part: number;
+}
+
 export interface SeqNote {
-  target: ShapeNote;
+  target: SeqTarget;
   /** Played right, at last. */
   done: boolean;
   /** A wrong note was heard while this was the one asked for. */
@@ -59,11 +64,82 @@ export interface SequenceState {
 
 export type SequenceAction = { type: "heard"; note: Heard };
 
-/** The notes to play, in order: the shape in the window, arranged by the pattern. */
-export function sequenceTargets(config: SequenceConfig): ShapeNote[] {
-  const formula = findFormula(config.source.kind, config.source.formula);
-  if (!formula) return [];
-  return applyPattern(shapeInWindow(config.source.root, formula.intervals, config.frets, config.strings), config.pattern);
+/** One formula (or note order) of a source, laid out in its window, before the pattern. */
+export interface SequencePart {
+  root: PitchClass;
+  /** Minor-flavoured, for spelling. */
+  minor: boolean;
+  /** The formula id, or null for a note-order source. */
+  formula: string | null;
+  kind: "scale" | "arpeggio" | "notes";
+  notes: ShapeNote[];
+}
+
+/**
+ * The source's parts, each laid out in its window: one part for a scale,
+ * an arpeggio or a note order, one per entry for a multi-part source (whose
+ * degrees filter applies here).
+ */
+export function sequenceParts(config: SequenceConfig): SequencePart[] {
+  const src = config.source;
+  const strategy = config.shape ?? "lower-fret";
+  switch (src.kind) {
+    case "notes":
+      return [
+        {
+          root: src.pitchClasses[0],
+          minor: false,
+          formula: null,
+          kind: "notes",
+          notes: notesInOrder(src.pitchClasses, config.frets, config.strings),
+        },
+      ];
+    case "scale":
+    case "arpeggio":
+    case "parts": {
+      const entries = src.kind === "parts" ? src.parts : [{ ...src, frets: undefined }];
+      const keep = src.kind === "parts" && src.degrees ? new Set(src.degrees) : null;
+      return entries.map((p) => {
+        const formula = findFormula(p.kind, p.formula);
+        const intervals = (formula?.intervals ?? []).filter((i) => !keep || keep.has(degreeNumber(i)));
+        return {
+          root: p.root,
+          minor: !!formula && isMinorFormula(formula),
+          formula: p.formula,
+          kind: p.kind,
+          notes: formula ? shapeFor(strategy, p.root, intervals, p.frets ?? config.frets, config.strings) : [],
+        };
+      });
+    }
+  }
+}
+
+/**
+ * The notes to play, in order: each part's shape arranged by the pattern,
+ * the parts one after another. Where one part ends on the pitch the next
+ * starts on, it is played once: the grader treats a pitch heard twice
+ * running as a re-pick.
+ */
+export function sequenceTargets(config: SequenceConfig): SeqTarget[] {
+  const out: SeqTarget[] = [];
+  sequenceParts(config).forEach((p, part) => {
+    for (const n of applyPattern(p.notes, config.pattern)) {
+      if (out.length && out[out.length - 1].midi === n.midi) continue;
+      out.push({ ...n, part });
+    }
+  });
+  return out;
+}
+
+/**
+ * The root a sequence is heard against, for spelling and the drone: the
+ * formula's root, the first note of a note order, and the last part of a
+ * multi-part source (a progression resolves to its last chord).
+ */
+export function sequenceKey(config: SequenceConfig): { root: PitchClass; minor: boolean } {
+  const parts = sequenceParts(config);
+  const key = config.source.kind === "parts" ? parts[parts.length - 1] : parts[0];
+  return { root: key.root, minor: key.minor };
 }
 
 export function initSequence(config: SequenceConfig): SequenceState {

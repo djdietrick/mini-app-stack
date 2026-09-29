@@ -9,10 +9,10 @@ import {
   respondRun,
   respondStats,
 } from "../../../src/practice/respond.js";
-import { intervalName, midiAt, midiName, noteName, positionsOfMidi, stringName } from "../../../src/theory/index.js";
+import { degreeLabel, intervalName, midiAt, midiName, noteName, positionsOfMidi, stringName } from "../../../src/theory/index.js";
 import type { ExerciseRow } from "../api";
 import { audioRunning } from "../audio/context";
-import { playNotes } from "../audio/output";
+import { playNotes, startDrone, stopDrone } from "../audio/output";
 import { useNoteStream } from "../audio/useNoteStream";
 import { type Dot, Fretboard } from "../components/Fretboard";
 import { MicPanel } from "../components/MicPanel";
@@ -33,7 +33,9 @@ const BEAT_MS = 900;
  * "Play what you hear" plays each card's note as it is dealt, once a tap has
  * unlocked sound (before that, the card shows a button), and the mic is deaf
  * while it sounds (see audio/output.ts). An interval can be heard once
- * answered.
+ * answered. "Land on a degree" holds a drone on each card's root, started the
+ * same way, and ignores the drone's own notes (respond.ts), since a phone
+ * speaker's drone reaches the mic.
  */
 export function RespondPractice({ exercise, config }: { exercise: ExerciseRow; config: RespondConfig }) {
   const [round, setRound] = useState(0);
@@ -87,11 +89,30 @@ function Deck({ exercise, config, onAgain }: { exercise: ExerciseRow; config: Re
     played.current = s.index;
     playNotes([s.card.midi]);
   }, [s.card, s.phase, s.index]);
+  // The drone follows the card's root while the deck runs, once sound is unlocked.
+  const droneRoot = !ended && s.card?.kind === "target-degree" ? s.card.root : null;
+  const [droneOn, setDroneOn] = useState(false);
+  useEffect(() => {
+    if (droneRoot === null) {
+      stopDrone();
+      setDroneOn(false);
+    } else if (audioRunning()) {
+      setDroneOn(startDrone(droneRoot));
+    }
+  }, [droneRoot]);
+  useEffect(() => () => stopDrone(), []);
+
   const hear = () => {
     const card = s.card;
     if (!card) return;
     played.current = s.index;
-    if (card.kind === "play-heard-note") {
+    if (card.kind === "target-degree") {
+      setDroneOn(startDrone(card.root));
+      dispatch({ type: "reclock", at: performance.now() });
+    } else if (card.kind === "octave") {
+      const lower = s.rootMidi ?? card.targets[0].midi;
+      playNotes([lower, lower + 12]);
+    } else if (card.kind === "play-heard-note") {
       playNotes([card.midi]);
       // A card waiting for its first play shouldn't be timed until it is heard.
       dispatch({ type: "reclock", at: performance.now() });
@@ -142,7 +163,7 @@ function Deck({ exercise, config, onAgain }: { exercise: ExerciseRow; config: Re
         </section>
       ) : (
         <>
-          {s.card && <Prompt card={s.card} s={s} onHear={hear} />}
+          {s.card && <Prompt card={s.card} s={s} onHear={hear} droneOn={droneOn} />}
           {mic.status !== "listening" && (
             <MicPanel mic={mic} compact fallback={`No mic? Tap the answer ${s.card?.kind === "note-on-string" ? "on the string" : "on the neck"}.`} />
           )}
@@ -180,7 +201,7 @@ function Deck({ exercise, config, onAgain }: { exercise: ExerciseRow; config: Re
   );
 }
 
-function Prompt({ card, s, onHear }: { card: Card; s: RespondState; onHear: () => void }) {
+function Prompt({ card, s, onHear, droneOn }: { card: Card; s: RespondState; onHear: () => void; droneOn: boolean }) {
   const answered = s.phase === "answered";
   const tone = answered ? (s.last?.feedback.kind === "right" ? "border-correct" : "border-miss") : "border-line";
   return (
@@ -204,6 +225,36 @@ function Prompt({ card, s, onHear }: { card: Card; s: RespondState; onHear: () =
           {answered && (
             <button type="button" onClick={onHear} className="btn">
               Hear it
+            </button>
+          )}
+        </>
+      )}
+      {card.kind === "octave" && (
+        <>
+          <span className="font-display text-7xl font-bold leading-none">
+            <span className={s.rootMidi !== null ? "text-correct" : "text-brass"}>{noteName(card.pc)}</span>
+          </span>
+          <span className="font-display text-xl text-muted">
+            {s.rootMidi === null
+              ? `on the ${stringName(card.string)} string, then its octave`
+              : `Now ${midiName(s.rootMidi + 12)}, the octave, on a higher string`}
+          </span>
+          {answered && (
+            <button type="button" onClick={onHear} className="btn">
+              Hear it
+            </button>
+          )}
+        </>
+      )}
+      {card.kind === "target-degree" && (
+        <>
+          <span className="font-display text-7xl font-bold leading-none text-brass">{degreeLabel(card.semitones)}</span>
+          <span className="font-display text-xl text-muted">
+            the {intervalName(card.semitones)} over {noteName(card.root)}
+          </span>
+          {!droneOn && (
+            <button type="button" onClick={onHear} className="btn-primary">
+              ▶ Start the drone
             </button>
           )}
         </>
@@ -238,8 +289,10 @@ function Feedback({ s }: { s: RespondState }) {
     }
     case "root":
       tone = "text-correct";
-      text = `${midiName(f.midi)} ✓ Now the ${card.kind === "interval" ? intervalName(card.semitones) : "next note"}.`;
+      text = `${midiName(f.midi)} ✓ Now the ${card.kind === "interval" ? intervalName(card.semitones) : card.kind === "octave" ? "octave" : "next note"}.`;
       break;
+    case "drone":
+      return <p className="min-h-[1.5em] text-[15px] text-faint">&nbsp;</p>;
     case "wrong-octave":
       text = `✕ ${midiName(f.midi)}: right note, wrong octave. It's ${midiName(f.expected)}.`;
       break;
@@ -247,7 +300,11 @@ function Feedback({ s }: { s: RespondState }) {
       text =
         card.kind === "interval" && s.rootMidi === null
           ? `✕ ${midiName(f.midi)}: start on ${noteName(card.root)}.`
-          : `✕ Heard ${midiName(f.midi)}.`;
+          : card.kind === "octave" && s.rootMidi === null
+            ? `✕ ${midiName(f.midi)}: start on ${noteName(card.pc)}, on the ${stringName(card.string)} string.`
+            : card.kind === "target-degree"
+              ? `✕ ${noteName(f.midi)} is the ${intervalName(((f.midi - card.root) % 12 + 12) % 12)} over ${noteName(card.root)}.`
+              : `✕ Heard ${midiName(f.midi)}.`;
       break;
     case "wrong-interval":
       text = `✕ ${midiName(f.midi)} is ${f.semitones > 0 && f.semitones <= 12 ? `a ${intervalName(f.semitones)}` : `${f.semitones} semitones`} from the root.`;
@@ -277,7 +334,7 @@ function Answer({
   const f = s.last?.feedback;
   const missAt = !answered && (f?.kind === "wrong-note" || f?.kind === "wrong-octave" || f?.kind === "wrong-interval") ? s.last?.heard : null;
 
-  if (card.kind === "note-on-string") {
+  if (card.kind === "note-on-string" || (card.kind === "octave" && s.rootMidi === null && !answered)) {
     const dots: StripDot[] = [];
     if (missAt?.position?.string === card.string) dots.push({ fret: missAt.position.fret, tone: "miss", name: noteName(missAt.midi) });
     else if (missAt && !missAt.position) {
@@ -285,7 +342,7 @@ function Answer({
     }
     if (answered) {
       const r = s.results[s.results.length - 1];
-      const shown = f?.kind === "right" && r.position ? [r.position] : card.targets;
+      const shown = f?.kind === "right" && r.position ? [r.position] : card.kind === "note-on-string" ? card.targets : [];
       for (const p of shown) dots.push({ fret: p.fret, tone: f?.kind === "right" ? "correct" : "hint", name: noteName(card.pc) });
     }
     return (
@@ -303,8 +360,25 @@ function Answer({
   const put = (midi: number, tone: Dot["tone"]) => {
     for (const p of positionsOfMidi(midi, config.frets, config.strings)) dots.push({ string: p.string, fret: p.fret, tone, name: noteName(midi) });
   };
-  if (s.rootMidi !== null && card.kind === "interval") put(s.rootMidi, "root");
-  if (answered) put(answerMidi(card, s.rootMidi), f?.kind === "right" ? "correct" : "hint");
+  if (card.kind === "octave") {
+    // The note on its string, and its octave where it lies on the higher strings.
+    const lower = s.rootMidi ?? card.targets[0].midi;
+    const at = card.targets.find((p) => p.midi === lower) ?? card.targets[0];
+    dots.push({ string: at.string, fret: at.fret, tone: "root", name: noteName(lower) });
+    if (answered) {
+      const higher = config.strings.filter((x) => x < card.string);
+      for (const p of positionsOfMidi(lower + 12, config.frets, higher)) {
+        dots.push({ string: p.string, fret: p.fret, tone: f?.kind === "right" ? "correct" : "hint", name: noteName(lower) });
+      }
+    }
+  } else if (card.kind === "target-degree") {
+    if (answered) {
+      for (const p of card.targets) dots.push({ string: p.string, fret: p.fret, tone: f?.kind === "right" ? "correct" : "hint", name: noteName(p.midi) });
+    }
+  } else {
+    if (s.rootMidi !== null && card.kind === "interval") put(s.rootMidi, "root");
+    if (answered) put(answerMidi(card, s.rootMidi), f?.kind === "right" ? "correct" : "hint");
+  }
   if (missAt) {
     if (missAt.position) dots.push({ ...missAt.position, tone: "miss", name: noteName(missAt.midi) });
   }

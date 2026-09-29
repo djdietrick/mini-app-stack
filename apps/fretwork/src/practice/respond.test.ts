@@ -9,7 +9,9 @@ import {
   cardKey,
   cardPool,
   drawCard,
+  answerMidi,
   initRespond,
+  respondNotes,
   respondReducer,
   respondRun,
   respondStats,
@@ -154,6 +156,74 @@ describe("respond: play what you hear", () => {
     assert.deepEqual(cardPool(config).map((c) => c.kind === "play-heard-note" && c.midi), [40, 52, 64]);
     const s = hear(dealt(config, { kind: "play-heard-note", midi: 52 }), 64, 1500);
     assert.deepEqual(s.last?.feedback, { kind: "wrong-octave", midi: 64, expected: 52 });
+  });
+});
+
+describe("respond: octave", () => {
+  const octaves: RespondConfig = { ...flashcards, prompt: "octave", pitchClasses: [9] };
+  const aOnLowE = () => cardPool({ ...octaves, strings: [6, 5, 4, 3, 2, 1] }).find((c) => c.kind === "octave" && c.string === 6)!;
+
+  it("asks for a note on a string whose octave lies on a higher string", () => {
+    const pool = cardPool(octaves);
+    // Nothing is above the high E, and A5 (above the B string's A4) is past fret 12.
+    assert.deepEqual(pool.map((c) => c.kind === "octave" && c.string), [3, 4, 5, 6]);
+    const card = aOnLowE();
+    assert.deepEqual(card.kind === "octave" && card.targets.map((p) => p.fret), [5], "A2 at 5; A3 is on the D and G strings");
+    // Only the low E: nowhere higher for the octave.
+    assert.equal(cardPool({ ...octaves, strings: [6] }).length, 0);
+  });
+
+  it("needs the note on its string, then exactly an octave above it", () => {
+    let s = hear(dealt(octaves, aOnLowE()), 57, 1500);
+    assert.deepEqual(s.last?.feedback, { kind: "wrong-octave", midi: 57, expected: 45 });
+    s = hear(s, 45, 2000);
+    assert.deepEqual(s.last?.feedback, { kind: "root", midi: 45 });
+    s = hear(s, 52, 2500);
+    assert.deepEqual(s.last?.feedback, { kind: "wrong-interval", midi: 52, semitones: 7 });
+    s = hear(s, 57, 3000);
+    assert.equal(s.phase, "answered");
+    assert.equal(s.results[0].ok, false, "two misses on the way");
+    // The result is the note on its string, which the map can place.
+    assert.deepEqual(respondNotes(s)[0], { midi: 45, ok: false, ms: 2000, string: 6, fret: 5 });
+  });
+
+  it("a clean octave, and a skip that reveals it", () => {
+    const s = hear(hear(dealt(octaves, aOnLowE()), 45, 1500), 57, 2200);
+    assert.equal(s.results[0].ok, true);
+    const skipped = respondReducer(dealt(octaves, aOnLowE()), { type: "skip", at: 3000 });
+    assert.equal(answerMidi(skipped.card!, null), 57);
+    assert.deepEqual(respondNotes(skipped)[0], { midi: 45, ok: false, ms: 2000, string: 6, fret: 5 });
+  });
+});
+
+describe("respond: land on a degree", () => {
+  const drone: RespondConfig = { ...flashcards, prompt: "target-degree", pitchClasses: [9] };
+  const minor3rd = (): Card => cardPool({ ...drone, intervals: [3] })[0];
+
+  it("defaults to both 3rds, each with every place it can be played", () => {
+    const pool = cardPool(drone);
+    assert.deepEqual(pool.map((c) => c.kind === "target-degree" && c.semitones), [3, 4]);
+    const c = minor3rd();
+    assert.ok(c.kind === "target-degree" && c.targets.every((p) => p.midi % 12 === 0), "C, a minor 3rd over A");
+  });
+
+  it("takes the degree in any octave, and ignores the drone's own notes", () => {
+    let s = hear(dealt(drone, minor3rd()), 45, 1200);
+    assert.equal(s.phase, "asking");
+    assert.equal(s.last, null, "A, the drone's root: not a miss, not shown");
+    s = hear(s, 52, 1300);
+    assert.equal(s.last, null, "E, the drone's fifth");
+    s = hear(s, 61, 1500);
+    assert.deepEqual(s.last?.feedback, { kind: "wrong-note", midi: 61 });
+    s = hear(s, 72, 2000);
+    assert.deepEqual(s.last?.feedback, { kind: "right", midi: 72, elsewhere: false });
+    assert.equal(s.results[0].ok, false);
+    assert.deepEqual(respondNotes(s)[0], { midi: 72, ok: false, ms: 1000, string: null, fret: null }, "no position: any octave, anywhere");
+  });
+
+  it("parses old respond configs and rejects unknown prompts", () => {
+    assert.ok(respondConfig.safeParse({ ...drone, intervals: [3, 4] }).success);
+    assert.equal(respondConfig.safeParse({ ...drone, prompt: "sing-it" }).success, false);
   });
 });
 
