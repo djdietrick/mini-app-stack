@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { RespondConfig } from "../../../src/domain/types.js";
 import {
   type Card,
@@ -11,6 +11,8 @@ import {
 } from "../../../src/practice/respond.js";
 import { intervalName, midiAt, midiName, noteName, positionsOfMidi, stringName } from "../../../src/theory/index.js";
 import type { ExerciseRow } from "../api";
+import { audioRunning } from "../audio/context";
+import { playNotes } from "../audio/output";
 import { useNoteStream } from "../audio/useNoteStream";
 import { type Dot, Fretboard } from "../components/Fretboard";
 import { MicPanel } from "../components/MicPanel";
@@ -27,6 +29,11 @@ const BEAT_MS = 900;
  * Direction B, flashcards + tuner: one big prompt, a cents needle for what the
  * mic hears, the answer revealed on the string, and streak, score and time.
  * Grading and the adaptive deck are the pure reducer in src/practice/respond.ts.
+ *
+ * "Play what you hear" plays each card's note as it is dealt, once a tap has
+ * unlocked sound (before that, the card shows a button), and the mic is deaf
+ * while it sounds (see audio/output.ts). An interval can be heard once
+ * answered.
  */
 export function RespondPractice({ exercise, config }: { exercise: ExerciseRow; config: RespondConfig }) {
   const [round, setRound] = useState(0);
@@ -71,6 +78,29 @@ function Deck({ exercise, config, onAgain }: { exercise: ExerciseRow; config: Re
   const stats = respondStats(s);
   const next = () => dispatch({ type: "next", at: performance.now(), rand: Math.random() });
 
+  // Each heard-note card plays as it is dealt, once sound is unlocked. The ref
+  // keeps a card from playing twice (StrictMode runs effects twice in dev).
+  const played = useRef(-1);
+  useEffect(() => {
+    if (s.card?.kind !== "play-heard-note" || s.phase !== "asking" || played.current === s.index) return;
+    if (!audioRunning()) return;
+    played.current = s.index;
+    playNotes([s.card.midi]);
+  }, [s.card, s.phase, s.index]);
+  const hear = () => {
+    const card = s.card;
+    if (!card) return;
+    played.current = s.index;
+    if (card.kind === "play-heard-note") {
+      playNotes([card.midi]);
+      // A card waiting for its first play shouldn't be timed until it is heard.
+      dispatch({ type: "reclock", at: performance.now() });
+    } else if (card.kind === "interval") {
+      const upper = answerMidi(card, s.rootMidi);
+      playNotes([upper - card.semitones, upper]);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
@@ -112,7 +142,7 @@ function Deck({ exercise, config, onAgain }: { exercise: ExerciseRow; config: Re
         </section>
       ) : (
         <>
-          {s.card && <Prompt card={s.card} s={s} />}
+          {s.card && <Prompt card={s.card} s={s} onHear={hear} />}
           {mic.status !== "listening" && (
             <MicPanel mic={mic} compact fallback={`No mic? Tap the answer ${s.card?.kind === "note-on-string" ? "on the string" : "on the neck"}.`} />
           )}
@@ -150,7 +180,7 @@ function Deck({ exercise, config, onAgain }: { exercise: ExerciseRow; config: Re
   );
 }
 
-function Prompt({ card, s }: { card: Card; s: RespondState }) {
+function Prompt({ card, s, onHear }: { card: Card; s: RespondState; onHear: () => void }) {
   const answered = s.phase === "answered";
   const tone = answered ? (s.last?.feedback.kind === "right" ? "border-correct" : "border-miss") : "border-line";
   return (
@@ -171,10 +201,20 @@ function Prompt({ card, s }: { card: Card; s: RespondState }) {
           <span className="text-[15px] text-muted">
             {s.rootMidi === null ? `Play ${noteName(card.root)}, then the note a ${intervalName(card.semitones)} above.` : `Now a ${intervalName(card.semitones)} above ${midiName(s.rootMidi)}.`}
           </span>
+          {answered && (
+            <button type="button" onClick={onHear} className="btn">
+              Hear it
+            </button>
+          )}
         </>
       )}
       {card.kind === "play-heard-note" && (
-        <span className="font-display text-3xl font-bold">Play the note you hear</span>
+        <>
+          <span className="font-display text-3xl font-bold">Play the note you hear</span>
+          <button type="button" onClick={onHear} className={answered ? "btn" : "btn-primary"}>
+            {answered ? "Hear it again" : "▶ Play it"}
+          </button>
+        </>
       )}
       <Feedback s={s} />
     </section>

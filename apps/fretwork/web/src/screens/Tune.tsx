@@ -1,4 +1,5 @@
 import { STANDARD_TUNING, STRING_LETTERS, midiName, midiToFreq } from "../../../src/theory/index.js";
+import { playNotes } from "../audio/output";
 import { useNoteStream } from "../audio/useNoteStream";
 import { MicPanel } from "../components/MicPanel";
 import { IN_TUNE, Needle } from "../components/Needle";
@@ -7,7 +8,8 @@ import { useSettings } from "../settings";
 
 /**
  * A chromatic tuner on the same note stream the engines use, so it doubles
- * as a check that the mic hears the guitar before practising.
+ * as a check that the mic hears the guitar before practising. Each string's
+ * chip plays its open note, for tuning by ear.
  */
 export function Tune() {
   const mic = useNoteStream();
@@ -67,19 +69,24 @@ export function Tune() {
             const idx = STANDARD_TUNING.length - 1 - i;
             const on = idx === nearestString;
             return (
-              <li
-                key={open}
-                className={
-                  "flex flex-col items-center rounded-lg border py-2 " +
-                  (on ? (inTune ? "border-correct text-correct" : "border-brass text-brass") : "border-line text-muted")
-                }
-              >
-                <span className="font-display text-lg font-bold leading-none">{STRING_LETTERS[idx]}</span>
-                <span className="font-mono text-[10px]">{midiToFreq(open, a4).toFixed(0)}</span>
+              <li key={open}>
+                <button
+                  type="button"
+                  onClick={() => playNotes([open], { duration: 2 })}
+                  aria-label={`Play ${midiName(open)}, ${midiToFreq(open, a4).toFixed(1)} Hz`}
+                  className={
+                    "focus-ring flex min-h-[44px] w-full flex-col items-center rounded-lg border py-2 " +
+                    (on ? (inTune ? "border-correct text-correct" : "border-brass text-brass") : "border-line text-muted")
+                  }
+                >
+                  <span className="font-display text-lg font-bold leading-none">{STRING_LETTERS[idx]}</span>
+                  <span className="font-mono text-[10px]">{midiToFreq(open, a4).toFixed(0)}</span>
+                </button>
               </li>
             );
           })}
         </ol>
+        <p className="text-[13px] text-faint">Tap a string to hear its note.</p>
       </section>
     </div>
   );

@@ -19,9 +19,28 @@ export interface Settings {
   a4: number;
   /** Microphone gate: RMS a note must reach before it counts. */
   gate: number;
+  /** Master output level, 0–1: tones, the click and the drone. */
+  volume: number;
+  muted: boolean;
+  /** Drone level, 0–1, under the master volume. */
+  droneLevel: number;
+  /**
+   * The app's sound goes to headphones, so the mic can't hear it. Off, the mic
+   * is deaf while a prompt tone plays (see output.ts).
+   */
+  headphones: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { leftHanded: false, labels: "names", a4: A4_HZ, gate: 0.01 };
+export const DEFAULT_SETTINGS: Settings = {
+  leftHanded: false,
+  labels: "names",
+  a4: A4_HZ,
+  gate: 0.01,
+  volume: 0.8,
+  muted: false,
+  droneLevel: 0.5,
+  headphones: false,
+};
 
 export const A4_RANGE = { min: 415, max: 466 } as const;
 export const GATE_RANGE = { min: 0.002, max: 0.08 } as const;
@@ -46,6 +65,10 @@ function load(): Settings {
     labels: raw.labels === "degrees" || raw.labels === "none" ? raw.labels : "names",
     a4: clamp(raw.a4, A4_RANGE.min, A4_RANGE.max, DEFAULT_SETTINGS.a4),
     gate: clamp(raw.gate, GATE_RANGE.min, GATE_RANGE.max, DEFAULT_SETTINGS.gate),
+    volume: clamp(raw.volume, 0, 1, DEFAULT_SETTINGS.volume),
+    muted: raw.muted === true,
+    droneLevel: clamp(raw.droneLevel, 0, 1, DEFAULT_SETTINGS.droneLevel),
+    headphones: raw.headphones === true,
   };
 }
 
@@ -63,7 +86,8 @@ export function updateSettings(patch: Partial<Settings>): void {
   listeners.forEach((l) => l());
 }
 
-function subscribe(listener: () => void): () => void {
+/** Called after every change, from this tab or another. */
+export function onSettings(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
@@ -76,5 +100,5 @@ window.addEventListener("storage", (e) => {
 });
 
 export function useSettings(): Settings {
-  return useSyncExternalStore(subscribe, getSettings);
+  return useSyncExternalStore(onSettings, getSettings);
 }
