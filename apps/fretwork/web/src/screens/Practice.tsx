@@ -4,10 +4,17 @@ import { RespondPractice } from "../practice/RespondPractice";
 import { SequencePractice } from "../practice/SequencePractice";
 import { href } from "../router";
 import { useApi } from "../useApi";
+import { useWakeLock } from "../wakeLock";
 
-/** Loads an exercise and hands it to its engine's practice screen. */
+/**
+ * Loads an exercise and hands it to its engine's practice screen. The screen
+ * stays awake while it is open, and taps on it never select text or zoom
+ * (`.practice` in index.css): the phone is on a stand, and a double tap on
+ * the neck is two notes.
+ */
 export function Practice({ id }: { id: string }) {
   const exercise = useApi(`exercise:${id}`, () => api.getExercise(id));
+  useWakeLock();
 
   if (exercise.loading && !exercise.data) return <p className="text-sm text-muted">Loading…</p>;
   if (exercise.error || !exercise.data) {
@@ -22,12 +29,11 @@ export function Practice({ id }: { id: string }) {
   }
 
   const e = exercise.data;
-  switch (e.config.engine) {
-    case "find":
-      return <FindPractice exercise={e} config={e.config} />;
-    case "respond":
-      return <RespondPractice exercise={e} config={e.config} />;
-    case "sequence":
-      return <SequencePractice exercise={e} config={e.config} />;
-  }
+  return (
+    <div className="practice">
+      {e.config.engine === "find" && <FindPractice exercise={e} config={e.config} />}
+      {e.config.engine === "respond" && <RespondPractice exercise={e} config={e.config} />}
+      {e.config.engine === "sequence" && <SequencePractice exercise={e} config={e.config} />}
+    </div>
+  );
 }

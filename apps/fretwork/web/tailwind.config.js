@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { TAILWIND_SCREENS } from "./src/breakpoints.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -13,6 +14,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 export default {
   content: [resolve(here, "index.html"), resolve(here, "src/**/*.{ts,tsx}")],
   theme: {
+    // The breakpoints live in src/breakpoints.ts, shared with the runtime checks.
+    screens: TAILWIND_SCREENS,
     extend: {
       colors: {
         ground: "#14110d",

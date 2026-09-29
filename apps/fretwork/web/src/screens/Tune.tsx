@@ -1,6 +1,7 @@
 import { STANDARD_TUNING, STRING_LETTERS, midiName, midiToFreq } from "../../../src/theory/index.js";
 import { playNotes } from "../audio/output";
 import { useNoteStream } from "../audio/useNoteStream";
+import { useWakeLock } from "../wakeLock";
 import { MicPanel } from "../components/MicPanel";
 import { IN_TUNE, Needle } from "../components/Needle";
 import { href } from "../router";
@@ -13,6 +14,8 @@ import { useSettings } from "../settings";
  */
 export function Tune() {
   const mic = useNoteStream();
+  // Tuning happens with the phone on the stand too.
+  useWakeLock(mic.status === "listening");
   const { a4 } = useSettings();
   const live = mic.status === "listening" ? mic.live : null;
 

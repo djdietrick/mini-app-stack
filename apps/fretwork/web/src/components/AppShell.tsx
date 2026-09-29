@@ -3,11 +3,12 @@ import { useAuth, useSession } from "@stack/auth-ui";
 import { type Route, href } from "../router";
 
 /**
- * Phone first: a single column with a bottom tab bar in thumb reach. From the
- * `lg` breakpoint the tabs move into a left rail and the content column gets
- * wider, which is the hook for the larger-screen layouts (landscape neck next
- * to a side panel) planned later. Screens only ever render into `children`,
- * so they do not need to know which layout is active.
+ * Phone first: a single column with a bottom tab bar in thumb reach. `md`
+ * (tablet portrait) widens the column. From `lg` the tabs move into a left
+ * rail, icons only so the content keeps the width a full 0–12 neck needs
+ * laid out flat; from `xl` the rail shows its labels. Screens only ever render
+ * into `children`, and switch their own layouts at the same breakpoints
+ * (src/breakpoints.ts).
  */
 
 const TABS: { route: Route; label: string; icon: ReactNode }[] = [
@@ -63,6 +64,8 @@ const TUNE = (
   </svg>
 );
 
+const RAIL_LINK = "focus-ring flex min-h-[44px] items-center justify-center gap-3 rounded-xl px-3 text-[15px] xl:justify-start ";
+
 function isActive(tab: Route, current: Route): boolean {
   if (current.name === "exercise" || current.name === "practice") return tab.name === "library";
   if (current.name === "session" || current.name === "routine") return tab.name === "home";
@@ -75,23 +78,24 @@ export function AppShell({ route, children }: { route: Route; children: ReactNod
   const who = session.status === "signed-in" ? session.user.displayName || session.user.email : "";
 
   return (
-    <div className="min-h-[100dvh] lg:grid lg:grid-cols-[232px_minmax(0,1fr)]">
-      <aside className="hidden lg:flex lg:flex-col lg:gap-2 lg:border-r lg:border-line lg:bg-surface lg:p-5">
-        <a href="#/" className="mb-6 font-display text-2xl font-bold focus-ring rounded">
-          Fretwork
+    <div className="min-h-[100dvh] lg:grid lg:grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[232px_minmax(0,1fr)]">
+      <aside className="hidden lg:sticky lg:top-0 lg:flex lg:h-[100dvh] lg:flex-col lg:gap-2 lg:overflow-y-auto lg:border-r lg:border-line lg:bg-surface lg:px-3 lg:py-5 xl:px-5">
+        <a href="#/" className="mb-6 rounded text-center font-display text-2xl font-bold focus-ring xl:text-left">
+          <span aria-hidden="true" className="text-brass xl:hidden">
+            F
+          </span>
+          <span className="sr-only xl:not-sr-only">Fretwork</span>
         </a>
         {TABS.map((t) => (
           <a
             key={t.label}
             href={href(t.route)}
+            title={t.label}
             aria-current={isActive(t.route, route) ? "page" : undefined}
-            className={
-              "focus-ring flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-[15px] " +
-              (isActive(t.route, route) ? "bg-raised text-brass" : "text-muted hover:text-ink")
-            }
+            className={RAIL_LINK + (isActive(t.route, route) ? "bg-raised text-brass" : "text-muted hover:text-ink")}
           >
             {t.icon}
-            {t.label}
+            <span className="sr-only xl:not-sr-only">{t.label}</span>
           </a>
         ))}
         <div className="mt-auto flex flex-col gap-2 text-sm text-muted">
@@ -102,24 +106,25 @@ export function AppShell({ route, children }: { route: Route; children: ReactNod
             <a
               key={t.label}
               href={href(t.route)}
+              title={t.label}
               aria-current={route.name === t.route.name ? "page" : undefined}
-              className={
-                "focus-ring flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-[15px] " +
-                (route.name === t.route.name ? "bg-raised text-brass" : "text-muted hover:text-ink")
-              }
+              className={RAIL_LINK + (route.name === t.route.name ? "bg-raised text-brass" : "text-muted hover:text-ink")}
             >
               {t.icon}
-              {t.label}
+              <span className="sr-only xl:not-sr-only">{t.label}</span>
             </a>
           ))}
-          <span className="truncate">{who}</span>
-          <button type="button" onClick={() => void logout()} className="btn">
-            Sign out
+          <span className="hidden truncate xl:block">{who}</span>
+          <button type="button" onClick={() => void logout()} title={who ? `Sign out ${who}` : "Sign out"} className="btn px-0 xl:px-4">
+            <svg viewBox="0 0 24 24" className="h-5 w-5 xl:hidden" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" />
+            </svg>
+            <span className="sr-only xl:not-sr-only">Sign out</span>
           </button>
         </div>
       </aside>
 
-      <div className="flex min-h-[100dvh] flex-col">
+      <div className="pl-safe pr-safe flex min-h-[100dvh] min-w-0 flex-col">
         <header className="pt-safe flex items-center justify-between px-5 pb-2 lg:hidden">
           <a href="#/" className="font-display text-2xl font-bold focus-ring rounded">
             Fretwork
@@ -151,13 +156,13 @@ export function AppShell({ route, children }: { route: Route; children: ReactNod
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-xl flex-1 px-5 pb-28 pt-2 lg:max-w-5xl lg:px-10 lg:pb-10 lg:pt-10">
+        <main className="mx-auto w-full max-w-xl flex-1 px-5 pb-28 pt-2 md:max-w-3xl md:px-8 lg:max-w-5xl lg:pb-10 lg:pt-8">
           {children}
         </main>
 
         <nav
           aria-label="Main"
-          className="pb-safe fixed inset-x-0 bottom-0 grid grid-cols-4 border-t border-line bg-[#17130f]/95 backdrop-blur lg:hidden"
+          className="pb-safe pl-safe pr-safe fixed inset-x-0 bottom-0 grid grid-cols-4 border-t border-line bg-[#17130f]/95 backdrop-blur lg:hidden"
         >
           {TABS.map((t) => (
             <a

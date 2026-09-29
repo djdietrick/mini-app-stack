@@ -3,6 +3,7 @@ import { api, type ExerciseRow, type RunRow } from "../api";
 import { formatDuration, useNow } from "../practice/common";
 import { href } from "../router";
 import { useApi } from "../useApi";
+import { useWakeLock } from "../wakeLock";
 import { Practice } from "./Practice";
 
 interface Step {
@@ -73,6 +74,8 @@ function Runner({ name, steps, missing, suggested }: { name: string; steps: Step
   const sessionStart = useRef(new Date().toISOString());
   const done = index >= steps.length;
   const now = useNow(!done, 1000);
+  // Held across items, so moving on doesn't let the screen dim for a moment.
+  useWakeLock(!done);
 
   const advance = (skipped: boolean) => {
     setSpent((s) => [...s, { ms: performance.now() - itemStart, skipped }]);
@@ -95,7 +98,7 @@ function Runner({ name, steps, missing, suggested }: { name: string; steps: Step
             {name} · {index + 1} of {steps.length}
           </span>
           <span
-            className={"shrink-0 font-mono text-lg " + (over ? "text-correct" : leftMs < 30_000 ? "text-brass" : "text-ink")}
+            className={"shrink-0 font-mono text-2xl " + (over ? "text-correct" : leftMs < 30_000 ? "text-brass" : "text-ink")}
             role="timer"
             aria-live="off"
           >
