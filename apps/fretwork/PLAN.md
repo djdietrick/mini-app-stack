@@ -6,7 +6,7 @@ Work is tracked in GitHub: **#9** is the tracking issue, with one sub-issue per 
 
 ## Decisions (locked in)
 
-- **Phone first.** The target is portrait, with the phone on a music stand and both hands on the guitar. Layouts must stretch to tablet and desktop later (#23) without rewriting screens.
+- **Phone first.** The target is portrait, with the phone on a music stand and both hands on the guitar. Layouts stretch to tablet and desktop (#23) at the breakpoints in `web/src/breakpoints.ts`.
 - **Three practice screens, one per engine.** All three came out of the design workshop and all three stay:
   | Engine | Screen | Built-in examples |
   |---|---|---|
@@ -41,10 +41,14 @@ apps/fretwork/
   web/src/         the SPA; imports ../../src/theory directly, and wire types type-only
     audio/         context.ts (the one AudioContext), noteStream.ts (the one mic),
                    useNoteStream(), capture.ts, output.ts (tones, drone, click), useMetronome()
-    practice/      one screen per engine, plus shared clock and run saving (common.ts)
+    practice/      one screen per engine, plus shared clock and run saving (common.ts),
+                   the practice keys (keys.tsx) and the hands-free countdown (AutoNext.tsx)
     settings.ts    per-device settings in localStorage: handedness, labels, A4, mic gate,
-                   volume, mute, drone level, headphones
-  web/public/      capture.worklet.js (served as a file; see capture.ts)
+                   volume, mute, drone level, headphones, hands-free
+    breakpoints.ts the layout breakpoints; tailwind.config.js builds its screens from it
+    wakeLock.ts    useWakeLock(): the screen stays on while practising
+  web/public/      capture.worklet.js (served as a file; see capture.ts), sw.js,
+                   manifest.webmanifest and icons/
 ```
 
 ## Listening (#11)
@@ -115,6 +119,27 @@ apps/fretwork/
 
 - **Engine grading logic stays pure**, under `src/`, so `node --test` covers it. The SPA wires it to the mic and the UI.
 - The Firestore collections are `fretwork_exercises`, `fretwork_runs`, `fretwork_progress`, `fretwork_position_stats` and `fretwork_routines`. The cloud function is `fretworkApi`, and the Hosting target is `fretwork`.
+
+## Phone ergonomics (#22)
+
+- **Wake lock:** `useWakeLock()` (`web/src/wakeLock.ts`) holds one screen lock while a practice screen, a session or a listening tuner is open. The browser drops it whenever the page is hidden, so it is requested again on `visibilitychange` and on the next tap (some browsers want a gesture). Where the API is missing or refuses (battery saver), the screen dims as before.
+- **Installable:** `web/public/manifest.webmanifest` (standalone, portrait, theme `#14110d`; icons in `public/icons/`, drawn from `icon.svg`, with the art inside the maskable safe zone) and `web/public/sw.js`, registered in production builds only. The worker never touches `/api/`, `/auth/` or Firebase's `/__/`: those go straight to the network. Pages are network first with the cached shell as the fallback, so an online load always gets the latest deploy; `/assets/` is cache first (content-hashed), and a new shell prunes the old build's assets. Hosting serves `sw.js` and the manifest `no-cache`.
+- **Hands-free** (Settings → Practice, on by default): a finished note hunt counts down 3 s to the next note (not after a timeout, or an unattended phone would cycle forever), and a respond card revealed by Skip or a timeout counts down to the next card. Both show the countdown and a Stay button. A right answer still moves on after 0.9 s, and a sequence still restarts when its first note is played.
+- **At arm's length:** feedback lines are 18 px, lane chips and string chips are larger, and the session and tempo readouts bigger.
+- **No accidents:** practice screens (`.practice` in `index.css`) turn off text selection, the long-press callout and double-tap zoom (two quick taps on the neck are two notes); pinch zoom still works. The shell pads for the notch in both orientations (`pl-safe`/`pr-safe`) as well as top and bottom.
+- **Background (what browsers allow):** a web page can't record in the background. On iOS (Safari and home-screen apps alike) the mic goes silent as soon as the page is hidden or the screen locks, and the AudioContext is suspended; `context.ts` resumes it on return, and if the track ended, the mic bar says so and one tap restarts it. The screen wake lock is therefore what keeps a session going (reportedly honoured in home-screen apps only from iOS 18.4; the device check below should confirm). Treat Android Chrome the same way: keep the app in front. Nothing is graded while hidden, and the clocks don't pause, so a run interrupted by a lock should be restarted.
+- **Pending a real-phone check** (the issue's acceptance): a 10-minute session on an iPhone (Safari, and installed) and an Android phone (Chrome, and installed) that never dims or drops the mic.
+
+## Larger screens (#23)
+
+- **Breakpoints in one place:** `web/src/breakpoints.ts`. Below `md` phone; `md` (768) tablet portrait, a wider single column; `lg` (1024) the wide layouts and an icon-only rail (so the content keeps the ~860 px a flat 0–12 neck needs); `xl` (1280) the rail with labels. `fine:` is a Tailwind variant for a mouse or trackpad.
+- **The neck with a mouse:** cells may be 32 px instead of 48 under `fine`, so a full 0–12 neck lies flat in a laptop's column. Tablets keep thumb-sized cells, so a 0–12 neck is vertical on a tablet in portrait and in any column narrower than ~860 px.
+- **Find (A), wide:** target, heard and progress as a row of cards, the neck across the width under them, then the mic bar and controls.
+- **Respond (B), wide:** the card and the tuner side by side, controls and stats under the tuner, and the neck or string across the full width below. (Beside a column, a 0–12 neck would be too narrow to lie flat, and a vertical one doesn't fit a landscape screen.)
+- **Sequence (C), wide:** the lane across the top; the neck on the left and a 300 px side panel (note, accuracy, tempo and ladder, shape, drone, restart) on the right.
+- **Library** is 2 columns from `md`, 3 from `xl`; **Progress** has the map and the ladder side by side from `lg`.
+- **Keys** (`web/src/practice/keys.tsx`), bound only while a practice screen is mounted: Space turns the mic on or off, R restarts (a new deck for respond), N moves on (next note; skip or next card). A control focused from the keyboard keeps its own Space and Enter; one that only has focus because it was clicked doesn't. The hints show under `fine:` only.
+- Checked in headless Chromium at 390×844, 768×1024 and 1024×768 (touch), and 1280×800 and 1440×900 (mouse): no horizontal scroll, nothing clipped.
 
 ## Data model
 
@@ -207,8 +232,8 @@ All additions are optional fields or new union members, so stored configs keep p
    - #18 progress data (done)
    - #19 progress screen (done)
 5. **Polish**
-   - #22 phone ergonomics (wake lock, PWA)
-   - #23 larger screens
+   - #22 phone ergonomics (done; real-phone check pending)
+   - #23 larger screens (done)
 
 ## Working on it
 

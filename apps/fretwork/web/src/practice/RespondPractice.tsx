@@ -19,7 +19,9 @@ import { MicPanel } from "../components/MicPanel";
 import { Needle } from "../components/Needle";
 import { type StripDot, StringStrip } from "../components/StringStrip";
 import { href } from "../router";
-import { formatDuration, useNow, useSaveRun, wallClock } from "./common";
+import { AutoNext } from "./AutoNext";
+import { AUTO_NEXT_MS, formatDuration, useNow, useSaveRun, wallClock } from "./common";
+import { KeyHints, usePracticeKeys } from "./keys";
 import { SaveLine } from "./SaveLine";
 
 /** How long a right answer stays up before the next card. */
@@ -79,6 +81,13 @@ function Deck({ exercise, config, onAgain }: { exercise: ExerciseRow; config: Re
   const save = useSaveRun(run);
   const stats = respondStats(s);
   const next = () => dispatch({ type: "next", at: performance.now(), rand: Math.random() });
+  const skip = () => dispatch({ type: "skip", at: performance.now() });
+  const keys = {
+    toggle: () => (mic.status === "listening" ? mic.stop() : void mic.start()),
+    restart: onAgain,
+    next: ended ? onAgain : s.phase === "asking" ? skip : next,
+  };
+  usePracticeKeys(keys);
 
   // Each heard-note card plays as it is dealt, once sound is unlocked. The ref
   // keeps a card from playing twice (StrictMode runs effects twice in dev).
@@ -162,41 +171,47 @@ function Deck({ exercise, config, onAgain }: { exercise: ExerciseRow; config: Re
           </div>
         </section>
       ) : (
-        <>
-          {s.card && <Prompt card={s.card} s={s} onHear={hear} droneOn={droneOn} />}
-          {mic.status !== "listening" && (
-            <MicPanel mic={mic} compact fallback={`No mic? Tap the answer ${s.card?.kind === "note-on-string" ? "on the string" : "on the neck"}.`} />
-          )}
-          {mic.status === "listening" && (
-            <div className="flex flex-col items-center gap-1">
-              <Needle live={mic.live} className="h-10" />
-              <span className="font-mono text-[13px] text-muted">
-                {mic.live ? `${midiName(mic.live.midi)} ${mic.live.cents >= 0 ? "+" : "−"}${Math.abs(mic.live.cents).toFixed(0)}¢` : "Listening"}
-              </span>
-            </div>
-          )}
-          {s.card && <Answer card={s.card} s={s} config={config} tap={mic.tap} />}
-          <div className="flex gap-2">
-            {s.phase === "asking" ? (
-              <button type="button" onClick={() => dispatch({ type: "skip", at: performance.now() })} className="btn">
-                Skip
-              </button>
-            ) : (
-              <button type="button" onClick={next} className="btn-primary">
-                {s.results.length >= s.total ? "Finish" : "Next"}
-              </button>
+        // Phone: prompt, tuner, the answer's string or neck, then the controls.
+        // From lg (direction B, wide): the card and the tuner side by side,
+        // controls and stats under the tuner, the full neck across the bottom.
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6">
+          <div className="lg:row-span-2">{s.card && <Prompt card={s.card} s={s} onHear={hear} droneOn={droneOn} />}</div>
+          <div>
+            {mic.status !== "listening" && (
+              <MicPanel mic={mic} compact fallback={`No mic? Tap the answer ${s.card?.kind === "note-on-string" ? "on the string" : "on the neck"}.`} />
+            )}
+            {mic.status === "listening" && (
+              <div className="flex flex-col items-center gap-1 lg:card lg:p-4">
+                <Needle live={mic.live} className="h-10 lg:h-16" />
+                <span className="font-mono text-[15px] text-muted">
+                  {mic.live ? `${midiName(mic.live.midi)} ${mic.live.cents >= 0 ? "+" : "−"}${Math.abs(mic.live.cents).toFixed(0)}¢` : "Listening"}
+                </span>
+              </div>
             )}
           </div>
-        </>
+          <div className="lg:col-span-2 lg:row-start-3">{s.card && <Answer card={s.card} s={s} config={config} tap={mic.tap} />}</div>
+          <div className="flex flex-col gap-3 lg:col-start-2 lg:row-start-2">
+            <div className="flex gap-2">
+              {s.phase === "asking" ? (
+                <button type="button" onClick={skip} className="btn">
+                  Skip
+                </button>
+              ) : (
+                <button type="button" onClick={next} className="btn-primary">
+                  {s.results.length >= s.total ? "Finish" : "Next"}
+                </button>
+              )}
+            </div>
+            {s.phase === "answered" && !right && (
+              <AutoNext key={s.index} ms={AUTO_NEXT_MS} label={s.results.length >= s.total ? "Finishing" : "Next card"} onGo={next} />
+            )}
+            <Stats stats={stats} />
+            <KeyHints keys={keys} />
+          </div>
+        </div>
       )}
 
-      {s.pool.length > 0 && (
-        <dl className="grid grid-cols-3 gap-2">
-          <Stat label="Streak" value={String(stats.streak)} />
-          <Stat label="Score" value={`${stats.right}/${stats.answered}`} />
-          <Stat label="Average" value={stats.averageMs === null ? "–" : formatDuration(stats.averageMs)} />
-        </dl>
-      )}
+      {ended && s.pool.length > 0 && <Stats stats={stats} />}
     </div>
   );
 }
@@ -274,7 +289,7 @@ function Prompt({ card, s, onHear, droneOn }: { card: Card; s: RespondState; onH
 
 function Feedback({ s }: { s: RespondState }) {
   const f = s.last?.feedback;
-  if (!f) return <p className="min-h-[1.5em] text-[15px] text-faint">&nbsp;</p>;
+  if (!f) return <p className="min-h-[1.5em] text-lg text-faint">&nbsp;</p>;
   const card = s.card!;
   let text = "";
   let tone = "text-miss";
@@ -292,7 +307,7 @@ function Feedback({ s }: { s: RespondState }) {
       text = `${midiName(f.midi)} ✓ Now the ${card.kind === "interval" ? intervalName(card.semitones) : card.kind === "octave" ? "octave" : "next note"}.`;
       break;
     case "drone":
-      return <p className="min-h-[1.5em] text-[15px] text-faint">&nbsp;</p>;
+      return <p className="min-h-[1.5em] text-lg text-faint">&nbsp;</p>;
     case "wrong-octave":
       text = `✕ ${midiName(f.midi)}: right note, wrong octave. It's ${midiName(f.expected)}.`;
       break;
@@ -315,7 +330,7 @@ function Feedback({ s }: { s: RespondState }) {
       text = `${f.kind === "timeout" ? "Time's up. " : ""}The answer: ${midiName(answerMidi(card, s.rootMidi))}.`;
       break;
   }
-  return <p className={"min-h-[1.5em] text-[15px] " + tone}>{text}</p>;
+  return <p className={"min-h-[1.5em] text-lg leading-snug " + tone}>{text}</p>;
 }
 
 /** The answer's place: the one string for note-on-string, the neck otherwise. Also the tap fallback. */
@@ -389,6 +404,16 @@ function Answer({
       onPress={(string, fret) => tap(midiAt(string, fret), { string, fret })}
       title={`Neck, frets ${config.frets.lo} to ${config.frets.hi}. Tap a position to play it.`}
     />
+  );
+}
+
+function Stats({ stats }: { stats: ReturnType<typeof respondStats> }) {
+  return (
+    <dl className="grid grid-cols-3 gap-2">
+      <Stat label="Streak" value={String(stats.streak)} />
+      <Stat label="Score" value={`${stats.right}/${stats.answered}`} />
+      <Stat label="Average" value={stats.averageMs === null ? "–" : formatDuration(stats.averageMs)} />
+    </dl>
   );
 }
 

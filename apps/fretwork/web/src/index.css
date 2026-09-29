@@ -11,9 +11,27 @@ body {
   min-height: 100dvh;
 }
 
-/* Keep controls clear of the notch and the home indicator when installed. */
+/* Keep controls clear of the notch and the home indicator when installed,
+   and of the notch's side in landscape. */
 .pt-safe { padding-top: max(1rem, env(safe-area-inset-top)); }
 .pb-safe { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+.pl-safe { padding-left: env(safe-area-inset-left); }
+.pr-safe { padding-right: env(safe-area-inset-right); }
+
+/* Practice screens: the phone is on a stand and hands come off the strings to
+   tap. No text selection or callout on a long press, and no double-tap zoom
+   (two quick taps on the neck are two notes). Pinch zoom still works. */
+.practice {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+.practice input,
+.practice textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
 
 @layer components {
   .label-caps {

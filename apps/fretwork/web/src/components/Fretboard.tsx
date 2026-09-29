@@ -7,6 +7,7 @@ import {
   midiAt,
   midiName,
 } from "../../../src/theory/index.js";
+import { FINE_POINTER, matches } from "../breakpoints";
 import { type LabelMode, useSettings } from "../settings";
 
 /**
@@ -74,6 +75,11 @@ const STRINGS = [1, 2, 3, 4, 5, 6];
 const THICKNESS = [1.4, 1.7, 2.1, 2.6, 3.1, 3.6];
 /** Minimum target size for a press, px (WCAG 2.5.5 asks 44). */
 const TAP = 48;
+/**
+ * With a mouse or trackpad (FINE_POINTER), px: well above WCAG 2.5.8's 24, and
+ * small enough that a full 0–12 neck lies flat in a laptop's content column.
+ */
+const CLICK = 32;
 const NUMBERS = 22;
 /** Before the first measurement: a phone's content column. */
 const FALLBACK_WIDTH = 350;
@@ -117,7 +123,9 @@ function layout(
   interactive: boolean,
   leftHanded: boolean,
   landscape: boolean,
+  fine: boolean,
 ): Layout {
+  const tap = fine ? CLICK : TAP;
   const { lo, hi } = frets;
   const hasNut = lo === 0;
   const edge = hasNut ? 0 : lo - 1;
@@ -127,25 +135,26 @@ function layout(
   const smallest = fraction(hi);
 
   // Horizontal: fill the width, up to a comfortable maximum cell.
-  const hNut = hasNut ? (interactive ? TAP : 34) : 0;
+  const hNut = hasNut ? (interactive ? tap : 34) : 0;
   const hLength = Math.min(width - hNut, count * 110);
   const hMinCell = hLength * smallest;
   // A neck to tap needs thumb-sized cells. One only to look at can go smaller,
   // and smaller still in landscape, where a vertical neck would not fit the height.
-  const minCell = interactive ? TAP : landscape ? 18 : 28;
+  const minCell = interactive ? tap : landscape ? 18 : 28;
   const vertical = orientation === "vertical" || (orientation === "auto" && hMinCell < minCell);
 
   let sizes: number[];
   let nutZone: number;
   let gap: number;
   if (vertical) {
-    nutZone = hasNut ? (interactive ? TAP : 36) : 0;
+    nutZone = hasNut ? (interactive ? tap : 36) : 0;
     gap = Math.max(24, Math.min(64, (width - NUMBERS) / 6));
     const base = count * (interactive ? 52 : 40);
-    const min = interactive ? TAP : 26;
+    const min = interactive ? tap : 26;
     sizes = Array.from({ length: count }, (_, i) => Math.max(min, base * fraction(edge + i + 1)));
   } else {
     nutZone = hNut;
+    // String spacing stays thumb-sized: height is not what a wide screen lacks.
     gap = interactive ? TAP : 30;
     sizes = Array.from({ length: count }, (_, i) => hLength * fraction(edge + i + 1));
   }
@@ -185,16 +194,19 @@ function rect(L: Layout, a0: number, a1: number, c0: number, c1: number) {
 
 const isLandscape = () => typeof window !== "undefined" && window.innerWidth > window.innerHeight;
 
-/** The container's width, and whether the screen is landscape; both change on rotation. */
+/**
+ * The container's width, whether the screen is landscape (both change on
+ * rotation), and whether a mouse or trackpad is the pointer.
+ */
 function useWidth() {
   const ref = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: FALLBACK_WIDTH, landscape: isLandscape() });
+  const [size, setSize] = useState({ width: FALLBACK_WIDTH, landscape: isLandscape(), fine: matches(FINE_POINTER) });
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(([entry]) => {
       const width = Math.floor(entry.contentRect.width);
-      if (width > 0) setSize({ width, landscape: isLandscape() });
+      if (width > 0) setSize({ width, landscape: isLandscape(), fine: matches(FINE_POINTER) });
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -232,8 +244,8 @@ export function Fretboard({
   const lefty = leftHanded ?? settings.leftHanded;
   const labelMode = labels ?? settings.labels;
   const titleId = useId();
-  const { ref, width, landscape } = useWidth();
-  const L = layout(width, frets, orientation, !!onPress, lefty, landscape);
+  const { ref, width, landscape, fine } = useWidth();
+  const L = layout(width, frets, orientation, !!onPress, lefty, landscape, fine);
 
   const { lo, hi } = frets;
   const hasNut = lo === 0;

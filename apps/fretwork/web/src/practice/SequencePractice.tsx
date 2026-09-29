@@ -26,6 +26,7 @@ import { href } from "../router";
 import { updateSettings, useSettings } from "../settings";
 import { useApi } from "../useApi";
 import { formatDuration, useSaveRun, wallClock } from "./common";
+import { KeyHints, usePracticeKeys } from "./keys";
 import { SaveLine } from "./SaveLine";
 
 /** The memorisation ladder: the whole shape, then only its roots, then nothing. */
@@ -118,7 +119,7 @@ export function SequencePractice({ exercise, config }: { exercise: ExerciseRow; 
           <button type="button" className="btn w-11 px-0" aria-label={`Slower by ${nudgeBy} bpm`} onClick={() => nudge(-nudgeBy)}>
             −
           </button>
-          <output className="min-w-[4.5rem] text-center font-mono text-2xl" aria-live="polite">
+          <output className="min-w-[4.5rem] text-center font-mono text-3xl" aria-live="polite">
             {ladder.tempo}
             <span className="text-[13px] text-muted"> bpm</span>
           </output>
@@ -250,6 +251,8 @@ function Round({ exercise, config, tempo, opening, view, spelling, bumpedTo, onF
 
   const stats = sequenceStats(s);
   const first = s.notes[0]?.target;
+  const keys = { toggle: () => (mic.status === "listening" ? mic.stop() : void mic.start()), restart: () => onAgain() };
+  usePracticeKeys(keys);
   const frame = { lo: Math.max(0, config.frets.lo - 1), hi: config.frets.hi >= 12 ? config.frets.hi : config.frets.hi + 1 };
 
   return (
@@ -269,7 +272,7 @@ function Round({ exercise, config, tempo, opening, view, spelling, bumpedTo, onF
           Nothing to play: none of these notes fit in frets {config.frets.lo}–{config.frets.hi} on these strings.
         </p>
       ) : (
-        <div className="sticky top-0 z-10 -mx-5 flex flex-col gap-1 bg-ground/95 px-5 py-2 backdrop-blur">
+        <div className="sticky top-0 z-10 -mx-5 flex flex-col gap-1 bg-ground/95 px-5 py-2 md:-mx-8 md:px-8 backdrop-blur">
           <Parts labels={partLabels(config)} current={s.notes[Math.min(s.index, s.notes.length - 1)].target.part} />
           <Lane s={s} spelling={spelling} />
           <div aria-live="polite" aria-atomic="true">
@@ -278,39 +281,63 @@ function Round({ exercise, config, tempo, opening, view, spelling, bumpedTo, onF
         </div>
       )}
 
-      {ended && run && (
-        <section className="card flex flex-col gap-3 p-4" aria-labelledby="result-h">
-          <h2 id="result-h" className="font-display text-xl font-bold">
-            {run.clean ? "Clean run" : `${run.notesClean}/${run.notesTotal} right first time`}
-          </h2>
-          <p className="font-mono text-[15px]">
-            {formatDuration(run.durationMs)} · {run.tempo} bpm
-          </p>
-          {bumpedTo !== null && <p className="text-[15px] text-correct">Tempo up: {bumpedTo} bpm.</p>}
-          <SaveLine status={save.status} retry={save.retry} />
-          <div className="flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => onAgain()} className="btn-primary">
-              Run again
-            </button>
-            {first && <span className="text-[13px] text-muted">or play {midiName(first.midi, spelling)} to go again</span>}
-          </div>
-        </section>
-      )}
+      {/* Phone: one column, the panel under the neck. From lg (direction C, wide):
+          the lane stays across the top, the neck fills the left, and tempo,
+          the ladder and the run's numbers sit in a side panel. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-6">
+        <div className="flex flex-col gap-4">
+          {ended && run && (
+            <section className="card flex flex-col gap-3 p-4" aria-labelledby="result-h">
+              <h2 id="result-h" className="font-display text-xl font-bold">
+                {run.clean ? "Clean run" : `${run.notesClean}/${run.notesTotal} right first time`}
+              </h2>
+              <p className="font-mono text-[15px]">
+                {formatDuration(run.durationMs)} · {run.tempo} bpm
+              </p>
+              {bumpedTo !== null && <p className="text-[15px] text-correct">Tempo up: {bumpedTo} bpm.</p>}
+              <SaveLine status={save.status} retry={save.retry} />
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" onClick={() => onAgain()} className="btn-primary">
+                  Run again
+                </button>
+                {first && <span className="text-[15px] text-muted">or play {midiName(first.midi, spelling)} to go again</span>}
+              </div>
+            </section>
+          )}
 
-      {s.notes.length > 0 && !ended && <MicPanel mic={mic} compact fallback="No mic? Tap the notes on the neck." />}
+          {s.notes.length > 0 && !ended && <MicPanel mic={mic} compact fallback="No mic? Tap the notes on the neck." />}
 
-      {s.notes.length > 0 && (
-        <Fretboard
-          frets={frame}
-          highlight={config.frets}
-          activeString={config.strings.length === 1 ? config.strings[0] : undefined}
-          dots={dotsFor(s, view, spelling)}
-          onPress={(string, fret) => mic.tap(midiAt(string, fret), { string, fret })}
-          title={`Neck, frets ${frame.lo} to ${frame.hi}. Tap a position to play it.`}
-        />
-      )}
+          {s.notes.length > 0 && (
+            <Fretboard
+              frets={frame}
+              highlight={config.frets}
+              activeString={config.strings.length === 1 ? config.strings[0] : undefined}
+              dots={dotsFor(s, view, spelling)}
+              onPress={(string, fret) => mic.tap(midiAt(string, fret), { string, fret })}
+              title={`Neck, frets ${frame.lo} to ${frame.hi}. Tap a position to play it.`}
+            />
+          )}
+        </div>
 
-      {panel}
+        <aside className="flex flex-col gap-4" aria-label="Tempo and run">
+          {s.notes.length > 0 && (
+            <dl className="hidden grid-cols-2 gap-2 lg:grid">
+              <div className="card flex flex-col items-center gap-1 py-2">
+                <dt className="label-caps">Note</dt>
+                <dd className="font-mono text-lg">
+                  {Math.min(s.index + (ended ? 0 : 1), s.notes.length)}/{s.notes.length}
+                </dd>
+              </div>
+              <div className="card flex flex-col items-center gap-1 py-2">
+                <dt className="label-caps">Accuracy</dt>
+                <dd className="font-mono text-lg">{stats.accuracy === null ? "–" : `${Math.round(stats.accuracy * 100)}%`}</dd>
+              </div>
+            </dl>
+          )}
+          {panel}
+          <KeyHints keys={keys} />
+        </aside>
+      </div>
     </div>
   );
 }
@@ -355,7 +382,7 @@ function Lane({ s, spelling }: { s: SequenceState; spelling: Spelling }) {
             aria-current={now ? "step" : undefined}
             aria-label={`${midiName(n.target.midi, spelling)}, ${n.target.degree}: ${LANE_WORDS[state]}`}
             className={
-              "flex h-12 w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border-2 " +
+              "flex h-14 w-12 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border-2 " +
               (state === "clean"
                 ? "border-correct bg-correct text-correct-ink"
                 : state === "missed"
@@ -367,11 +394,11 @@ function Lane({ s, spelling }: { s: SequenceState; spelling: Spelling }) {
                       : "border-line text-muted")
             }
           >
-            <span className="font-display text-sm font-bold leading-none">
+            <span className="font-display text-base font-bold leading-none">
               {noteName(n.target.midi, spelling)}
               {state === "missed" || state === "retry" ? "✕" : ""}
             </span>
-            <span className="font-mono text-[10px] leading-none">{n.target.degree}</span>
+            <span className="font-mono text-[11px] leading-none">{n.target.degree}</span>
           </li>
         );
       })}
@@ -418,7 +445,7 @@ function Feedback({ s, spelling }: { s: SequenceState; spelling: Spelling }) {
         break;
     }
   }
-  return <p className={"min-h-[1.5em] text-[15px] " + tone}>{text}</p>;
+  return <p className={"min-h-[1.5em] text-lg leading-snug " + tone}>{text}</p>;
 }
 
 /**

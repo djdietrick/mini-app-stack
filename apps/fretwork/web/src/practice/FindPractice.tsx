@@ -15,7 +15,9 @@ import { useNoteStream } from "../audio/useNoteStream";
 import { type Dot, Fretboard } from "../components/Fretboard";
 import { MicPanel } from "../components/MicPanel";
 import { href } from "../router";
-import { formatDuration, useNow, useSaveRun, wallClock } from "./common";
+import { AutoNext } from "./AutoNext";
+import { AUTO_NEXT_MS, formatDuration, useNow, useSaveRun, wallClock } from "./common";
+import { KeyHints, usePracticeKeys } from "./keys";
 import { SaveLine } from "./SaveLine";
 
 /**
@@ -92,6 +94,14 @@ function FindRound({ exercise, config, pc, onRestart, onNext }: RoundProps) {
   const found = s.slots.filter((x) => x.found).length;
   const active = currentString(s);
 
+  const toggleMic = () => (mic.status === "listening" ? mic.stop() : void mic.start());
+  const keys = { toggle: toggleMic, restart: onRestart, next: onNext };
+  usePracticeKeys(keys);
+  const nextName = noteName(nextPitchClass(pc));
+
+  // Phone: one column, the prompt stuck to the top and the neck below the
+  // controls. From lg (direction A, wide): target, heard and progress as a row
+  // of cards, the whole neck across the width under them, controls last.
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
@@ -101,14 +111,30 @@ function FindRound({ exercise, config, pc, onRestart, onNext }: RoundProps) {
         <Clock elapsed={elapsed} limitMs={limitMs} />
       </div>
 
-      <div className="sticky top-0 z-10 -mx-5 bg-ground/95 px-5 py-2 backdrop-blur" aria-live="polite" aria-atomic="true">
-        <h1 className="font-display text-4xl font-bold leading-tight">
+      <div
+        className="sticky top-0 z-10 -mx-5 bg-ground/95 px-5 py-2 md:-mx-8 md:px-8 backdrop-blur lg:static lg:mx-0 lg:grid lg:grid-cols-3 lg:gap-3 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <h1 className="font-display text-4xl font-bold leading-tight lg:card lg:p-4 lg:text-3xl">
+          <span className="label-caps hidden lg:block" aria-hidden="true">Target</span>
           Find <span className="text-brass">{name}</span>
           {active !== null && (
-            <span className="text-2xl font-semibold text-muted"> on the {stringName(active)} string</span>
+            <span className="text-2xl font-semibold text-muted lg:text-xl"> on the {stringName(active)} string</span>
           )}
         </h1>
-        <Feedback s={s} config={config} />
+        <div className="lg:card lg:p-4">
+          <span className="label-caps hidden lg:block" aria-hidden="true">Heard</span>
+          <Feedback s={s} config={config} />
+        </div>
+        {s.slots.length > 0 && (
+          <div className="hidden lg:card lg:flex lg:flex-col lg:gap-2 lg:p-4">
+            <span className="label-caps">
+              Progress · {found}/{s.slots.length}
+            </span>
+            <Progress s={s} />
+          </div>
+        )}
       </div>
 
       {s.slots.length === 0 ? (
@@ -117,8 +143,14 @@ function FindRound({ exercise, config, pc, onRestart, onNext }: RoundProps) {
         </p>
       ) : (
         <>
-          {!ended && <MicPanel mic={mic} compact fallback="No mic? Tap the note on the neck." />}
-          <Progress s={s} />
+          {!ended && (
+            <div className="lg:order-4">
+              <MicPanel mic={mic} compact fallback="No mic? Tap the note on the neck." />
+            </div>
+          )}
+          <div className="lg:hidden">
+            <Progress s={s} />
+          </div>
         </>
       )}
 
@@ -133,17 +165,18 @@ function FindRound({ exercise, config, pc, onRestart, onNext }: RoundProps) {
           <SaveLine status={save.status} retry={save.retry} />
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={onNext} className="btn-primary">
-              Next note: {noteName(nextPitchClass(pc))}
+              Next note: {nextName}
             </button>
             <button type="button" onClick={onRestart} className="btn">
               Again
             </button>
           </div>
+          {!s.timedOut && <AutoNext ms={AUTO_NEXT_MS} label={`Next note: ${nextName}`} onGo={onNext} />}
         </section>
       )}
 
       {!ended && s.slots.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 lg:order-4">
           <button
             type="button"
             aria-pressed={s.hint}
@@ -156,18 +189,19 @@ function FindRound({ exercise, config, pc, onRestart, onNext }: RoundProps) {
             Restart
           </button>
           <button type="button" onClick={onNext} className="btn">
-            Next note: {noteName(nextPitchClass(pc))}
+            Next note: {nextName}
           </button>
         </div>
       )}
 
       {s.slots.length === 0 && (
         <button type="button" onClick={onNext} className="btn-primary self-start">
-          Next note: {noteName(nextPitchClass(pc))}
+          Next note: {nextName}
         </button>
       )}
 
       <Fretboard
+        className="lg:order-3"
         frets={view}
         highlight={config.frets}
         activeString={active ?? undefined}
@@ -176,11 +210,14 @@ function FindRound({ exercise, config, pc, onRestart, onNext }: RoundProps) {
         title={`Neck, frets ${view.lo} to ${view.hi}. Tap a position to play it.`}
       />
 
-      <p className="text-[13px] text-faint">
-        {found}/{s.slots.length} found. The mic hears pitch, not strings, so the right pitch counts wherever you play
-        it.
-        {s.hint ? " Notes found with positions showing don't count as clean." : ""}
-      </p>
+      <div className="flex flex-col gap-2 lg:order-5">
+        <p className="text-[13px] text-faint">
+          {found}/{s.slots.length} found. The mic hears pitch, not strings, so the right pitch counts wherever you play
+          it.
+          {s.hint ? " Notes found with positions showing don't count as clean." : ""}
+        </p>
+        <KeyHints keys={keys} />
+      </div>
     </div>
   );
 }
@@ -238,7 +275,7 @@ function Feedback({ s, config }: { s: FindState; config: FindConfig }) {
       text = `${midiName(f.midi)} is outside frets ${config.frets.lo}–${config.frets.hi}.`;
       break;
   }
-  return <p className={"min-h-[3em] text-[15px] " + tone}>{text}</p>;
+  return <p className={"min-h-[3em] text-lg leading-snug " + tone}>{text}</p>;
 }
 
 /** String by string: one chip per string, low E first. Any order: a count and a bar. */
@@ -279,7 +316,7 @@ function Progress({ s }: { s: FindState }) {
                       : "border-line text-faint")
             }
           >
-            <span className="font-display text-base font-bold leading-none">
+            <span className="font-display text-lg font-bold leading-none">
               {STRING_LETTERS[string - 1]}
               {state === "clean" || state === "found" ? " ✓" : state === "missed" ? " ✕" : ""}
             </span>

@@ -3,6 +3,9 @@ import { api, type RunInput } from "../api";
 
 /** Pieces every practice screen shares: a ticking clock, and saving the run. */
 
+/** Hands-free (AutoNext): how long a finished round waits before moving on. */
+export const AUTO_NEXT_MS = 3000;
+
 /** performance.now(), re-rendering every `every` ms while `active`. */
 export function useNow(active: boolean, every = 200): number {
   const [now, setNow] = useState(() => performance.now());

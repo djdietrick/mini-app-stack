@@ -93,6 +93,26 @@ export function Settings() {
         </div>
       </section>
 
+      <section className="flex flex-col gap-3" aria-labelledby="practice-h">
+        <h2 id="practice-h" className="label-caps">Practice</h2>
+        <div className="card flex flex-col gap-2 p-4">
+          <label className="flex min-h-[44px] items-center justify-between gap-3">
+            <span className="text-[15px]">Hands-free</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={settings.handsFree}
+              onChange={(e) => updateSettings({ handsFree: e.target.checked })}
+              className={SWITCH}
+            />
+          </label>
+          <p className="text-[13px] text-faint">
+            Moves on by itself after a short countdown: to the next note once you've found them all, and to the next card
+            once the answer shows. Scales start again when you play their first note either way.
+          </p>
+        </div>
+      </section>
+
       <section className="flex flex-col gap-3" aria-labelledby="mic-h">
         <h2 id="mic-h" className="label-caps">Microphone</h2>
         <MicPanel mic={mic} />

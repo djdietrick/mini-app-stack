@@ -29,6 +29,11 @@ export interface Settings {
    * is deaf while a prompt tone plays (see output.ts).
    */
   headphones: boolean;
+  /**
+   * Hands-free: after a note is found, or an answer revealed, move on by
+   * itself after a short countdown instead of waiting for a tap.
+   */
+  handsFree: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -40,6 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   muted: false,
   droneLevel: 0.5,
   headphones: false,
+  handsFree: true,
 };
 
 export const A4_RANGE = { min: 415, max: 466 } as const;
@@ -69,6 +75,7 @@ function load(): Settings {
     muted: raw.muted === true,
     droneLevel: clamp(raw.droneLevel, 0, 1, DEFAULT_SETTINGS.droneLevel),
     headphones: raw.headphones === true,
+    handsFree: raw.handsFree !== false,
   };
 }
 

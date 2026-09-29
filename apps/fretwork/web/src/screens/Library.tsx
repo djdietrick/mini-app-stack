@@ -45,12 +45,12 @@ export function Library() {
       {exercises.loading && !exercises.data && <p className="text-sm text-muted">Loading…</p>}
       {exercises.error && <p className="text-sm text-miss">Couldn't load exercises.</p>}
 
-      <ul className="flex flex-col lg:grid lg:grid-cols-2 lg:gap-3">
+      <ul className="flex flex-col md:grid md:grid-cols-2 md:gap-3 xl:grid-cols-3">
         {rows.map((e) => (
           <li key={e.id}>
             <a
               href={href({ name: "exercise", id: e.id })}
-              className="focus-ring flex min-h-[64px] items-center gap-3 border-b border-raised py-2 lg:card lg:border lg:p-4"
+              className="focus-ring flex min-h-[64px] items-center gap-3 border-b border-raised py-2 md:card md:h-full md:border md:p-4"
             >
               <div className="flex flex-1 flex-col gap-1">
                 <span className="text-[15px] font-semibold">{e.name}</span>
