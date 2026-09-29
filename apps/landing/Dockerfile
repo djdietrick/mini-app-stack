@@ -20,6 +20,7 @@ COPY apps/landing apps/landing
 ARG VITE_APP_URL_CRATE
 ARG VITE_APP_URL_PANTRY
 ARG VITE_APP_URL_YTDIGEST
+ARG VITE_APP_URL_FRETWORK
 RUN pnpm --filter @stack/landing build:web
 
 FROM nginx:1.27-alpine

@@ -93,6 +93,7 @@ jobs:
           CRATE_FUNCTION_SA: ${{ vars.STAGING_CRATE_FUNCTION_SA }}
           PANTRY_FUNCTION_SA: ${{ vars.STAGING_PANTRY_FUNCTION_SA }}
           YTDIGEST_FUNCTION_SA: ${{ vars.STAGING_YTDIGEST_FUNCTION_SA }}
+          FRETWORK_FUNCTION_SA: ${{ vars.STAGING_FRETWORK_FUNCTION_SA }}
           # ytdigest's non-secret mail settings. SMTP_PASSWORD is in Secret
           # Manager, bound in functions/src/index.ts.
           SMTP_HOST: ${{ vars.STAGING_SMTP_HOST }}
@@ -105,6 +106,7 @@ jobs:
           : "${PANTRY_FUNCTION_SA:?set the STAGING_PANTRY_FUNCTION_SA repository variable}"
           : "${AUTH_FUNCTION_SA:?set the STAGING_AUTH_FUNCTION_SA repository variable}"
           : "${YTDIGEST_FUNCTION_SA:?set the STAGING_YTDIGEST_FUNCTION_SA repository variable}"
+          : "${FRETWORK_FUNCTION_SA:?set the STAGING_FRETWORK_FUNCTION_SA repository variable}"
           : "${SMTP_HOST:?set the STAGING_SMTP_HOST repository variable}"
           : "${SMTP_USER:?set the STAGING_SMTP_USER repository variable}"
           : "${MAIL_FROM:?set the STAGING_MAIL_FROM repository variable}"

@@ -111,6 +111,34 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "channelId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "//": "fretwork GET /api/exercises — one user's exercises, newest first.",
+      "collectionGroup": "fretwork_exercises",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "fretwork GET /api/runs — one user's runs, newest first.",
+      "collectionGroup": "fretwork_runs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "startedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "fretwork GET /api/runs?exerciseId= — the same, for one exercise.",
+      "collectionGroup": "fretwork_runs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "exerciseId", "order": "ASCENDING" },
+        { "fieldPath": "startedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

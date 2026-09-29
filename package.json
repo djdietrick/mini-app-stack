@@ -22,6 +22,7 @@
   "devDependencies": {
     "@stack/auth-client": "workspace:*",
     "@stack/crate": "workspace:*",
+    "@stack/fretwork": "workspace:*",
     "@stack/mailer": "workspace:*",
     "@stack/pantry": "workspace:*",
     "@stack/service-kit": "workspace:*",

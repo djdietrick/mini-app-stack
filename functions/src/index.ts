@@ -13,6 +13,8 @@ import { toExpressApp } from "@stack/service-kit/express";
 import { crateRoutes } from "@stack/crate/domain";
 import { createItunesGateway } from "@stack/crate/domain/itunes";
 import { createFirestoreCrateRepo } from "@stack/crate/repo/firestore";
+import { fretworkRoutes } from "@stack/fretwork/domain";
+import { createFirestoreFretworkRepo } from "@stack/fretwork/repo/firestore";
 import { pantryRoutes, resolvePantryScope } from "@stack/pantry/domain";
 import { createFirestorePantryRepo } from "@stack/pantry/repo/firestore";
 import { ytdigestRoutes } from "@stack/ytdigest/domain";
@@ -62,6 +64,7 @@ const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // Firebase's maximum.
 const crateServiceAccount = process.env.CRATE_FUNCTION_SA || undefined;
 const pantryServiceAccount = process.env.PANTRY_FUNCTION_SA || undefined;
 const ytdigestServiceAccount = process.env.YTDIGEST_FUNCTION_SA || undefined;
+const fretworkServiceAccount = process.env.FRETWORK_FUNCTION_SA || undefined;
 const authServiceAccount = process.env.AUTH_FUNCTION_SA || undefined;
 
 // Module scope on purpose: these are reused across warm invocations.
@@ -115,6 +118,18 @@ export const pantryApi = onRequest(
       verify: verifier.verify,
       // Resolves the caller's active household, as the Fastify side does.
       resolveScope: resolvePantryScope,
+    }),
+  ),
+);
+
+// Grading runs in the browser; this only stores exercises and results.
+export const fretworkApi = onRequest(
+  { serviceAccount: fretworkServiceAccount },
+  mount(
+    "/api",
+    toExpressApp(fretworkRoutes(), {
+      repo: createFirestoreFretworkRepo(db),
+      verify: verifier.verify,
     }),
   ),
 );
