@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { FORMULA_IDS } from "../theory/scales.js";
-import { PATTERNS } from "../theory/sequence.js";
+import { PATTERNS, SHAPES } from "../theory/sequence.js";
 
 /**
  * fretwork's wire and config types.
@@ -68,21 +68,67 @@ export const findConfig = z.object({
   timeLimitSec,
 });
 
+const formulaKind = z.enum(["scale", "arpeggio"]);
+
+/** A known formula id for its kind; ids are stable (theory/scales.ts). */
+const knownFormula = (s: { kind: "scale" | "arpeggio"; formula: string }) =>
+  (FORMULA_IDS[s.kind] as readonly string[]).includes(s.formula);
+
+/** One chord or scale of a multi-part source, optionally in its own fret window. */
+const sequencePart = z.object({
+  kind: formulaKind,
+  root: pitchClass,
+  formula: z.string(),
+  /** This part's window; defaults to the exercise's. */
+  frets: fretWindow.optional(),
+});
+
+/**
+ * What a sequence plays:
+ *
+ *   scale / arpeggio  one formula from a root: the original source
+ *   notes             explicit pitch classes in the order given (a cycle of 4ths)
+ *   parts             several formulas played in turn (ii–V–I, the five CAGED
+ *                     shapes), each optionally in its own window and filtered
+ *                     to chosen degrees (3 and 7 for guide tones)
+ */
+const sequenceSource = z
+  .discriminatedUnion("kind", [
+    z.object({ kind: formulaKind, root: pitchClass, formula: z.string() }),
+    z.object({ kind: z.literal("notes"), pitchClasses: z.array(pitchClass).min(2).max(24) }),
+    z.object({
+      kind: z.literal("parts"),
+      parts: z.array(sequencePart).min(1).max(12),
+      /** Degree numbers to keep (1, 3, 5, 7 …, whatever their quality); all when absent. */
+      degrees: z
+        .array(z.number().int().min(1).max(7))
+        .min(1)
+        .max(7)
+        .refine((d) => new Set(d).size === d.length, { message: "degrees must be unique" })
+        .optional(),
+    }),
+  ])
+  .superRefine((s, ctx) => {
+    if ((s.kind === "scale" || s.kind === "arpeggio") && !knownFormula(s)) {
+      ctx.addIssue({ code: "custom", message: "unknown formula for this kind", path: ["formula"] });
+    }
+    if (s.kind === "parts") {
+      s.parts.forEach((p, i) => {
+        if (!knownFormula(p)) {
+          ctx.addIssue({ code: "custom", message: "unknown formula for this kind", path: ["parts", i, "formula"] });
+        }
+      });
+    }
+  });
+
 export const sequenceConfig = z.object({
   engine: z.literal("sequence"),
-  source: z
-    .object({
-      kind: z.enum(["scale", "arpeggio"]),
-      root: pitchClass,
-      formula: z.string(),
-    })
-    .refine((s) => (FORMULA_IDS[s.kind] as readonly string[]).includes(s.formula), {
-      message: "unknown formula for this kind",
-      path: ["formula"],
-    }),
+  source: sequenceSource,
   frets: fretWindow,
   strings,
   pattern: z.enum(PATTERNS),
+  /** How a formula is laid out in the window (theory/sequence.ts). Defaults to `lower-fret`, the box shapes. */
+  shape: z.enum(SHAPES).optional(),
   grading,
   tempo: z.object({
     start: z.number().int().min(30).max(240),
@@ -98,15 +144,23 @@ export const respondConfig = z.object({
    *   note-on-string   "F♯ on the G string" — fully checkable: a pitch occurs once per string
    *   play-heard-note  the app plays a pitch, the player finds it
    *   interval         the app names a root and an interval, the player plays both
+   *   octave           "A on the low E string, then its octave": the note on
+   *                    that string, then the pitch an octave up, on a higher string
+   *   target-degree    a drone on a root; the player lands on a degree above it,
+   *                    in any octave
    */
-  prompt: z.enum(["note-on-string", "play-heard-note", "interval"]),
+  prompt: z.enum(["note-on-string", "play-heard-note", "interval", "octave", "target-degree"]),
   pitchClasses: z.array(pitchClass).min(1).max(12),
   frets: fretWindow,
   strings,
   cards: z.number().int().min(1).max(100),
   /** Per card, for this engine: a card not answered in time is missed. */
   timeLimitSec,
-  /** `interval` only: semitones above the root to ask for. Defaults to 3rds, 4th, 5th and octave. */
+  /**
+   * `interval` and `target-degree`: semitones above the root to ask for.
+   * Defaults to 3rds, 4th, 5th and octave for `interval`, and the two 3rds for
+   * `target-degree`.
+   */
   intervals: z
     .array(z.number().int().min(1).max(12))
     .min(1)
@@ -124,6 +178,7 @@ export type ExerciseConfig = z.infer<typeof exerciseConfig>;
 export type FindConfig = z.infer<typeof findConfig>;
 export type SequenceConfig = z.infer<typeof sequenceConfig>;
 export type RespondConfig = z.infer<typeof respondConfig>;
+export type SequenceSource = SequenceConfig["source"];
 
 export const exerciseInput = z.object({
   name: z.string().trim().min(1).max(80),
@@ -225,4 +280,51 @@ export interface DayRow {
   date: string;
   runs: number;
   duration_ms: number;
+}
+
+// ---------- routines and sessions ----------
+
+/** One step of a routine: an exercise, and how long to spend on it. */
+export const routineItem = z.object({
+  exerciseId: z.string().uuid(),
+  minutes: z.number().int().min(1).max(60),
+});
+
+export const routineInput = z.object({
+  name: z.string().trim().min(1).max(80),
+  items: z.array(routineItem).min(1).max(20),
+});
+export type RoutineInput = z.infer<typeof routineInput>;
+
+export const routinePatch = routineInput
+  .partial()
+  .refine((p) => Object.keys(p).length > 0, { message: "nothing to update" });
+export type RoutinePatch = z.infer<typeof routinePatch>;
+
+/**
+ * A player's own ordered practice list. Items are kept as given: an item whose
+ * exercise was deleted later stays, and the session runner skips it.
+ */
+export interface RoutineRow {
+  id: string;
+  name: string;
+  items: { exercise_id: string; minutes: number }[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Why the suggestion picked an item. */
+export type SuggestionSlot = "weak-spot" | "tempo" | "revisit";
+
+export interface SuggestedItem {
+  exercise_id: string;
+  minutes: number;
+  slot: SuggestionSlot;
+  /** One line for the player: "Your slowest patch: frets 7–10 on the G and B strings". */
+  reason: string;
+}
+
+export interface SuggestedSession {
+  minutes: number;
+  items: SuggestedItem[];
 }

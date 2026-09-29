@@ -8,6 +8,8 @@ export interface Formula {
   id: string;
   name: string;
   intervals: readonly number[];
+  /** Chord-symbol suffix, arpeggios only: "m7" makes "Dm7". */
+  symbol?: string;
 }
 
 export const SCALES: readonly Formula[] = [
@@ -22,12 +24,12 @@ export const SCALES: readonly Formula[] = [
 ];
 
 export const ARPEGGIOS: readonly Formula[] = [
-  { id: "major-triad", name: "Major triad", intervals: [0, 4, 7] },
-  { id: "minor-triad", name: "Minor triad", intervals: [0, 3, 7] },
-  { id: "maj7", name: "Major 7", intervals: [0, 4, 7, 11] },
-  { id: "min7", name: "Minor 7", intervals: [0, 3, 7, 10] },
-  { id: "dom7", name: "Dominant 7", intervals: [0, 4, 7, 10] },
-  { id: "min7b5", name: "Half-diminished", intervals: [0, 3, 6, 10] },
+  { id: "major-triad", name: "Major triad", intervals: [0, 4, 7], symbol: "" },
+  { id: "minor-triad", name: "Minor triad", intervals: [0, 3, 7], symbol: "m" },
+  { id: "maj7", name: "Major 7", intervals: [0, 4, 7, 11], symbol: "maj7" },
+  { id: "min7", name: "Minor 7", intervals: [0, 3, 7, 10], symbol: "m7" },
+  { id: "dom7", name: "Dominant 7", intervals: [0, 4, 7, 10], symbol: "7" },
+  { id: "min7b5", name: "Half-diminished", intervals: [0, 3, 6, 10], symbol: "m7♭5" },
 ];
 
 export type FormulaKind = "scale" | "arpeggio";
@@ -51,6 +53,17 @@ const DEGREE_LABELS = ["R", "♭2", "2", "♭3", "3", "4", "♭5", "5", "♭6", 
 /** "R", "♭3", "5" … for an interval in semitones above the root. */
 export function degreeLabel(interval: number): string {
   return DEGREE_LABELS[((interval % 12) + 12) % 12];
+}
+
+/**
+ * The degree number of an interval (1, 3, 5, 7 …) regardless of quality, so
+ * "the 3rd" of Dm7 (♭3) and of G7 (3) are both 3. A tritone counts as a ♭5:
+ * the formulas here only have it in half-diminished and blues.
+ */
+const DEGREE_NUMBERS = [1, 2, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7] as const;
+
+export function degreeNumber(interval: number): number {
+  return DEGREE_NUMBERS[((interval % 12) + 12) % 12];
 }
 
 const INTERVAL_NAMES = [

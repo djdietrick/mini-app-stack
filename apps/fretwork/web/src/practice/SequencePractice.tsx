@@ -9,17 +9,19 @@ import {
   gradeNote,
   initSequence,
   ladderFromRuns,
+  sequenceKey,
   sequenceReducer,
   sequenceRun,
   sequenceStats,
 } from "../../../src/practice/sequence.js";
-import { type Spelling, findFormula, isMinorFormula, midiAt, midiName, noteName, spellingForKey } from "../../../src/theory/index.js";
+import { type Spelling, midiAt, midiName, noteName } from "../../../src/theory/index.js";
 import { type ExerciseRow, api } from "../api";
 import { startDrone, stopDrone, unlockOutput } from "../audio/output";
 import { useMetronome } from "../audio/useMetronome";
 import { useNoteStream } from "../audio/useNoteStream";
 import { type Dot, Fretboard } from "../components/Fretboard";
 import { MicPanel } from "../components/MicPanel";
+import { partLabels, sequenceSpelling } from "../describe";
 import { href } from "../router";
 import { updateSettings, useSettings } from "../settings";
 import { useApi } from "../useApi";
@@ -74,8 +76,8 @@ export function SequencePractice({ exercise, config }: { exercise: ExerciseRow; 
 
   useEffect(() => () => stopDrone(), []);
 
-  const formula = findFormula(config.source.kind, config.source.formula);
-  const spelling = spellingForKey(config.source.root, !!formula && isMinorFormula(formula));
+  const spelling = sequenceSpelling(config);
+  const droneRoot = sequenceKey(config).root;
   const nudgeBy = config.tempo.step || 4;
 
   const onFinish = (clean: boolean) => {
@@ -99,7 +101,7 @@ export function SequencePractice({ exercise, config }: { exercise: ExerciseRow; 
   };
   const toggleDrone = () => {
     if (droneOn) stopDrone();
-    else startDrone(config.source.root);
+    else startDrone(droneRoot);
     setDroneOn(!droneOn);
   };
 
@@ -158,7 +160,7 @@ export function SequencePractice({ exercise, config }: { exercise: ExerciseRow; 
           ))}
         </div>
         <button type="button" aria-pressed={droneOn} onClick={toggleDrone} className={"btn " + (droneOn ? "border-brass text-brass" : "")}>
-          Drone on {noteName(config.source.root, spelling)}
+          Drone on {noteName(droneRoot, spelling)}
         </button>
         <button type="button" onClick={() => again()} className="btn">
           Restart
@@ -268,6 +270,7 @@ function Round({ exercise, config, tempo, opening, view, spelling, bumpedTo, onF
         </p>
       ) : (
         <div className="sticky top-0 z-10 -mx-5 flex flex-col gap-1 bg-ground/95 px-5 py-2 backdrop-blur">
+          <Parts labels={partLabels(config)} current={s.notes[Math.min(s.index, s.notes.length - 1)].target.part} />
           <Lane s={s} spelling={spelling} />
           <div aria-live="polite" aria-atomic="true">
             <Feedback s={s} spelling={spelling} />
@@ -309,6 +312,24 @@ function Round({ exercise, config, tempo, opening, view, spelling, bumpedTo, onF
 
       {panel}
     </div>
+  );
+}
+
+/** A multi-part source's chords or positions, the one being played lit. */
+function Parts({ labels, current }: { labels: string[]; current: number }) {
+  if (labels.length < 2) return null;
+  return (
+    <ol className="flex flex-wrap gap-1.5 text-[13px]" aria-label="Parts">
+      {labels.map((l, i) => (
+        <li
+          key={i}
+          aria-current={i === current ? "step" : undefined}
+          className={"rounded-lg px-2 py-0.5 font-mono " + (i === current ? "bg-brass text-brass-ink" : "bg-raised text-muted")}
+        >
+          {l}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -412,8 +433,12 @@ function dotsFor(s: SequenceState, view: ShapeView, spelling: Spelling): Dot[] {
     dots.set(`${string}:${fret}`, { string, fret, tone, name: noteName(midi, spelling), degree });
   const ended = s.endedAt !== null;
   const shown = ended ? "full" : view;
+  // A multi-part source (ii–V–I, CAGED) shows the part being played: its
+  // shape and degrees, not every chord on top of each other.
+  const part = s.notes[Math.min(s.index, s.notes.length - 1)]?.target.part ?? 0;
 
   for (const { target: t } of s.notes) {
+    if (t.part !== part) continue;
     if (shown === "full" || (shown === "roots" && t.interval === 0)) put(t.string, t.fret, t.interval === 0 ? "root" : "note", t.midi, t.degree);
   }
   if (ended) return [...dots.values()];

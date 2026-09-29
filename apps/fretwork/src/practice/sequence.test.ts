@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { builtinExercise } from "../domain/catalog.js";
-import { type SequenceConfig, runInput } from "../domain/types.js";
+import { type SequenceConfig, exerciseConfig, runInput } from "../domain/types.js";
 import { midiName } from "../theory/index.js";
 import {
   type SequenceState,
@@ -10,6 +10,8 @@ import {
   ladderFromRuns,
   sequenceReducer,
   sequenceRun,
+  sequenceKey,
+  sequenceParts,
   sequenceStats,
   sequenceTargets,
 } from "./sequence.js";
@@ -41,6 +43,113 @@ describe("sequence: targets", () => {
     const s = initSequence({ ...box1, frets: { lo: 0, hi: 0 }, strings: [6], source: { kind: "arpeggio", root: 1, formula: "major-triad" } });
     assert.equal(s.notes.length, 0);
     assert.equal(s.endedAt, 0);
+  });
+});
+
+describe("sequence: sources", () => {
+  const iiVI: SequenceConfig = {
+    ...box1,
+    frets: { lo: 7, hi: 10 },
+    pattern: "up",
+    source: {
+      kind: "parts",
+      parts: [
+        { kind: "arpeggio", root: 2, formula: "min7" },
+        { kind: "arpeggio", root: 7, formula: "dom7" },
+        { kind: "arpeggio", root: 0, formula: "maj7" },
+      ],
+    },
+  };
+
+  it("keeps configs from before the new sources valid, and accepts the new ones", () => {
+    assert.ok(exerciseConfig.safeParse(box1).success);
+    assert.equal(box1.shape, undefined, "defaults to the box shape");
+    assert.ok(exerciseConfig.safeParse(iiVI).success);
+    assert.ok(exerciseConfig.safeParse({ ...box1, source: { kind: "notes", pitchClasses: [0, 5, 10] }, shape: "three-per-string" }).success);
+    for (const bad of [
+      { ...box1, source: { kind: "notes", pitchClasses: [0] } },
+      { ...box1, shape: "diagonal" },
+      { ...iiVI, source: { kind: "parts", parts: [{ kind: "scale", root: 0, formula: "maj7" }] } },
+      { ...iiVI, source: { ...iiVI.source, degrees: [3, 3] } },
+    ]) {
+      assert.equal(exerciseConfig.safeParse(bad).success, false, JSON.stringify(bad.source));
+    }
+  });
+
+  it("plays each part of a multi-part source in turn, with its own degrees", () => {
+    const t = sequenceTargets(iiVI);
+    const parts = sequenceParts(iiVI);
+    assert.equal(parts.length, 3);
+    assert.equal(t.length, parts.reduce((n, p) => n + p.notes.length, 0), "no part boundary repeats a pitch here");
+    assert.deepEqual([...new Set(t.map((n) => n.part))], [0, 1, 2]);
+    const first = t.findIndex((n) => n.part === 1);
+    assert.equal(t[first - 1].part, 0);
+    // G7's notes carry G7's degrees; D, its 5th, is a root in Dm7.
+    assert.deepEqual([...new Set(t.filter((n) => n.part === 1).map((n) => n.degree))].sort(), ["3", "5", "R", "♭7"]);
+    assert.deepEqual(sequenceKey(iiVI), { root: 0, minor: false }, "a progression's key is its last chord");
+  });
+
+  it("filters a multi-part source to the chosen degrees: guide tones", () => {
+    const guide = { ...iiVI, source: { ...iiVI.source, degrees: [3, 7] } } as SequenceConfig;
+    const t = sequenceTargets(guide);
+    assert.deepEqual(
+      [...new Set(t.map((n) => `${n.part}:${n.degree}`))].sort(),
+      ["0:♭3", "0:♭7", "1:3", "1:♭7", "2:3", "2:7"],
+    );
+  });
+
+  it("gives each part its own window, and plays a pitch shared at a boundary once", () => {
+    const twice: SequenceConfig = {
+      ...box1,
+      frets: { lo: 0, hi: 5 },
+      pattern: "down",
+      source: {
+        kind: "parts",
+        parts: [
+          { kind: "arpeggio", root: 0, formula: "major-triad", frets: { lo: 3, hi: 5 } },
+          { kind: "arpeggio", root: 0, formula: "major-triad", frets: { lo: 0, hi: 3 } },
+        ],
+      },
+    };
+    const [a, b] = sequenceParts(twice);
+    assert.ok(a.notes.every((n) => n.fret >= 3 && n.fret <= 5));
+    assert.ok(b.notes.every((n) => n.fret <= 3));
+    const t = sequenceTargets(twice);
+    assert.ok(t.every((n, i) => i === 0 || n.midi !== t[i - 1].midi), "never the same pitch twice running");
+  });
+
+  it("drops the repeated pitch where one part ends on the note the next starts on", () => {
+    const echo: SequenceConfig = {
+      ...box1,
+      frets: { lo: 0, hi: 12 },
+      strings: [5],
+      pattern: "updown",
+      source: {
+        kind: "parts",
+        parts: [
+          { kind: "arpeggio", root: 9, formula: "minor-triad", frets: { lo: 0, hi: 3 } },
+          { kind: "arpeggio", root: 9, formula: "minor-triad", frets: { lo: 0, hi: 7 } },
+        ],
+      },
+    };
+    // Part 1 (A2 C3) up and down ends on A2, where part 2 (A2 C3 E3) starts: played once.
+    const t = sequenceTargets(echo);
+    assert.deepEqual(t.map((n) => midiName(n.midi)), ["A2", "C3", "A2", "C3", "E3", "C3", "A2"]);
+    assert.deepEqual(t.map((n) => n.part), [0, 0, 0, 1, 1, 1, 1]);
+  });
+
+  it("plays a note order as given, the pattern still applying", () => {
+    const cycle: SequenceConfig = { ...box1, frets: { lo: 0, hi: 6 }, strings: [6, 5], pattern: "up", source: { kind: "notes", pitchClasses: [0, 5, 10, 3] } };
+    assert.deepEqual(sequenceTargets(cycle).map((n) => midiName(n.midi)), ["C3", "F2", "A♯2", "D♯3"]);
+    assert.deepEqual(sequenceTargets({ ...cycle, pattern: "down" }).map((n) => midiName(n.midi)), ["D♯3", "A♯2", "F2", "C3"]);
+    assert.deepEqual(sequenceKey(cycle), { root: 0, minor: false });
+  });
+
+  it("lays a formula out by the shape strategy", () => {
+    const g3nps: SequenceConfig = { ...box1, source: { kind: "scale", root: 7, formula: "major" }, frets: { lo: 3, hi: 8 }, pattern: "up", shape: "three-per-string" };
+    const t = sequenceTargets(g3nps);
+    assert.equal(t.length, 18);
+    for (const s of [6, 5, 4, 3, 2, 1]) assert.equal(t.filter((n) => n.string === s).length, 3);
   });
 });
 

@@ -9,7 +9,8 @@ import { useApi } from "../useApi";
 /**
  * What an exercise asks for, drawn on the neck. Start opens the engine's
  * practice screen (#/practice/:id): fretboard-first for find, flashcards for
- * respond, and the lane for sequence.
+ * respond, and the lane for sequence. Your own exercises can be edited or
+ * deleted; any exercise can be copied into a new one of your own.
  */
 export function ExerciseDetail({ id }: { id: string }) {
   const exercise = useApi(`exercise:${id}`, () => api.getExercise(id));
@@ -115,11 +116,21 @@ export function ExerciseDetail({ id }: { id: string }) {
         Start practice
       </a>
 
-      {!e.builtin && (
-        <button type="button" onClick={() => void remove()} disabled={deleting} className="btn self-start text-miss">
-          Delete exercise
-        </button>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {!e.builtin && (
+          <a href={href({ name: "build", mode: "edit", id: e.id })} className="btn focus-ring">
+            Edit
+          </a>
+        )}
+        <a href={href({ name: "build", mode: "copy", id: e.id })} className="btn focus-ring">
+          {e.builtin ? "Make an editable copy" : "Duplicate"}
+        </a>
+        {!e.builtin && (
+          <button type="button" onClick={() => void remove()} disabled={deleting} className="btn ml-auto text-miss">
+            Delete
+          </button>
+        )}
+      </div>
     </div>
   );
 }

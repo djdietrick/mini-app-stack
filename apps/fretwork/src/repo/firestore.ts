@@ -9,6 +9,8 @@ import type {
   NoteResult,
   PositionStatRow,
   ProgressRow,
+  RoutineInput,
+  RoutineRow,
   RunInput,
   RunRow,
 } from "../domain/types.js";
@@ -23,12 +25,15 @@ import type { FretworkRepo } from "./types.js";
  *   fretwork_progress/{userId}_{exerciseId}
  *                               the tempo ladder and streak; a deterministic id,
  *                               so there is one per exercise without a unique index
+ *   fretwork_routines/{uuid}    one per routine, its items embedded in order
  *   fretwork_position_stats/{userId}
  *                               the whole fretboard map in one doc, as a map
  *                               "string:fret" -> { a, h, ms }: one write per run,
  *                               and at most 150 cells, far under the 1 MiB limit
  *
- * recordRun writes all three in one transaction.
+ * recordRun writes the run, progress and position stats in one transaction.
+ * Progress and routines are listed by `userId` alone and sorted here (a
+ * handful per user), so neither needs a composite index.
  *
  * Ids are app-generated UUIDs, not Firestore auto-ids, so `z.string().uuid()`
  * on the route params holds on both backends. Configs are stored as plain
@@ -40,6 +45,7 @@ export function createFirestoreFretworkRepo(db: Firestore, prefix = "fretwork_")
   const runs = db.collection(`${prefix}runs`);
   const progress = db.collection(`${prefix}progress`);
   const positionStats = db.collection(`${prefix}position_stats`);
+  const routines = db.collection(`${prefix}routines`);
 
   interface ExerciseDoc {
     userId: string;
@@ -118,6 +124,26 @@ export function createFirestoreFretworkRepo(db: Firestore, prefix = "fretwork_")
     clean: d.clean,
     created_at: d.createdAt.toDate().toISOString(),
   });
+
+  interface RoutineDoc {
+    userId: string;
+    name: string;
+    items: RoutineRow["items"];
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+  }
+
+  const toRoutine = (id: string, d: RoutineDoc): RoutineRow => ({
+    id,
+    name: d.name,
+    items: d.items,
+    created_at: d.createdAt.toDate().toISOString(),
+    updated_at: d.updatedAt.toDate().toISOString(),
+  });
+
+  /** Stored snake_case, as the wire has them, in the order given. */
+  const itemsDoc = (items: RoutineInput["items"]): RoutineRow["items"] =>
+    items.map((i) => ({ exercise_id: i.exerciseId, minutes: i.minutes }));
 
   const plain = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
@@ -293,6 +319,57 @@ export function createFirestoreFretworkRepo(db: Firestore, prefix = "fretwork_")
           return { string, fret, attempts: c.a, hits: c.h, total_ms: c.ms };
         })
         .sort((a, b) => a.string - b.string || a.fret - b.fret);
+    },
+
+    async listRoutines(userId) {
+      const snap = await routines.where("userId", "==", userId).get();
+      return snap.docs
+        .map((d) => ({ doc: d.data() as RoutineDoc, id: d.id }))
+        .sort((a, b) => b.doc.createdAt.toMillis() - a.doc.createdAt.toMillis() || (a.id < b.id ? -1 : 1))
+        .map(({ id, doc }) => toRoutine(id, doc));
+    },
+
+    async getRoutine(userId, id) {
+      const snap = await routines.doc(id).get();
+      if (!snap.exists) return null;
+      const doc = snap.data() as RoutineDoc;
+      return doc.userId === userId ? toRoutine(snap.id, doc) : null;
+    },
+
+    async createRoutine(userId, input) {
+      const now = Timestamp.now();
+      const doc: RoutineDoc = { userId, name: input.name, items: itemsDoc(input.items), createdAt: now, updatedAt: now };
+      const ref = routines.doc(randomUUID());
+      await ref.set(doc);
+      return toRoutine(ref.id, doc);
+    },
+
+    async updateRoutine(userId, id, patch) {
+      const ref = routines.doc(id);
+      return db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return null;
+        const doc = snap.data() as RoutineDoc;
+        if (doc.userId !== userId) return null;
+        const next: RoutineDoc = {
+          ...doc,
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.items !== undefined ? { items: itemsDoc(patch.items) } : {}),
+          updatedAt: Timestamp.now(),
+        };
+        tx.set(ref, next);
+        return toRoutine(id, next);
+      });
+    },
+
+    async deleteRoutine(userId, id) {
+      const ref = routines.doc(id);
+      return db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists || (snap.data() as RoutineDoc).userId !== userId) return false;
+        tx.delete(ref);
+        return true;
+      });
     },
 
     async close() {

@@ -13,6 +13,13 @@ import { type PitchClass, pitchClass } from "../theory/notes.js";
  *   play-heard-note  the app plays a pitch; the player plays it back.
  *   interval         a root and an interval; two pitches the right distance
  *                    apart, root first, going up.
+ *   octave           a note on a string, then its octave on a higher string
+ *                    (the 2- and 3-string shapes). The first note is checked
+ *                    like note-on-string; the second is exactly 12 above it.
+ *   target-degree    a drone sounds a root and fifth; the player lands on a
+ *                    degree above the root, in any octave. Notes the drone
+ *                    itself sounds are ignored rather than missed, so a
+ *                    speaker-played drone the mic picks up costs nothing.
  *
  * The deck is adaptive: each next card is drawn at random, weighted toward
  * cards missed or slow earlier in this deck, and never the same card twice
@@ -22,9 +29,15 @@ import { type PitchClass, pitchClass } from "../theory/notes.js";
 export type Card =
   | { kind: "note-on-string"; pc: PitchClass; string: number; targets: Position[] }
   | { kind: "play-heard-note"; midi: number }
-  | { kind: "interval"; root: PitchClass; semitones: number };
+  | { kind: "interval"; root: PitchClass; semitones: number }
+  /** `targets`: where the first note is on `string`, each with its octave on a higher string. */
+  | { kind: "octave"; pc: PitchClass; string: number; targets: Position[] }
+  /** `targets`: every position of the degree in the window, for revealing it. */
+  | { kind: "target-degree"; root: PitchClass; semitones: number; targets: Position[] };
 
 export const DEFAULT_INTERVALS: readonly number[] = [3, 4, 5, 7, 12];
+/** target-degree: the minor and major 3rd. Over a root-and-fifth drone, either is a colour. */
+export const DEFAULT_DEGREES: readonly number[] = [3, 4];
 
 export interface Heard {
   midi: number;
@@ -42,6 +55,8 @@ export type Feedback =
   | { kind: "root"; midi: number }
   /** interval: a second note the wrong distance above the root. */
   | { kind: "wrong-interval"; midi: number; semitones: number }
+  /** target-degree: a note the drone itself is sounding. Ignored, never shown. */
+  | { kind: "drone"; midi: number }
   | { kind: "skipped" }
   | { kind: "timeout" };
 
@@ -52,7 +67,7 @@ export interface CardResult {
   /** From the prompt to the right answer, or to the skip or timeout. */
   ms: number;
   misses: number;
-  /** The pitch that answers the card (for an interval, the upper note). */
+  /** The pitch that answers the card (for an interval, the upper note; for an octave, the lower one, on its string). */
   midi: number;
   /** Where the answer is, when the card pins it to a string. */
   position: Position | null;
@@ -96,6 +111,10 @@ export function cardKey(c: Card): string {
       return `${c.midi}`;
     case "interval":
       return `${c.root}+${c.semitones}`;
+    case "octave":
+      return `${c.pc}@${c.string}^8`;
+    case "target-degree":
+      return `${c.root}>${c.semitones}`;
   }
 }
 
@@ -124,6 +143,25 @@ export function cardPool(config: RespondConfig): Card[] {
             ),
           )
           .map((semitones) => ({ kind: "interval" as const, root, semitones })),
+      );
+    }
+    case "octave":
+      return config.strings.flatMap((string) => {
+        const higher = config.strings.filter((s) => s < string);
+        return pcs.flatMap((pc) => {
+          const targets = positionsOfPitchClass(pc, config.frets, [string]).filter(
+            (p) => positionsOfMidi(p.midi + 12, config.frets, higher).length > 0,
+          );
+          return targets.length ? [{ kind: "octave" as const, pc, string, targets }] : [];
+        });
+      });
+    case "target-degree": {
+      const degrees = config.intervals ?? DEFAULT_DEGREES;
+      return pcs.flatMap((root) =>
+        degrees.flatMap((semitones) => {
+          const targets = positionsOfPitchClass(root + semitones, config.frets, config.strings);
+          return targets.length ? [{ kind: "target-degree" as const, root, semitones, targets }] : [];
+        }),
       );
     }
   }
@@ -190,7 +228,7 @@ export function respondReducer(s: RespondState, a: RespondAction): RespondState 
     case "skip":
     case "timeout":
       if (!s.card || s.phase !== "asking") return s;
-      return answer(s, a.at, false, { heard: null, feedback: { kind: a.type === "skip" ? "skipped" : "timeout" } }, null);
+      return answer(s, a.at, false, { heard: null, feedback: { kind: a.type === "skip" ? "skipped" : "timeout" } });
     case "next":
       if (s.phase !== "answered") return s;
       if (s.results.length >= s.total) return { ...s, endedAt: a.at };
@@ -216,13 +254,12 @@ function heard(s: RespondState, note: Heard): RespondState {
   const feedback = grade(card, s.rootMidi, note);
   const last = { heard: note, feedback };
   switch (feedback.kind) {
-    case "right": {
-      const position =
-        card.kind === "note-on-string" ? (card.targets.find((p) => p.midi === note.midi) ?? card.targets[0]) : null;
-      return answer(s, note.at, s.misses === 0, last, position, note.midi);
-    }
+    case "right":
+      return answer(s, note.at, s.misses === 0, last, note.midi);
     case "root":
       return { ...s, rootMidi: feedback.midi, last };
+    case "drone":
+      return s;
     default:
       return { ...s, misses: s.misses + 1, last };
   }
@@ -252,27 +289,56 @@ export function grade(card: Card, rootMidi: number | null, note: Heard): Feedbac
       // The root again: start the interval from this one instead. Not a miss.
       if (pitchClass(midi) === card.root) return { kind: "root", midi };
       return { kind: "wrong-interval", midi, semitones: midi - rootMidi };
+    case "octave": {
+      // The first note, as note-on-string grades it; played again, it restarts the octave.
+      if (card.targets.some((p) => p.midi === midi)) return { kind: "root", midi };
+      if (rootMidi === null) {
+        if (pitchClass(midi) === card.pc) return { kind: "wrong-octave", midi, expected: nearest(card.targets.map((p) => p.midi), midi) };
+        return { kind: "wrong-note", midi };
+      }
+      if (midi === rootMidi + 12) return { kind: "right", midi, elsewhere: false };
+      return { kind: "wrong-interval", midi, semitones: midi - rootMidi };
+    }
+    case "target-degree": {
+      const want = pitchClass(card.root + card.semitones);
+      if (pitchClass(midi) === want) return { kind: "right", midi, elsewhere: false };
+      if (pitchClass(midi) === card.root || pitchClass(midi) === pitchClass(card.root + 7)) return { kind: "drone", midi };
+      return { kind: "wrong-note", midi };
+    }
   }
 }
 
-function answer(
-  s: RespondState,
-  at: number,
-  ok: boolean,
-  last: RespondState["last"],
-  position: Position | null,
-  midi?: number,
-): RespondState {
+/** Ends the card. `heardMidi` is the right answer as played; absent after a skip or timeout. */
+function answer(s: RespondState, at: number, ok: boolean, last: RespondState["last"], heardMidi?: number): RespondState {
   const card = s.card!;
   const result: CardResult = {
     card,
     ok,
     ms: Math.max(0, Math.round(at - s.shownAt)),
     misses: s.misses,
-    midi: midi ?? answerMidi(card, s.rootMidi),
-    position: position ?? (card.kind === "note-on-string" ? card.targets[0] : null),
+    ...resultNote(card, s.rootMidi, heardMidi),
   };
   return { ...s, phase: "answered", last, results: [...s.results, result] };
+}
+
+/**
+ * The note a card's result records, and its position where the card pins
+ * one to a string. Only cards on one string have a position: anywhere else
+ * the mic can't say where the note was played.
+ */
+function resultNote(card: Card, rootMidi: number | null, heardMidi?: number): Pick<CardResult, "midi" | "position"> {
+  switch (card.kind) {
+    case "note-on-string": {
+      const position = card.targets.find((p) => p.midi === heardMidi) ?? card.targets[0];
+      return { midi: position.midi, position };
+    }
+    case "octave": {
+      const position = card.targets.find((p) => p.midi === rootMidi) ?? card.targets[0];
+      return { midi: position.midi, position };
+    }
+    default:
+      return { midi: heardMidi ?? answerMidi(card, rootMidi), position: null };
+  }
 }
 
 /** The pitch that answers a card, for revealing it after a skip. */
@@ -284,6 +350,10 @@ export function answerMidi(card: Card, rootMidi: number | null = null): number {
       return card.midi;
     case "interval":
       return (rootMidi ?? lowestRoot(card)) + card.semitones;
+    case "octave":
+      return (rootMidi ?? card.targets[0].midi) + 12;
+    case "target-degree":
+      return card.targets[0].midi;
   }
 }
 
