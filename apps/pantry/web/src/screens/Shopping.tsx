@@ -135,7 +135,7 @@ export function Shopping({ listId }: { listId: string }) {
           </ul>
         )}
         {error && <div className="text-sm text-apple-700">{error}</div>}
-        <div className="fixed bottom-0 left-0 right-0 bg-cream-50/95 backdrop-blur border-t border-cream-300 px-4 py-3 z-10">
+        <div className="fixed bottom-0 left-0 right-0 bg-cream-50/95 backdrop-blur border-t border-cream-300 px-4 pt-3 pb-safe z-10">
           <div className="max-w-4xl mx-auto flex items-center justify-end">
             <button
               type="button"
@@ -205,7 +205,7 @@ export function Shopping({ listId }: { listId: string }) {
         </section>
       ))}
 
-      <div className="fixed bottom-0 left-0 right-0 bg-cream-50/95 backdrop-blur border-t border-cream-300 px-4 py-3 z-10">
+      <div className="fixed bottom-0 left-0 right-0 bg-cream-50/95 backdrop-blur border-t border-cream-300 px-4 pt-3 pb-safe z-10">
         <div className="max-w-4xl mx-auto flex items-center justify-end">
           <button
             type="button"

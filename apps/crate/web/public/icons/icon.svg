@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Full bleed, with the art inside the maskable safe zone (a circle of radius 205). -->
+  <defs>
+    <linearGradient id="sunset" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c084fc"/>
+      <stop offset="0.55" stop-color="#fb7185"/>
+      <stop offset="1" stop-color="#fbbf24"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="#0a0a0a"/>
+  <circle cx="256" cy="256" r="176" fill="#1c1c1c"/>
+  <g fill="none" stroke="#2e2e2e" stroke-width="3">
+    <circle cx="256" cy="256" r="156"/>
+    <circle cx="256" cy="256" r="136"/>
+    <circle cx="256" cy="256" r="116"/>
+    <circle cx="256" cy="256" r="96"/>
+  </g>
+  <path d="M 136 176 A 146 146 0 0 1 216 116" fill="none" stroke="#f4f4f5" stroke-opacity="0.25" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="66" fill="url(#sunset)"/>
+  <circle cx="256" cy="256" r="9" fill="#0a0a0a"/>
+</svg>

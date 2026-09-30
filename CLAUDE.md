@@ -168,6 +168,7 @@ The cookie is HttpOnly + SameSite=Lax. In production, set `AUTH_COOKIE_SECURE=tr
 - **Package manager**: pnpm (declared in `packageManager`). Node ≥ 20.
 - **Module system**: ESM throughout (`"type": "module"`). TS imports use `.js` extensions for relative paths so the same source works after compilation.
 - **Env handling**: `.env` at the repo root drives `docker-compose.yml`. Required vars use the `${VAR:?message}` form so compose fails fast if they're missing.
+- Every app SPA is installable to the Home Screen: `web/public/` holds `manifest.webmanifest`, `icons/` (PNGs rendered from `icon.svg`, art inside the maskable safe zone) and `sw.js`, registered from `web/src/main.tsx` in production builds only. The service workers are copies of fretwork's; keep them in step, and never let one handle `/api/`, `/auth/` or `/__/`. `firebase.json` serves `sw.js` and the manifest `no-cache`.
 - When scaffolding a new app, follow the shared-everything pattern above, depend on `@stack/db-clients` and `@stack/service-kit`, and structure it like `apps/crate`: route descriptors in `src/domain/`, a repository port in `src/repo/types.ts` with `postgres.ts` and `firestore.ts` implementations, and `src/index.ts` as wiring only. The Fastify backend serves its own Vite/React SPA, proxies `/auth/*` to `apps/auth`, and runs SQL migrations from `migrations/*.sql` on boot via `runMigrations` from `@stack/service-kit`.
 
 ### apps/landing

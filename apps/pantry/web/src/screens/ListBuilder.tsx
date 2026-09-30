@@ -155,7 +155,7 @@ export function ListBuilder() {
       <Section title="Low" items={sections.low} selected={selected} onToggle={toggle} />
       <Section title="Other" items={sections.other} selected={selected} onToggle={toggle} />
 
-      <div className="fixed bottom-0 left-0 right-0 bg-cream-50/95 backdrop-blur border-t border-cream-300 px-4 py-3 z-10">
+      <div className="fixed bottom-0 left-0 right-0 bg-cream-50/95 backdrop-blur border-t border-cream-300 px-4 pt-3 pb-safe z-10">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
           <span className="text-sm text-ink-muted">
             {totalSelected} item{totalSelected === 1 ? "" : "s"}
