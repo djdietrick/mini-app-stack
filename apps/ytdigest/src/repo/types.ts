@@ -9,6 +9,8 @@ import type {
   DigestRecipient,
   DigestRunRow,
   DueSubscription,
+  FeedCandidate,
+  FeedCursor,
   NotifyMode,
   PastVideo,
   PollTarget,
@@ -28,8 +30,10 @@ import type {
  * ytdigest's data port. Implemented by postgres.ts (self-hosted) and
  * firestore.ts (cloud); src/domain depends only on this.
  *
- * Three groups of callers:
+ * Four groups of callers:
  *   - the HTTP routes: the wire-row methods, scoped by userId in the query
+ *   - the feed: candidate videos from the user's subscriptions, filtered in
+ *     src/domain/feed.ts with the digest's own matcher
  *   - the poll job: channel and video bookkeeping, snapshots
  *   - the digest job and rule evaluation: due subscriptions, candidates,
  *     baselines, recording what was sent
@@ -74,6 +78,18 @@ export interface YtdigestRepo extends Closable {
 
   listDigests(userId: string): Promise<DigestRunRow[]>;
   getDigest(userId: string, id: string): Promise<DigestDetail | null>;
+
+  // ---------- feed ----------
+
+  /**
+   * Videos from channels this user subscribes to, newest published first
+   * (ties by id, descending), strictly after `after` in that order. Whether
+   * they were already digested doesn't matter: the feed is a view, not a
+   * queue.
+   */
+  feedCandidates(userId: string, after: FeedCursor | null, limit: number): Promise<FeedCandidate[]>;
+  /** One video by its YouTube id, only if this user subscribes to its channel. */
+  feedVideo(userId: string, youtubeVideoId: string): Promise<FeedCandidate | null>;
 
   // ---------- poll job ----------
 

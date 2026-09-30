@@ -1,7 +1,14 @@
-import { type AnyRoute, conflict, createRouteBuilder, notFound } from "@stack/service-kit";
+import { type AnyRoute, badRequest, conflict, createRouteBuilder, notFound } from "@stack/service-kit";
 import { z } from "zod";
 import type { YtdigestRepo } from "../repo/types.js";
 import { type DigestMailer, type DigestOptions, sendDigest } from "./digest.js";
+import {
+  buildFeed,
+  decodeCursor,
+  FEED_DEFAULT_LIMIT,
+  FEED_MAX_LIMIT,
+  videoDetail,
+} from "./feed.js";
 import {
   createRuleBody,
   createSubscriptionBody,
@@ -160,6 +167,36 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
       handler: async ({ repo, user }, { params }) => {
         if (!(await repo.deleteRule(user.userId, params.id))) throw notFound();
         return ok;
+      },
+    }),
+
+    // ---------- feed ----------
+
+    route({
+      method: "GET",
+      path: "/feed",
+      input: {
+        query: z.object({
+          before: z.string().min(1).max(200).optional(),
+          limit: z.coerce.number().int().min(1).max(FEED_MAX_LIMIT).default(FEED_DEFAULT_LIMIT),
+        }),
+      },
+      handler: async ({ repo, user }, { query }) => {
+        const before = query.before === undefined ? null : decodeCursor(query.before);
+        if (query.before !== undefined && !before) throw badRequest("invalid cursor");
+        return buildFeed(repo, user.userId, { before, limit: query.limit }, deps.digest?.baseline);
+      },
+    }),
+
+    route({
+      method: "GET",
+      path: "/videos/:youtubeVideoId",
+      // A YouTube id, not a UUID: that is the only id both backends share.
+      input: { params: z.object({ youtubeVideoId: z.string().regex(/^[\w-]{1,64}$/) }) },
+      handler: async ({ repo, user }, { params }) => {
+        const video = await videoDetail(repo, user.userId, params.youtubeVideoId, deps.digest?.baseline);
+        if (!video) throw notFound();
+        return video;
       },
     }),
 

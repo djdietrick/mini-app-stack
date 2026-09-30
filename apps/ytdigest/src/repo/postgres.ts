@@ -3,6 +3,7 @@ import type { RuleGroup } from "../domain/rules/types.js";
 import type {
   Cadence,
   ChannelRow,
+  FeedCandidate,
   DigestDetail,
   DigestItemRow,
   DigestRunRow,
@@ -11,6 +12,21 @@ import type {
   SubscriptionRow,
 } from "../domain/types.js";
 import type { YtdigestRepo } from "./types.js";
+
+interface FeedCandidateRow {
+  id: string;
+  youtube_video_id: string;
+  title: string;
+  description: string | null;
+  published_at: string;
+  duration_seconds: number | null;
+  thumbnail_url: string | null;
+  subscription_id: string;
+  channel_id: string;
+  channel_title: string;
+  channel_thumbnail_url: string | null;
+  notify_mode: NotifyMode;
+}
 
 const isUniqueViolation = (e: unknown) => (e as { code?: string }).code === "23505";
 
@@ -38,6 +54,29 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
     for (let i = 1; i < updates.length; i++) setClause = sql`${setClause}, ${updates[i]}`;
     return setClause;
   };
+
+  const toFeedCandidate = (r: FeedCandidateRow): FeedCandidate => ({
+    id: r.id,
+    youtubeVideoId: r.youtube_video_id,
+    title: r.title,
+    description: r.description,
+    publishedAt: toDate(r.published_at),
+    durationSeconds: r.duration_seconds,
+    thumbnailUrl: r.thumbnail_url,
+    subscription: {
+      id: r.subscription_id,
+      channelId: r.channel_id,
+      channelTitle: r.channel_title,
+      channelThumbnailUrl: r.channel_thumbnail_url,
+      notifyMode: r.notify_mode,
+    },
+  });
+
+  const feedColumns = sql`
+    v.id, v.youtube_video_id, v.title, v.description, v.published_at, v.duration_seconds,
+    v.thumbnail_url, s.id AS subscription_id, c.id AS channel_id, c.title AS channel_title,
+    c.thumbnail_url AS channel_thumbnail_url, s.notify_mode
+  `;
 
   return {
     // ---------- channels ----------
@@ -192,6 +231,35 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
         ORDER BY c.title ASC
       `;
       return { ...run, items };
+    },
+
+    // ---------- feed ----------
+
+    async feedCandidates(userId, after, limit) {
+      // id compared as text: the cursor comes from the client, and a bad one
+      // should match nothing rather than fail a uuid cast.
+      const rows = await sql<FeedCandidateRow[]>`
+        SELECT ${feedColumns}
+        FROM subscriptions s
+        JOIN channels c ON c.id = s.channel_id
+        JOIN videos v ON v.channel_id = s.channel_id
+        WHERE s.user_id = ${userId}
+          ${after ? sql`AND (v.published_at, v.id::text) < (${after.publishedAt.toISOString()}::timestamptz, ${after.videoId})` : sql``}
+        ORDER BY v.published_at DESC, v.id::text DESC
+        LIMIT ${limit}
+      `;
+      return rows.map(toFeedCandidate);
+    },
+
+    async feedVideo(userId, youtubeVideoId) {
+      const [row] = await sql<FeedCandidateRow[]>`
+        SELECT ${feedColumns}
+        FROM videos v
+        JOIN subscriptions s ON s.channel_id = v.channel_id AND s.user_id = ${userId}
+        JOIN channels c ON c.id = v.channel_id
+        WHERE v.youtube_video_id = ${youtubeVideoId}
+      `;
+      return row ? toFeedCandidate(row) : null;
     },
 
     // ---------- poll job ----------

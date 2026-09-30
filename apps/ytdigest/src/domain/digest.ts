@@ -1,12 +1,8 @@
 import type { Logger } from "@stack/service-kit";
 import type { YtdigestRepo } from "../repo/types.js";
 import { renderDigestEmail } from "./renderEmail.js";
-import {
-  type BaselineOptions,
-  DEFAULT_BASELINE,
-  evaluateRule,
-  type VideoForEvaluation,
-} from "./rules/evaluate.js";
+import { matchVideo } from "./match.js";
+import { type BaselineOptions, DEFAULT_BASELINE } from "./rules/evaluate.js";
 import type { DigestLine, DueSubscription } from "./types.js";
 
 export interface DigestVideoItem {
@@ -88,41 +84,8 @@ export async function buildDigest(
     const rules = sub.notifyMode === "rules" ? await repo.enabledRules(userId, sub.id) : [];
 
     for (const video of candidates) {
-      const snapshot = await repo.latestSnapshot(video.id);
-
-      const evalVideo: VideoForEvaluation = {
-        id: video.id,
-        channelId: sub.channelId,
-        title: video.title,
-        description: video.description,
-        publishedAt: video.publishedAt,
-        durationSeconds: video.durationSeconds,
-        latestViewCount: snapshot?.viewCount ?? 0,
-        latestLikeCount: snapshot?.likeCount ?? null,
-        latestCapturedAt: snapshot?.capturedAt ?? video.publishedAt,
-      };
-
-      let matchedRuleId: string | null = null;
-      let reasons: string[] = [];
-
-      if (sub.notifyMode === "all") {
-        reasons = ["every upload from this channel"];
-      } else {
-        for (const { id, rule } of rules) {
-          const result = await evaluateRule(
-            repo,
-            rule,
-            evalVideo,
-            opts.baseline ?? DEFAULT_BASELINE,
-          );
-          if (result.matched) {
-            matchedRuleId = id;
-            reasons = result.reasons;
-            break;
-          }
-        }
-        if (!matchedRuleId && reasons.length === 0) continue;
-      }
+      const match = await matchVideo(repo, sub, rules, video, opts.baseline ?? DEFAULT_BASELINE);
+      if (!match.matched) continue;
 
       const group = groupsByChannel.get(sub.channelId) ?? {
         channelId: sub.channelId,
@@ -135,10 +98,10 @@ export async function buildDigest(
         title: video.title,
         thumbnailUrl: video.thumbnailUrl,
         publishedAt: video.publishedAt,
-        viewCount: evalVideo.latestViewCount,
+        viewCount: match.viewCount,
         subscriptionId: sub.id,
-        matchedRuleId,
-        reasons,
+        matchedRuleId: match.matchedRuleId,
+        reasons: match.reasons,
       });
       groupsByChannel.set(sub.channelId, group);
     }

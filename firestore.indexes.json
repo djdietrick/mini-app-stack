@@ -67,7 +67,7 @@
       ]
     },
     {
-      "//": "ytdigest: a channel's videos newest first (poll paging, tracked videos, baselines).",
+      "//": "ytdigest: a channel's videos newest first (poll paging, tracked videos, baselines, and the feed's channelId-in query, whose document-id tie-break is the implicit __name__ DESC).",
       "collectionGroup": "ytdigest_videos",
       "queryScope": "COLLECTION",
       "fields": [

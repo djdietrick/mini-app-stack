@@ -84,6 +84,41 @@ export interface DigestDetail {
   items: DigestItemRow[];
 }
 
+/**
+ * One video in the feed: a subscribed channel's upload that passes that
+ * subscription's filters (the same test the digest applies). Built by
+ * src/domain/feed.ts rather than read straight from a table, so both backends
+ * produce it identically and `published_at` is always ISO 8601.
+ */
+export interface FeedItemRow {
+  /** Internal id; a UUID on Postgres, the YouTube id on Firestore. */
+  video_id: string;
+  /** Link, embed and route with this. */
+  youtube_video_id: string;
+  title: string;
+  thumbnail_url: string | null;
+  published_at: string;
+  duration_seconds: number | null;
+  view_count: number;
+  channel_id: string;
+  channel_title: string;
+  channel_thumbnail_url: string | null;
+  matched_rule_id: string | null;
+  reasons: string[];
+}
+
+export interface FeedPage {
+  items: FeedItemRow[];
+  /** Pass back as `?before=` for the next page; null at the end. */
+  next: string | null;
+}
+
+/** GET /videos/:youtubeVideoId. `matched` is false when a filter no longer lets it through. */
+export interface VideoDetailRow extends FeedItemRow {
+  description: string | null;
+  matched: boolean;
+}
+
 // ---------- job types ----------
 
 export interface ResolvedChannel {
@@ -136,6 +171,25 @@ export interface CandidateVideo {
   publishedAt: Date;
   durationSeconds: number | null;
   thumbnailUrl: string | null;
+}
+
+/** The subscription a feed candidate comes through. */
+export interface FeedSubscription {
+  id: string;
+  channelId: string;
+  channelTitle: string;
+  channelThumbnailUrl: string | null;
+  notifyMode: NotifyMode;
+}
+
+export interface FeedCandidate extends CandidateVideo {
+  subscription: FeedSubscription;
+}
+
+/** Position in the feed: newest published first, ties broken by id descending. */
+export interface FeedCursor {
+  publishedAt: Date;
+  videoId: string;
 }
 
 export interface Snapshot {
