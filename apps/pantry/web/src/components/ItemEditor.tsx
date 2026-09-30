@@ -249,7 +249,7 @@ export function ItemEditor({ item, tags: tagsProp, onClose, onSaved, onTagsChang
           </div>
           {error && <div className="text-sm text-apple-700">{error}</div>}
         </div>
-        <div className="sticky bottom-0 bg-cream-50 border-t border-cream-300 px-4 py-3 flex items-center justify-between gap-2">
+        <div className="sticky bottom-0 bg-cream-50 border-t border-cream-300 px-4 pt-3 pb-safe flex items-center justify-between gap-2">
           {item ? (
             <button
               type="button"

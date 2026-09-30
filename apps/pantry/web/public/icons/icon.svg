@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Full bleed, with the art inside the maskable safe zone (a circle of radius 205). -->
+  <rect width="512" height="512" fill="#FBF6EC"/>
+  <rect x="174" y="112" width="164" height="50" rx="12" fill="#E85D4A"/>
+  <rect x="192" y="156" width="128" height="22" fill="#1F2A1C"/>
+  <rect x="152" y="172" width="208" height="230" rx="40" fill="#FFFCF5"/>
+  <rect x="152" y="300" width="208" height="102" rx="40" fill="#F6B73C" opacity="0.35"/>
+  <rect x="152" y="172" width="208" height="230" rx="40" fill="none" stroke="#1F2A1C" stroke-width="12"/>
+  <rect x="190" y="236" width="132" height="76" rx="12" fill="#3F7D3A"/>
+  <rect x="214" y="264" width="84" height="8" rx="4" fill="#FFFCF5"/>
+  <rect x="226" y="280" width="60" height="8" rx="4" fill="#FFFCF5" opacity="0.7"/>
+</svg>

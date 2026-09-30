@@ -22,3 +22,10 @@
     color: white;
   }
 }
+
+@layer utilities {
+  /* Bottom bars clear the home indicator when the app runs from the Home Screen. */
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
