@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { Timestamp } from "@google-cloud/firestore";
+import { FieldPath, Timestamp } from "@google-cloud/firestore";
 import type { DocumentReference, Firestore, WriteBatch } from "@google-cloud/firestore";
 import type { RuleGroup } from "../domain/rules/types.js";
 import type {
   Cadence,
   DigestItemRow,
+  FeedCandidate,
   NotifyMode,
   RuleScope,
   Snapshot,
@@ -119,6 +120,8 @@ const isoOrNull = (t: Timestamp | null) => (t ? iso(t) : null);
 const byTitle = (a: { title: string }, b: { title: string }) => a.title.localeCompare(b.title);
 
 const BATCH_LIMIT = 500;
+/** An `in` filter takes at most 30 values. */
+const IN_LIMIT = 30;
 
 export function createFirestoreYtdigestRepo(
   db: Firestore,
@@ -175,6 +178,28 @@ export function createFirestoreYtdigestRepo(
       snaps.filter((s) => s.exists).map((s) => [s.id, s.data() as ChannelDoc] as const),
     );
   };
+
+  const toFeedCandidate = (
+    id: string,
+    v: VideoDoc,
+    sub: { id: string; doc: SubscriptionDoc },
+    c: ChannelDoc,
+  ): FeedCandidate => ({
+    id,
+    youtubeVideoId: id,
+    title: v.title,
+    description: v.description,
+    publishedAt: v.publishedAt.toDate(),
+    durationSeconds: v.durationSeconds,
+    thumbnailUrl: v.thumbnailUrl,
+    subscription: {
+      id: sub.id,
+      channelId: sub.doc.channelId,
+      channelTitle: c.title,
+      channelThumbnailUrl: c.thumbnailUrl,
+      notifyMode: sub.doc.notifyMode,
+    },
+  });
 
   return {
     // ---------- channels ----------
@@ -378,6 +403,61 @@ export function createFirestoreYtdigestRepo(
           reason_json: l.reasons,
         }));
       return { id: snap.id, cadence: r.cadence, run_date: r.runDate, sent_at: iso(r.sentAt), items };
+    },
+
+    // ---------- feed ----------
+
+    async feedCandidates(userId, after, limit) {
+      const subs = await userSubscriptions(userId);
+      const byId = await channelsById(subs.map((s) => s.doc.channelId));
+      const subByChannel = new Map(
+        subs.filter((s) => byId.has(s.doc.channelId)).map((s) => [s.doc.channelId, s] as const),
+      );
+      const channelIds = [...subByChannel.keys()];
+
+      // One query per 30 channels, each already in feed order, merged here.
+      // The document id is the tie-break, as v.id is in the SQL, so the
+      // cursor is a real startAfter and a tie can't be skipped.
+      const chunks: string[][] = [];
+      for (let i = 0; i < channelIds.length; i += IN_LIMIT) chunks.push(channelIds.slice(i, i + IN_LIMIT));
+      const pages = await Promise.all(
+        chunks.map(async (ids) => {
+          let q = videos
+            .where("channelId", "in", ids)
+            .orderBy("publishedAt", "desc")
+            .orderBy(FieldPath.documentId(), "desc");
+          if (after) q = q.startAfter(Timestamp.fromDate(after.publishedAt), after.videoId);
+          return (await q.limit(limit).get()).docs;
+        }),
+      );
+
+      return pages
+        .flat()
+        .map((d) => ({ id: d.id, v: d.data() as VideoDoc }))
+        .sort(
+          (a, b) =>
+            b.v.publishedAt.toMillis() - a.v.publishedAt.toMillis() ||
+            (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+        )
+        .slice(0, limit)
+        .map(({ id, v }) => toFeedCandidate(id, v, subByChannel.get(v.channelId)!, byId.get(v.channelId)!));
+    },
+
+    async feedVideo(userId, youtubeVideoId) {
+      const snap = await videos.doc(youtubeVideoId).get();
+      if (!snap.exists) return null;
+      const v = snap.data() as VideoDoc;
+      const [sub, channel] = await Promise.all([
+        subscriptions.where("userId", "==", userId).where("channelId", "==", v.channelId).limit(1).get(),
+        channels.doc(v.channelId).get(),
+      ]);
+      if (sub.empty || !channel.exists) return null;
+      return toFeedCandidate(
+        snap.id,
+        v,
+        { id: sub.docs[0].id, doc: sub.docs[0].data() as SubscriptionDoc },
+        channel.data() as ChannelDoc,
+      );
     },
 
     // ---------- poll job ----------

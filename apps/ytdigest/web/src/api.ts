@@ -75,6 +75,33 @@ export interface DigestDetail extends DigestRun {
   items: DigestItem[];
 }
 
+/** One video in the feed. Link, embed and route with youtube_video_id. */
+export interface FeedItem {
+  video_id: string;
+  youtube_video_id: string;
+  title: string;
+  thumbnail_url: string | null;
+  published_at: string;
+  duration_seconds: number | null;
+  view_count: number;
+  channel_id: string;
+  channel_title: string;
+  channel_thumbnail_url: string | null;
+  matched_rule_id: string | null;
+  reasons: string[];
+}
+
+export interface FeedPage {
+  items: FeedItem[];
+  next: string | null;
+}
+
+export interface VideoDetail extends FeedItem {
+  description: string | null;
+  /** False when a filter no longer lets it through (it still plays). */
+  matched: boolean;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -133,6 +160,10 @@ export const api = {
   updateRule: (id: string, body: Partial<{ name: string; ruleJson: RuleGroup; enabled: boolean }>) =>
     request<{ ok: true }>(`/rules/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteRule: (id: string) => request<{ ok: true }>(`/rules/${id}`, { method: "DELETE" }),
+
+  feed: (before?: string | null) =>
+    request<FeedPage>(`/feed${before ? `?before=${encodeURIComponent(before)}` : ""}`),
+  video: (youtubeVideoId: string) => request<VideoDetail>(`/videos/${encodeURIComponent(youtubeVideoId)}`),
 
   digests: () => request<DigestRun[]>(`/digests`),
   digest: (id: string) => request<DigestDetail>(`/digests/${id}`),

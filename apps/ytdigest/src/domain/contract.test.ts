@@ -498,6 +498,85 @@ for (const [backendName, backend] of Object.entries(backends)) {
         assert.equal(latest!.viewCount, 12_345, "a number, not a bigint string");
       });
 
+      it("feeds the uploads that pass each subscription's filters, newest first", async () => {
+        // science is notify=all; kitchen is notify=rules, where the global
+        // "physics" rule lets k1 through and nothing lets k2 through.
+        const feed = await as(alice)("GET", "/feed");
+        assert.equal(feed.status, 200);
+        assert.equal(feed.body.next, null);
+        assert.deepEqual(
+          feed.body.items.map((i: any) => i.youtube_video_id),
+          [videos.k1, videos.s2, videos.s1],
+        );
+        const [k1] = feed.body.items;
+        assert.deepEqual(Object.keys(k1).sort(), [
+          "channel_id",
+          "channel_thumbnail_url",
+          "channel_title",
+          "duration_seconds",
+          "matched_rule_id",
+          "published_at",
+          "reasons",
+          "thumbnail_url",
+          "title",
+          "video_id",
+          "view_count",
+          "youtube_video_id",
+        ]);
+        assert.equal(k1.channel_title, "Kitchen Channel");
+        assert.equal(k1.matched_rule_id, globalRule);
+        assert.ok(k1.reasons[0].includes("physics"));
+        assert.equal(k1.view_count, 12_345, "a number on both backends");
+        assert.equal(k1.duration_seconds, 600);
+        assert.ok(k1.published_at.endsWith("Z"), "ISO 8601 on both backends");
+
+        assert.deepEqual((await as(bob)("GET", "/feed")).body, { items: [], next: null });
+      });
+
+      it("pages the feed with a cursor, and follows rule changes at once", async () => {
+        const seen: string[] = [];
+        let before: string | null = null;
+        for (let page = 0; page < 5; page++) {
+          const q: string = before ? `?limit=1&before=${encodeURIComponent(before)}` : "?limit=1";
+          const res = await as(alice)("GET", `/feed${q}`);
+          seen.push(...res.body.items.map((i: any) => i.youtube_video_id));
+          before = res.body.next;
+          if (!before) break;
+        }
+        assert.deepEqual(seen, [videos.k1, videos.s2, videos.s1]);
+        assert.equal(before, null, "the last page says so");
+
+        assert.equal((await as(alice)("GET", "/feed?before=nonsense")).status, 400);
+        assert.equal((await as(alice)("GET", "/feed?limit=0")).status, 400);
+
+        // Nothing is stored for the feed: disable the rule and k1 drops out.
+        await as(alice)("PATCH", `/rules/${globalRule}`, { enabled: false });
+        assert.deepEqual(
+          (await as(alice)("GET", "/feed")).body.items.map((i: any) => i.youtube_video_id),
+          [videos.s2, videos.s1],
+        );
+        await as(alice)("PATCH", `/rules/${globalRule}`, { enabled: true });
+      });
+
+      it("serves one video for the player, only from the user's own channels", async () => {
+        const res = await as(alice)("GET", `/videos/${videos.k1}`);
+        assert.equal(res.status, 200);
+        assert.equal(res.body.youtube_video_id, videos.k1);
+        assert.equal(res.body.description, "about Kitchen physics");
+        assert.equal(res.body.matched, true);
+
+        const k2 = await as(alice)("GET", `/videos/${videos.k2}`);
+        assert.equal(k2.status, 200, "a filtered-out video still opens by link");
+        assert.deepEqual([k2.body.matched, k2.body.reasons], [false, []]);
+
+        assert.deepEqual(await as(bob)("GET", `/videos/${videos.k1}`), {
+          status: 404,
+          body: { error: "not found" },
+        });
+        assert.equal((await as(alice)("GET", "/videos/nope")).status, 404);
+        assert.equal((await as(alice)("GET", "/videos/not%20an%20id")).status, 400);
+      });
+
       it("run-now digests matching uploads and links them by YouTube id", async () => {
         const res = await as(alice)("POST", "/digests/run-now");
         // science is notify=all (s1, s2); kitchen is notify=rules, where the
