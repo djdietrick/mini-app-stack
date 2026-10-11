@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { feedRatio, ratioLabel } from "../../../src/fermentation/index.js";
 import { type FeedingRow, type StarterRow, api } from "../api";
+import { TipLine } from "../components/Help";
 import { StarterCard } from "../components/StarterCard";
 import { Empty, ErrorNote, Field, Loading, PageTitle, Section, Segmented, useAction, useNow } from "../components/ui";
 import { duration, fromLocalInput, grams, toLocalInput, when } from "../format";
@@ -87,6 +88,7 @@ export function StarterDetail({ id }: { id: string }) {
 
       <div className="mb-7 flex flex-col gap-3">
         <StarterCard starter={starter} now={now} />
+        <TipLine tip="location" label="Where it lives" />
         <Segmented
           label="Where it lives"
           value={starter.location}
@@ -106,11 +108,11 @@ export function StarterDetail({ id }: { id: string }) {
         <LogPeak feeding={starter.last_fed} onDone={data.reload} />
       )}
 
-      <Section title="Speed">
+      <Section title="Speed" help="speed">
         <p className="text-muted">{speedText(starter)}</p>
       </Section>
 
-      <Section title="Feeds">
+      <Section title="Feeds" help="ratio">
         {feedings.length === 0 ? (
           <p className="text-muted">No feeds logged yet.</p>
         ) : (
@@ -165,16 +167,16 @@ function LogPeak({ feeding, onDone }: { feeding: FeedingRow; onDone: () => void 
     });
 
   return (
-    <Section title="Did it peak?">
+    <Section title="Did it peak?" help="peak">
       <div className="card flex flex-col gap-3 p-4">
         <p className="text-sm text-muted">
           At its peak the top is domed and just starting to flatten. Logging it teaches Crumb how fast your starter is.
         </p>
         <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
-          <Field label="Peaked at">
+          <Field label="Peaked at" help="peak">
             <input id="peak-at" type="datetime-local" className="input" value={at} onChange={(e) => setAt(e.target.value)} />
           </Field>
-          <Field label="Rise %">
+          <Field label="Rise %" help="rise">
             <input
               id="peak-rise"
               type="number"
@@ -283,21 +285,21 @@ function StarterFormBody({ starter }: { starter: StarterRow | null }) {
       }}
     >
       <PageTitle>{starter ? `Edit ${starter.name}` : "New starter"}</PageTitle>
-      <Field label="Name">
+      <Field label="Name" help="starterName">
         <input id="starter-name" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bertha" required />
       </Field>
-      <Field label="Flour" hint="What you feed it.">
+      <Field label="Flour" hint="What you feed it." help="starterFlour">
         <input id="starter-flour" className="input" value={flour} onChange={(e) => setFlour(e.target.value)} placeholder="50/50 rye and all-purpose" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Hydration %" hint="100 = equal flour and water">
+        <Field label="Hydration %" hint="100 = equal flour and water" help="starterHydration">
           <input id="starter-hydration" type="number" inputMode="numeric" className="input" value={hydration} onChange={(e) => setHydration(e.target.value)} />
         </Field>
-        <Field label="Keep in the jar, g" hint="Left after taking what a bake needs">
+        <Field label="Keep in the jar, g" hint="Left after taking what a bake needs" help="reserve">
           <input id="starter-reserve" type="number" inputMode="numeric" className="input" value={reserve} onChange={(e) => setReserve(e.target.value)} />
         </Field>
       </div>
-      <Field label="Where it lives">
+      <Field label="Where it lives" help="location" group>
         <Segmented
           label="Where it lives"
           value={location}

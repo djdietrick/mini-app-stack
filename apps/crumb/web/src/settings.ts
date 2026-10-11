@@ -13,9 +13,11 @@ export interface Prefs {
   tempUnit: TempUnit;
   /** The last kitchen temperature entered, °F, as the default for the next. */
   kitchenF: number;
+  /** The "New to sourdough?" card on Today was dismissed. */
+  introHidden: boolean;
 }
 
-const DEFAULT_PREFS: Prefs = { tempUnit: "F", kitchenF: 72 };
+const DEFAULT_PREFS: Prefs = { tempUnit: "F", kitchenF: 72, introHidden: false };
 
 const KEY = "crumb:prefs";
 const listeners = new Set<() => void>();
@@ -32,6 +34,7 @@ function load(): Prefs {
     tempUnit: raw.tempUnit === "C" ? "C" : "F",
     kitchenF:
       typeof raw.kitchenF === "number" && raw.kitchenF >= 40 && raw.kitchenF <= 100 ? raw.kitchenF : DEFAULT_PREFS.kitchenF,
+    introHidden: raw.introHidden === true,
   };
 }
 

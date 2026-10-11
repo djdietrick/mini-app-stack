@@ -2,6 +2,7 @@ import { useState } from "react";
 import { scaleFormula } from "../../../src/fermentation/index.js";
 import { type RecipeKind, type RecipeRow, api } from "../api";
 import { Formula } from "../components/Formula";
+import { StepHowTo } from "../components/Help";
 import { ErrorNote, Field, Loading, PageTitle, Pill, Section, useAction } from "../components/ui";
 import { duration } from "../format";
 import { go, href } from "../router";
@@ -108,9 +109,9 @@ function RecipeBody({ recipe: r }: { recipe: RecipeRow }) {
         )}
       </div>
 
-      <Section title="Formula">
+      <Section title="Formula" help="formula">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Pieces">
+          <Field label="Pieces" help="pieces">
             <input id="recipe-pieces" type="number" inputMode="numeric" className="input" value={pieces} onChange={(e) => setPieces(e.target.value)} />
           </Field>
           <Field label="Each, g">
@@ -137,6 +138,9 @@ function RecipeBody({ recipe: r }: { recipe: RecipeRow }) {
                   {s.folds && ` · ${s.folds.count} sets of folds, every ${s.folds.every} min`}
                 </div>
                 {s.note && <p className="mt-1 text-sm">{s.note}</p>}
+                <div className="mt-2">
+                  <StepHowTo kind={s.kind} />
+                </div>
               </div>
             </li>
           ))}

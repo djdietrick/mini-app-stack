@@ -4,6 +4,7 @@ import { type RecipeConfig, type RecipeKind, type RecipeRow, api } from "../api"
 import { ErrorNote, Field, Loading, PageTitle, Section, useAction } from "../components/ui";
 import { go } from "../router";
 import { useApi } from "../useApi";
+import { TIPS } from "../help";
 import { KIND_LABELS } from "./Recipes";
 
 const BLANK: RecipeConfig = {
@@ -128,7 +129,7 @@ function EditorBody({ mode, source }: { mode: "new" | "copy" | "edit"; source: R
               ))}
             </select>
           </Field>
-          <Field label="Pieces">
+          <Field label="Pieces" help="pieces">
             <NumInput id="recipe-pieces" value={config.pieces} step={1} onChange={(n) => setConfig({ ...config, pieces: Math.round(n) })} />
           </Field>
           <Field label="Each, g">
@@ -137,16 +138,16 @@ function EditorBody({ mode, source }: { mode: "new" | "copy" | "edit"; source: R
         </div>
       </div>
 
-      <Section title="Formula, as % of flour">
+      <Section title="Formula, as % of flour" help="formula">
         <div className="card flex flex-col gap-4 p-4">
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Water %" hint="levain's included">
+            <Field label="Water %" hint="levain's included" help="hydration">
               <NumInput id="recipe-hydration" value={f.hydrationPct} onChange={(n) => setFormula({ hydrationPct: n })} />
             </Field>
-            <Field label="Levain %">
+            <Field label="Levain %" help="levainPct">
               <NumInput id="recipe-levain" value={f.levainPct} onChange={(n) => setFormula({ levainPct: n })} />
             </Field>
-            <Field label="Salt %">
+            <Field label="Salt %" help="salt">
               <NumInput id="recipe-salt" value={f.saltPct} onChange={(n) => setFormula({ saltPct: n })} />
             </Field>
           </div>
@@ -223,7 +224,7 @@ function EditorBody({ mode, source }: { mode: "new" | "copy" | "edit"; source: R
               )}
               {s.kind !== "levain" && s.flex && (
                 <>
-                  <Field label="Shortest, min">
+                  <Field label="Shortest, min" help="flexible">
                     <NumInput id={`step-flexmin-${s.id}`} value={s.flex.min} step={30} onChange={(n) => setStep(i, { flex: { ...s.flex!, min: Math.round(n) } })} />
                   </Field>
                   <Field label="Longest, min">
@@ -233,7 +234,7 @@ function EditorBody({ mode, source }: { mode: "new" | "copy" | "edit"; source: R
               )}
               {s.kind !== "levain" && s.folds && (
                 <>
-                  <Field label="Folds">
+                  <Field label="Folds" help="folds">
                     <NumInput id={`step-folds-${s.id}`} value={s.folds.count} step={1} onChange={(n) => setStep(i, { folds: { ...s.folds!, count: Math.round(n) } })} />
                   </Field>
                   <Field label="Every, min">
@@ -259,6 +260,7 @@ function EditorBody({ mode, source }: { mode: "new" | "copy" | "edit"; source: R
                 />
               </div>
             )}
+            {i === config.steps.findIndex((x) => x.kind !== "levain") && <StepOptionsHelp />}
             <input
               id={`step-note-${s.id}`}
               aria-label="Note"
@@ -313,6 +315,29 @@ function EditorBody({ mode, source }: { mode: "new" | "copy" | "edit"; source: R
         {mode === "edit" ? "Save" : "Save recipe"}
       </button>
     </form>
+  );
+}
+
+/** What the three step options mean; shown once, under the first step that has them. */
+function StepOptionsHelp() {
+  return (
+    <details className="group text-sm">
+      <summary className="focus-ring cursor-pointer list-none rounded font-bold text-crust">What do these options mean?</summary>
+      <dl className="mt-2 flex flex-col gap-2 rounded-xl bg-crust-soft px-3 py-2.5 leading-relaxed">
+        {(
+          [
+            ["Slower when cool", TIPS.slowerWhenCool.text],
+            ["Flexible length", TIPS.flexible.text],
+            ["Folds", TIPS.folds.text],
+          ] as const
+        ).map(([term, text]) => (
+          <div key={term}>
+            <dt className="font-bold">{term}</dt>
+            <dd>{text}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 

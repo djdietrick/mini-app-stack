@@ -5,11 +5,13 @@ import { Timeline } from "../components/Timeline";
 import { Empty, ErrorNote, Loading, PageTitle, Section, useNow } from "../components/ui";
 import { relative, when } from "../format";
 import { href } from "../router";
+import { updatePrefs, usePrefs } from "../settings";
 import { useApi } from "../useApi";
 
 /** The home screen: every starter's state, active bakes' next steps, and what's coming up. */
 export function Today() {
   const now = useNow();
+  const prefs = usePrefs();
   const data = useApi("today", () => Promise.all([api.listStarters(), api.listBakes(), api.listReminders()]));
 
   if (data.error) return <ErrorNote error={data.error} retry={data.reload} />;
@@ -22,6 +24,8 @@ export function Today() {
       <PageTitle sub={new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(now)}>
         Today
       </PageTitle>
+
+      {!prefs.introHidden && <Intro />}
 
       <Section title={starters.length > 1 ? "Starters" : "Starter"}>
         {starters.length === 0 ? (
@@ -102,6 +106,31 @@ export function Today() {
           </ul>
         </Section>
       )}
+    </div>
+  );
+}
+
+/** For a first-time baker: where to start. Hidden for good once dismissed. */
+function Intro() {
+  return (
+    <div className="card mb-7 flex flex-col gap-3 border-crust/40 bg-crust-soft p-4">
+      <h2 className="font-display text-xl font-bold">New to sourdough?</h2>
+      <p className="leading-relaxed">
+        The guide covers what a starter is, how to feed it, what the feeding ratios do, and how to tell when it's ready. Throughout the app,
+        tap <span aria-hidden="true">ⓘ</span>
+        <span className="sr-only">the info buttons</span> next to a field to see what it means.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <a href={href({ name: "guide" })} className="btn-primary">
+          Read the guide
+        </a>
+        <a href={href({ name: "guide", section: "feeding" })} className="btn">
+          How to feed
+        </a>
+        <button type="button" className="btn" onClick={() => updatePrefs({ introHidden: true })}>
+          Hide this
+        </button>
+      </div>
     </div>
   );
 }

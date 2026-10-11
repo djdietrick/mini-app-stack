@@ -7,6 +7,7 @@ import {
   ratioLabel,
 } from "../../../src/fermentation/index.js";
 import { type StarterRow, api } from "../api";
+import { TipLine, useTip } from "../components/Help";
 import { ErrorNote, Field, Loading, PageTitle, Segmented, useAction, useNow } from "../components/ui";
 import { fromLocalInput, grams, relative, toLocalInput, when } from "../format";
 import { go } from "../router";
@@ -90,6 +91,7 @@ function FeedBody({ starter }: { starter: StarterRow }) {
     <div className="flex flex-col gap-5">
       <PageTitle sub={`${starter.flour || "Starter"} · ${hydration}% hydration`}>Feed {starter.name}</PageTitle>
 
+      <TipLine tip="feedMode" label="What for" />
       <Segmented
         label="What for"
         value={mode}
@@ -106,14 +108,14 @@ function FeedBody({ starter }: { starter: StarterRow }) {
       <div className="card grid grid-cols-2 gap-3 p-4">
         {mode === "ready-by" ? (
           <>
-            <Field label="I need, g" hint="ripe starter">
+            <Field label="I need, g" hint="ripe starter" help="need">
               <input id="feed-need" type="number" inputMode="numeric" className="input" value={need} onChange={(e) => setNeed(e.target.value)} />
             </Field>
-            <Field label={`Kitchen, °${prefs.tempUnit}`}>
+            <Field label={`Kitchen, °${prefs.tempUnit}`} help="kitchenTemp">
               <input id="feed-temp" type="number" inputMode="decimal" className="input" value={temp} onChange={(e) => setTemp(e.target.value)} />
             </Field>
             <div className="col-span-2">
-              <Field label="Ready at">
+              <Field label="Ready at" help="readyAt">
                 <input
                   id="feed-ready-at"
                   type="datetime-local"
@@ -130,7 +132,7 @@ function FeedBody({ starter }: { starter: StarterRow }) {
         ) : (
           <>
             <div className="col-span-2">
-              <Field label="Ratio">
+              <Field label="Ratio" help="ratio" group>
                 <Segmented
                   label="Ratio"
                   value={plainRatio}
@@ -139,19 +141,19 @@ function FeedBody({ starter }: { starter: StarterRow }) {
                 />
               </Field>
             </div>
-            <Field label={`Kitchen, °${prefs.tempUnit}`}>
+            <Field label={`Kitchen, °${prefs.tempUnit}`} help="kitchenTemp">
               <input id="feed-temp" type="number" inputMode="decimal" className="input" value={temp} onChange={(e) => setTemp(e.target.value)} />
             </Field>
           </>
         )}
-        <Field label="Jar has now, g" hint="optional, for the discard">
+        <Field label="Jar has now, g" hint="optional, for the discard" help="jar">
           <input id="feed-jar" type="number" inputMode="numeric" className="input" value={jar} onChange={(e) => setJar(e.target.value)} placeholder="—" />
         </Field>
       </div>
 
       {mode === "ready-by" && (
         <div className="flex flex-col gap-2">
-          <div className="label-caps">Suggested</div>
+          <TipLine tip="ratio" label="Suggested ratio" />
           <Segmented
             label="Ratio"
             value={calc.ratio}
@@ -190,6 +192,7 @@ function FeedBody({ starter }: { starter: StarterRow }) {
             </>
           )}
         </dl>
+        <FeedSteps amounts={amounts} discard={discard} fridge={starter.location === "fridge"} open={!starter.last_fed} />
         <p className="mt-3 border-t border-line pt-3 text-sm text-muted">
           {starter.location === "fridge"
             ? "Let it rise for an hour or two before it goes back in the fridge."
@@ -221,17 +224,70 @@ function FeedBody({ starter }: { starter: StarterRow }) {
         )}
       </div>
 
-      {starter.location === "counter" && (
-        <label className="flex min-h-[44px] items-center gap-3">
-          <input id="feed-remind" type="checkbox" className="h-5 w-5 accent-[rgb(var(--crust))]" checked={remind} onChange={(e) => setRemind(e.target.checked)} />
-          <span>Remind me when it should be peaking</span>
-        </label>
-      )}
+      {starter.location === "counter" && <RemindAtPeak checked={remind} onChange={setRemind} />}
 
       {action.error && <ErrorNote error={action.error} />}
       <button type="button" className="btn-primary" disabled={action.busy} onClick={() => void log()}>
         Log this feed
       </button>
+    </div>
+  );
+}
+
+/** The feed, as steps to follow. Open by default on a starter's first feed. */
+function FeedSteps({
+  amounts,
+  discard,
+  fridge,
+  open,
+}: {
+  amounts: { starter: number; flour: number; water: number };
+  discard: number | null;
+  fridge: boolean;
+  open: boolean;
+}) {
+  return (
+    <details open={open} className="group mt-3 border-t border-line pt-3 text-sm">
+      <summary className="focus-ring cursor-pointer list-none rounded font-bold text-crust">
+        <span className="group-open:hidden">Show me how, step by step</span>
+        <span className="hidden group-open:inline">Step by step</span>
+      </summary>
+      <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-5 leading-relaxed">
+        <li>Stir the starter down. Put a clean jar on the scale and zero it.</li>
+        <li>
+          Spoon in <strong>{grams(amounts.starter)}</strong> of starter.{" "}
+          {discard !== null && discard > 0
+            ? `The other ${grams(discard)} is discard: bin it, or save it in the fridge for pancakes or crackers.`
+            : "Whatever is left over is discard: bin it, or save it in the fridge for pancakes or crackers."}
+        </li>
+        <li>
+          Add <strong>{grams(amounts.flour)}</strong> flour and <strong>{grams(amounts.water)}</strong> water. Lukewarm water helps in a cold
+          kitchen.
+        </li>
+        <li>Mix until no dry flour is left, then scrape down the sides.</li>
+        <li>Mark the level with a rubber band or a strip of tape, so you can see the rise.</li>
+        <li>
+          {fridge
+            ? "Cover it loosely, leave it out for an hour or two until it starts to bubble, then back in the fridge."
+            : "Cover it loosely (don't screw the lid down) and leave it on the counter. It has peaked when it has about doubled and the top is domed."}
+        </li>
+      </ol>
+    </details>
+  );
+}
+
+function RemindAtPeak({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  const tip = useTip("remindPeak", "Remind me when it should be peaking");
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <label className="flex min-h-[44px] items-center gap-3">
+          <input id="feed-remind" type="checkbox" className="h-5 w-5 accent-[rgb(var(--crust))]" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+          <span>Remind me when it should be peaking</span>
+        </label>
+        {tip.button}
+      </div>
+      {tip.panel}
     </div>
   );
 }
