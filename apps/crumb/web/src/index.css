@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Colour tokens as "r g b", read by tailwind.config.js. */
+:root {
+  --ground: 246 245 240;
+  --surface: 255 255 255;
+  --raised: 239 237 230;
+  --line: 222 219 210;
+  --ink: 30 28 25;
+  --muted: 106 102 94;
+  --crust: 154 90 20;
+  --crust-soft: 243 230 212;
+  --crust-ink: 255 250 242;
+  --live: 47 125 107;
+  --live-soft: 220 239 233;
+  --warn: 176 64 42;
+  --warn-soft: 248 226 220;
+  color-scheme: light;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: 23 22 19;
+    --surface: 33 31 27;
+    --raised: 44 41 36;
+    --line: 58 54 47;
+    --ink: 236 232 223;
+    --muted: 163 158 147;
+    --crust: 224 163 90;
+    --crust-soft: 58 43 25;
+    --crust-ink: 26 18 8;
+    --live: 108 196 173;
+    --live-soft: 29 53 48;
+    --warn: 236 138 115;
+    --warn-soft: 62 31 24;
+    color-scheme: dark;
+  }
+}
+
+body {
+  min-height: 100dvh;
+}
+
+/* Keep controls clear of the notch and the home indicator when installed. */
+.pt-safe { padding-top: max(1rem, env(safe-area-inset-top)); }
+.pb-safe { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+.pl-safe { padding-left: env(safe-area-inset-left); }
+.pr-safe { padding-right: env(safe-area-inset-right); }
+
+@layer components {
+  .label-caps {
+    @apply font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-muted;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+  .btn {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 text-[15px] font-bold text-ink transition hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-ink px-5 text-[15px] font-bold text-ground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-danger {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-warn/40 px-4 text-[15px] font-bold text-warn transition hover:bg-warn-soft disabled:opacity-50;
+  }
+  .pill {
+    @apply inline-flex items-center whitespace-nowrap rounded-full px-2 py-1 font-mono text-[10.5px] font-semibold uppercase leading-none tracking-wide;
+  }
+  .input {
+    @apply min-h-[44px] w-full rounded-xl border border-line bg-surface px-3 text-[16px] text-ink placeholder:text-muted/70 focus:border-crust focus:outline-none;
+  }
+  .num {
+    @apply font-mono tabular-nums;
+  }
+  .focus-ring {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-crust;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

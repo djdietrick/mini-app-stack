@@ -139,6 +139,43 @@
         { "fieldPath": "exerciseId", "order": "ASCENDING" },
         { "fieldPath": "startedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "//": "crumb GET /api/starters/:id/feedings, and every starter summary — one starter's feeds, newest first.",
+      "collectionGroup": "crumb_feedings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "starterId", "order": "ASCENDING" },
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "fedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "crumb GET /api/recipes — one user's recipes, newest first.",
+      "collectionGroup": "crumb_recipes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "crumb GET /api/bakes — one user's bakes, newest first.",
+      "collectionGroup": "crumb_bakes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "crumb reminder dispatch — pending reminders due by now, soonest first.",
+      "collectionGroup": "crumb_reminders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pending", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

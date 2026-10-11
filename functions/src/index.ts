@@ -11,6 +11,10 @@ import { createMailer } from "@stack/mailer";
 import { firestoreCache, firestoreLease } from "@stack/service-kit";
 import { toExpressApp } from "@stack/service-kit/express";
 import { crateRoutes } from "@stack/crate/domain";
+import { crumbRoutes } from "@stack/crumb/domain";
+import { type ReminderMailer, dispatchReminders } from "@stack/crumb/domain/reminders";
+import { createFirestoreCrumbRepo } from "@stack/crumb/repo/firestore";
+import { createWebPush, generateVapidKeys, vapidSubject } from "@stack/crumb/webpush";
 import { createItunesGateway } from "@stack/crate/domain/itunes";
 import { createFirestoreCrateRepo } from "@stack/crate/repo/firestore";
 import { fretworkRoutes } from "@stack/fretwork/domain";
@@ -65,6 +69,7 @@ const crateServiceAccount = process.env.CRATE_FUNCTION_SA || undefined;
 const pantryServiceAccount = process.env.PANTRY_FUNCTION_SA || undefined;
 const ytdigestServiceAccount = process.env.YTDIGEST_FUNCTION_SA || undefined;
 const fretworkServiceAccount = process.env.FRETWORK_FUNCTION_SA || undefined;
+const crumbServiceAccount = process.env.CRUMB_FUNCTION_SA || undefined;
 const authServiceAccount = process.env.AUTH_FUNCTION_SA || undefined;
 
 // Module scope on purpose: these are reused across warm invocations.
@@ -229,5 +234,71 @@ export const ytdigestDigest = onSchedule(
   },
   async () => {
     await runDailyDigest(ytdigestRepo, mailer, new Date(), digestOptions);
+  },
+);
+
+// ---------- crumb ----------
+
+const crumbRepo = createFirestoreCrumbRepo(db);
+
+/**
+ * Web Push. The VAPID key pair is made on first use and kept in Firestore
+ * (crumb_config/vapid), so there is no secret to provision. The subject
+ * defaults to the MAIL_FROM address; push services want a way to reach the
+ * sender. Read at call time, like every other env value here.
+ */
+const crumbPush = createWebPush({
+  keys: () => crumbRepo.vapidKeys(generateVapidKeys),
+  subject: () => vapidSubject(process.env.CRUMB_VAPID_SUBJECT, process.env.MAIL_FROM),
+});
+
+/**
+ * Reminder emails, when a user has no device with notifications on. Same
+ * SMTP relay and secret as ytdigest, with Crumb's name on the From line.
+ */
+let crumbSmtp: ReturnType<typeof createMailer> | undefined;
+const crumbMailer: ReminderMailer = {
+  send: (mail) =>
+    (crumbSmtp ??= createMailer({
+      host: requiredEnv("SMTP_HOST"),
+      port: Number(process.env.SMTP_PORT || 587),
+      user: requiredEnv("SMTP_USER"),
+      password: SMTP_PASSWORD.value(),
+      from: requiredEnv("MAIL_FROM").replace(/^[^<]*</, "Crumb <"),
+    })).send(mail),
+};
+
+export const crumbApi = onRequest(
+  { serviceAccount: crumbServiceAccount },
+  mount(
+    "/api",
+    toExpressApp(crumbRoutes({ push: crumbPush }), {
+      repo: crumbRepo,
+      verify: verifier.verify,
+    }),
+  ),
+);
+
+/**
+ * The self-hosted one-minute dispatch timer, as a Cloud Scheduler job. No
+ * lease: the repo claims due reminders in a transaction, so a retried or
+ * overlapping trigger never sends one twice.
+ */
+export const crumbReminders = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    serviceAccount: crumbServiceAccount,
+    secrets: [SMTP_PASSWORD],
+    timeoutSeconds: 120,
+    // One run at a time is plenty, and keeps a backlog from fanning out.
+    maxInstances: 1,
+  },
+  async () => {
+    await dispatchReminders({
+      repo: crumbRepo,
+      push: crumbPush,
+      mailer: crumbMailer,
+      appUrl: process.env.CRUMB_APP_URL || undefined,
+    });
   },
 );

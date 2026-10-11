@@ -14,6 +14,9 @@ importers:
       '@stack/crate':
         specifier: workspace:*
         version: link:apps/crate
+      '@stack/crumb':
+        specifier: workspace:*
+        version: link:apps/crumb
       '@stack/fretwork':
         specifier: workspace:*
         version: link:apps/fretwork
@@ -84,6 +87,82 @@ importers:
       '@stack/db-clients':
         specifier: workspace:*
         version: link:../../packages/db-clients
+      '@stack/service-kit':
+        specifier: workspace:*
+        version: link:../../packages/service-kit
+      fastify:
+        specifier: ^5.0.0
+        version: 5.8.5
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.1
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/express':
+        specifier: ^4.17.21
+        version: 4.17.25
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.19
+      '@types/react':
+        specifier: ^18.3.0
+        version: 18.3.28
+      '@types/react-dom':
+        specifier: ^18.3.0
+        version: 18.3.7(@types/react@18.3.28)
+      '@vitejs/plugin-react':
+        specifier: ^4.3.0
+        version: 4.7.0(vite@5.4.21(@types/node@22.19.19))
+      autoprefixer:
+        specifier: ^10.4.0
+        version: 10.5.0(postcss@8.5.14)
+      express:
+        specifier: ^4.21.2
+        version: 4.22.2
+      postcss:
+        specifier: ^8.4.0
+        version: 8.5.14
+      react:
+        specifier: ^18.3.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.0
+        version: 18.3.1(react@18.3.1)
+      tailwindcss:
+        specifier: ^3.4.0
+        version: 3.4.19(tsx@4.22.1)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.0
+        version: 5.4.21(@types/node@22.19.19)
+
+  apps/crumb:
+    dependencies:
+      '@fastify/http-proxy':
+        specifier: ^10.0.0
+        version: 10.0.2
+      '@fastify/static':
+        specifier: ^8.0.0
+        version: 8.3.0
+      '@google-cloud/firestore':
+        specifier: ^7.10.0
+        version: 7.11.6
+      '@stack/auth-client':
+        specifier: workspace:*
+        version: link:../../packages/auth-client
+      '@stack/auth-ui':
+        specifier: workspace:*
+        version: link:../../packages/auth-ui
+      '@stack/db-clients':
+        specifier: workspace:*
+        version: link:../../packages/db-clients
+      '@stack/mailer':
+        specifier: workspace:*
+        version: link:../../packages/mailer
       '@stack/service-kit':
         specifier: workspace:*
         version: link:../../packages/service-kit
@@ -4957,18 +5036,6 @@ packages:
   write-file-atomic@3.0.3:
     resolution: {integrity: sha512-AvHcyZ5JnSfq3ioSyjrBkH9yW4m7Ayk8/9My/DD9onKeu/94fwrMocemO2QAJFAlnnDN+ZDS+ZjAR5ua1/PV/Q==}
 
-  ws@8.20.1:
-    resolution: {integrity: sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   ws@8.21.1:
     resolution: {integrity: sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==}
     engines: {node: '>=10.0.0'}
@@ -5592,7 +5659,7 @@ snapshots:
       '@fastify/reply-from': 11.0.2
       fast-querystring: 1.1.2
       fastify-plugin: 5.1.0
-      ws: 8.20.1
+      ws: 8.21.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -9738,8 +9805,6 @@ snapshots:
       is-typedarray: 1.0.0
       signal-exit: 3.0.7
       typedarray-to-buffer: 3.1.5
-
-  ws@8.20.1: {}
 
   ws@8.21.1: {}
 
