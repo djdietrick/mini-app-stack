@@ -11,7 +11,7 @@ variable "firestore_location" {
 variable "apps" {
   description = "Apps that get a Hosting site and a function service account."
   type        = list(string)
-  default     = ["crate", "pantry", "ytdigest", "fretwork"]
+  default     = ["crate", "pantry", "ytdigest", "fretwork", "crumb"]
 }
 variable "deletion_protection" {
   type    = bool
@@ -154,7 +154,7 @@ resource "google_service_account_iam_member" "auth_self_signer" {
  *
  * The ids are the names functions/src/index.ts binds with defineSecret(), and
  * Firebase requires those to be valid env var names, so they are upper case.
- * Only ytdigest's function can read them; no other app needs either.
+ * Only ytdigest's function can read both; crumb's can read SMTP_PASSWORD (below).
  */
 module "secrets" {
   source  = "../secrets"
@@ -170,6 +170,20 @@ module "secrets" {
   ]
 
   depends_on = [module.services]
+}
+
+/**
+ * crumb emails reminders through the same SMTP relay as ytdigest, so its
+ * function may read SMTP_PASSWORD too. Granted here rather than through the
+ * module's accessor_members, which would also hand it YOUTUBE_API_KEY.
+ */
+resource "google_secret_manager_secret_iam_member" "crumb_smtp_password" {
+  project   = var.project
+  secret_id = "SMTP_PASSWORD"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = module.sites["crumb"].service_account_member
+
+  depends_on = [module.secrets]
 }
 
 output "hosting_sites" {

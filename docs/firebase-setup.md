@@ -195,6 +195,7 @@ leak or rotate.
 | `STAGING_PANTRY_FUNCTION_SA` | staging `function_service_accounts` → `pantry` |
 | `STAGING_YTDIGEST_FUNCTION_SA` | staging `function_service_accounts` → `ytdigest` |
 | `STAGING_FRETWORK_FUNCTION_SA` | staging `function_service_accounts` → `fretwork` |
+| `STAGING_CRUMB_FUNCTION_SA` | staging `function_service_accounts` → `crumb` |
 | `STAGING_AUTH_FUNCTION_SA` | staging `function_service_accounts` → `auth` |
 | `STAGING_SMTP_HOST` | your staging SMTP server, e.g. `smtp.gmail.com` |
 | `STAGING_SMTP_PORT` | optional, defaults to `587` (`465` also works; `25` is blocked on GCP) |
@@ -206,6 +207,7 @@ leak or rotate.
 | `PROD_PANTRY_FUNCTION_SA` | prod `function_service_accounts` → `pantry` |
 | `PROD_YTDIGEST_FUNCTION_SA` | prod `function_service_accounts` → `ytdigest` |
 | `PROD_FRETWORK_FUNCTION_SA` | prod `function_service_accounts` → `fretwork` |
+| `PROD_CRUMB_FUNCTION_SA` | prod `function_service_accounts` → `crumb` |
 | `PROD_SMTP_HOST` | your SMTP server, e.g. `smtp.gmail.com` |
 | `PROD_SMTP_PORT` | optional, defaults to `587` (`465` also works; `25` is blocked on GCP) |
 | `PROD_SMTP_USER` | SMTP login |
@@ -310,7 +312,7 @@ to that API). Your self-hosted `.env` key works too. Rotating either secret
 later is just another `versions add`; functions pick up the latest version on
 their next cold start.
 
-Only ytdigest's function can read these; `crate`, `pantry` and `fretwork` need none.
+Only ytdigest's function can read both. `crumb`'s can read `SMTP_PASSWORD`, for reminder emails; `crate`, `pantry` and `fretwork` need neither. `crumb` needs no secret of its own: it generates its Web Push (VAPID) key pair on first use and keeps it in Firestore.
 
 ---
 
@@ -369,6 +371,7 @@ CRATE_FUNCTION_SA=fn-crate-staging@STAGING_ID.iam.gserviceaccount.com \
 PANTRY_FUNCTION_SA=fn-pantry-staging@STAGING_ID.iam.gserviceaccount.com \
 YTDIGEST_FUNCTION_SA=fn-ytdigest-staging@STAGING_ID.iam.gserviceaccount.com \
 FRETWORK_FUNCTION_SA=fn-fretwork-staging@STAGING_ID.iam.gserviceaccount.com \
+CRUMB_FUNCTION_SA=fn-crumb-staging@STAGING_ID.iam.gserviceaccount.com \
 AUTH_FUNCTION_SA=fn-auth-staging@STAGING_ID.iam.gserviceaccount.com \
   pnpm exec firebase deploy --project STAGING_ID
 ```

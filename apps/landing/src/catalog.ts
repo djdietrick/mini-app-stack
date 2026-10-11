@@ -49,4 +49,12 @@ export const catalog: CatalogApp[] = [
     accent: "#e5a54b",
     localPort: 3104,
   },
+  {
+    id: "crumb",
+    name: "Crumb",
+    tagline: "Sourdough starter and bake planner",
+    description: "Know when your starter peaks, plan a bake backward from the oven, and get a nudge at every step.",
+    accent: "#c98a3c",
+    localPort: 3105,
+  },
 ];

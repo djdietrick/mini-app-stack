@@ -21,6 +21,9 @@
         ],
         "fretwork": [
           "fretwork-staging-40765"
+        ],
+        "crumb": [
+          "crumb-staging-40765"
         ]
       }
     },
@@ -40,6 +43,9 @@
         ],
         "fretwork": [
           "fretwork-prod-5c26a"
+        ],
+        "crumb": [
+          "crumb-prod-5c26a"
         ]
       }
     }
