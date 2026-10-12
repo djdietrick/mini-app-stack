@@ -72,6 +72,16 @@ body {
   .input {
     @apply min-h-[44px] w-full rounded-xl border border-line bg-surface px-3 text-[16px] text-ink placeholder:text-muted/70 focus:border-crust focus:outline-none;
   }
+  /* iOS Safari gives date/time inputs an intrinsic min-width that ignores
+     w-full, so they overflow narrow columns, and centres their value. */
+  .input[type="date"],
+  .input[type="time"],
+  .input[type="datetime-local"] {
+    @apply block min-w-0 appearance-none;
+  }
+  .input::-webkit-date-and-time-value {
+    @apply text-left;
+  }
   .num {
     @apply font-mono tabular-nums;
   }
