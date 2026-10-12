@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { GuideSection } from "./help";
 
 /**
  * Hash routing, like the other apps in the stack: it needs no server rewrite
@@ -20,7 +21,9 @@ export type Route =
   | { name: "recipe"; id: string }
   /** A new recipe; `copy` starts from an existing one, `edit` changes the user's own. */
   | { name: "recipe-edit"; mode: "new" | "copy" | "edit"; id?: string }
-  | { name: "settings" };
+  | { name: "settings" }
+  /** The beginner's guide, scrolled to a section when one is given. */
+  | { name: "guide"; section?: GuideSection };
 
 export function parseRoute(hash: string): Route {
   const [head, arg, arg2] = hash.replace(/^#\/?/, "").split("/");
@@ -40,6 +43,8 @@ export function parseRoute(hash: string): Route {
       return arg ? { name: "recipe", id: arg } : { name: "recipes" };
     case "settings":
       return { name: "settings" };
+    case "guide":
+      return { name: "guide", section: (arg || undefined) as GuideSection | undefined };
     default:
       return { name: "today" };
   }
@@ -65,6 +70,8 @@ export function href(route: Route): string {
       return `#/recipes/${route.id}`;
     case "recipe-edit":
       return route.mode === "new" ? "#/recipes/new" : `#/recipes/${route.id}/${route.mode}`;
+    case "guide":
+      return route.section ? `#/guide/${route.section}` : "#/guide";
     default:
       return `#/${route.name}`;
   }
@@ -78,8 +85,10 @@ export function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));
   useEffect(() => {
     const onHash = () => {
-      setRoute(parseRoute(window.location.hash));
-      window.scrollTo(0, 0);
+      const next = parseRoute(window.location.hash);
+      setRoute(next);
+      // The guide scrolls to its own section.
+      if (next.name !== "guide" || !next.section) window.scrollTo(0, 0);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);

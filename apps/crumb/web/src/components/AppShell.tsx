@@ -40,6 +40,13 @@ const TABS: { route: Route; label: string; icon: ReactNode; owns: Route["name"][
   },
 ];
 
+const GUIDE = icon(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01" />
+  </>,
+);
+
 const GEAR = icon(
   <>
     <circle cx="12" cy="12" r="3" />
@@ -68,14 +75,26 @@ export function AppShell({ route, children }: { route: Route; children: ReactNod
             </a>
           ))}
         </nav>
-        <a
-          href={href({ name: "settings" })}
-          aria-label="Settings"
-          aria-current={route.name === "settings" ? "page" : undefined}
-          className={"focus-ring flex h-11 w-11 items-center justify-center rounded-xl " + (route.name === "settings" ? "text-crust" : "text-muted")}
-        >
-          {GEAR}
-        </a>
+        <div className="flex items-center">
+          <a
+            href={href({ name: "guide" })}
+            aria-label="Guide"
+            title="Guide"
+            aria-current={route.name === "guide" ? "page" : undefined}
+            className={"focus-ring flex h-11 w-11 items-center justify-center rounded-xl " + (route.name === "guide" ? "text-crust" : "text-muted")}
+          >
+            {GUIDE}
+          </a>
+          <a
+            href={href({ name: "settings" })}
+            aria-label="Settings"
+            title="Settings"
+            aria-current={route.name === "settings" ? "page" : undefined}
+            className={"focus-ring flex h-11 w-11 items-center justify-center rounded-xl " + (route.name === "settings" ? "text-crust" : "text-muted")}
+          >
+            {GEAR}
+          </a>
+        </div>
       </header>
 
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-28 pt-2 md:px-6 md:pb-12">{children}</main>

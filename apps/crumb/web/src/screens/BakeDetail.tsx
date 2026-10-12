@@ -2,6 +2,7 @@ import { useState } from "react";
 import { type BakeStep, currentStep, foldsDue, nightSteps } from "../../../src/fermentation/index.js";
 import { type BakeRow, api } from "../api";
 import { Formula } from "../components/Formula";
+import { StepHowTo } from "../components/Help";
 import { Timeline } from "../components/Timeline";
 import { ErrorNote, Field, Loading, PageTitle, Pill, Section, useAction, useNow } from "../components/ui";
 import { deviceTimeZone, duration, time, when } from "../format";
@@ -76,7 +77,7 @@ function BakeBody({ bake, onChange }: { bake: BakeRow; onChange: (b: BakeRow) =>
         </div>
       </Section>
 
-      <Section title="Formula">
+      <Section title="Formula" help="formula">
         <Formula scaled={{ ...bake, totalDough: bake.pieces * bake.piece_grams }} />
       </Section>
 
@@ -141,6 +142,8 @@ function CurrentStep({
         <h2 className="mt-1 text-balance font-display text-3xl font-bold leading-tight">{step.label}</h2>
         {step.detail && <p className="mt-2 text-muted">{step.detail}</p>}
       </div>
+
+      <StepHowTo key={step.id} kind={step.kind} />
 
       <div className="text-center">
         <div className="label-caps">{late ? (nextFold && foldsLeft > 0 ? "Fold is due" : "Running over") : caption}</div>

@@ -3,6 +3,7 @@ import { useRoute } from "./router";
 import { BakeDetail } from "./screens/BakeDetail";
 import { Bakes } from "./screens/Bakes";
 import { Feed } from "./screens/Feed";
+import { Guide } from "./screens/Guide";
 import { PlanBake } from "./screens/PlanBake";
 import { RecipeEditor } from "./screens/RecipeEditor";
 import { RecipeDetail, Recipes } from "./screens/Recipes";
@@ -28,6 +29,7 @@ export function App() {
       {route.name === "recipe" && <RecipeDetail key={route.id} id={route.id} />}
       {route.name === "recipe-edit" && <RecipeEditor key={`${route.mode}:${route.id}`} mode={route.mode} id={route.id} />}
       {route.name === "settings" && <Settings />}
+      {route.name === "guide" && <Guide section={route.section} />}
     </AppShell>
   );
 }

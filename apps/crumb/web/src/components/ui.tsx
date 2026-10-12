@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
+import type { TipId } from "../help";
+import { useTip } from "./Help";
 
 /** Small pieces every screen uses. */
 
@@ -14,13 +16,29 @@ export function PageTitle({ children, sub, action }: { children: ReactNode; sub?
   );
 }
 
-export function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+export function Section({
+  title,
+  action,
+  help,
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  /** An ⓘ after the title that explains the section. */
+  help?: TipId;
+  children: ReactNode;
+}) {
+  const tip = useTip(help, title);
   return (
     <section className="mb-7 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="label-caps">{title}</h2>
+      <div className="-my-2 flex min-h-9 items-center justify-between">
+        <div className="flex items-center gap-0.5">
+          <h2 className="label-caps">{title}</h2>
+          {tip.button}
+        </div>
         {action}
       </div>
+      {tip.panel}
       {children}
     </section>
   );
@@ -66,13 +84,47 @@ export function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <span className={`pill ${TONES[tone]}`}>{children}</span>;
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
-  return (
-    <label className="flex min-w-0 flex-col gap-1.5">
-      <span className="text-sm font-bold">{label}</span>
+/**
+ * A labelled control. `help` adds an ⓘ beside the label. The ⓘ sits outside
+ * the <label>, or tapping the label text would open the tip instead of
+ * focusing the input. `group` is for a set of buttons (a Segmented): a
+ * <label> would forward taps on its text to the first button.
+ */
+export function Field({
+  label,
+  hint,
+  help,
+  group = false,
+  children,
+}: {
+  label: string;
+  hint?: ReactNode;
+  help?: TipId;
+  group?: boolean;
+  children: ReactNode;
+}) {
+  const tip = useTip(help, label);
+  const body = (
+    <>
+      <span className={"min-h-5 text-sm font-bold " + (help ? "pr-8" : "")}>{label}</span>
       {children}
       {hint && <span className="text-sm text-muted">{hint}</span>}
-    </label>
+    </>
+  );
+  return (
+    // An open tip takes the field to a row of its own, so the text isn't
+    // squeezed into one column of a grid.
+    <div className={"relative flex min-w-0 flex-col gap-1.5 " + (tip.open ? "col-span-full" : "")}>
+      {group ? (
+        <div role="group" aria-label={label} className="flex min-w-0 flex-col gap-1.5">
+          {body}
+        </div>
+      ) : (
+        <label className="flex min-w-0 flex-col gap-1.5">{body}</label>
+      )}
+      {tip.button && <div className="absolute -right-1.5 -top-2">{tip.button}</div>}
+      {tip.panel}
+    </div>
   );
 }
 

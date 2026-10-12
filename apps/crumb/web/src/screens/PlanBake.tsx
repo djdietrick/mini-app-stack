@@ -120,21 +120,21 @@ function PlanBody({
             ))}
           </select>
         </Field>
-        <Field label="Out of the oven">
+        <Field label="Out of the oven" help="outOfOven">
           <input id="plan-ready" type="datetime-local" className="input" value={readyAt} onChange={(e) => setReadyAt(e.target.value)} />
         </Field>
         <div className="grid grid-cols-3 gap-3">
-          <Field label="Pieces">
+          <Field label="Pieces" help="pieces">
             <input id="plan-pieces" type="number" inputMode="numeric" className="input" value={pieces} onChange={(e) => setPieces(e.target.value)} />
           </Field>
           <Field label="Each, g">
             <input id="plan-grams" type="number" inputMode="numeric" className="input" value={pieceGrams} onChange={(e) => setPieceGrams(e.target.value)} />
           </Field>
-          <Field label={`Kitchen, °${prefs.tempUnit}`}>
+          <Field label={`Kitchen, °${prefs.tempUnit}`} help="kitchenTemp">
             <input id="plan-temp" type="number" inputMode="decimal" className="input" value={temp} onChange={(e) => setTemp(e.target.value)} />
           </Field>
         </div>
-        <Field label="Starter" hint={starter?.location === "fridge" ? `${starter.name} is in the fridge, so the plan starts by taking it out.` : undefined}>
+        <Field label="Starter" help="planStarter" hint={starter?.location === "fridge" ? `${starter.name} is in the fridge, so the plan starts by taking it out.` : undefined}>
           <select id="plan-starter" className="input" value={starterId} onChange={(e) => setStarterId(e.target.value)}>
             {starters.map((s) => (
               <option key={s.id} value={s.id}>
@@ -144,7 +144,7 @@ function PlanBody({
             <option value="">No starter tracked</option>
           </select>
         </Field>
-        <Field label="Levain">
+        <Field label="Levain" help="levainSpeed" group>
           <Segmented
             label="Levain"
             value={levainRatio}
@@ -158,7 +158,7 @@ function PlanBody({
         {flexSteps.map((s) => {
           const value = flex[s.id] ?? s.minutes;
           return (
-            <Field key={s.id} label={`${s.label}: ${duration(value)}`} hint={`Anywhere from ${duration(s.flex!.min)} to ${duration(s.flex!.max)}.`}>
+            <Field key={s.id} help="retard" label={`${s.label}: ${duration(value)}`} hint={`Anywhere from ${duration(s.flex!.min)} to ${duration(s.flex!.max)}.`}>
               <input
                 id={`plan-flex-${s.id}`}
                 type="range"
@@ -176,7 +176,7 @@ function PlanBody({
 
       {preview && (
         <>
-          <Section title="Schedule">
+          <Section title="Schedule" help="night">
             {startsInPast && (
               <p className="rounded-xl bg-warn-soft p-3 text-sm text-warn">
                 This plan would have started {when(preview.steps[0].start_at)}. Pick a later time, or shorten the cold steps.
@@ -193,7 +193,7 @@ function PlanBody({
             </div>
           </Section>
 
-          <Section title="Formula">
+          <Section title="Formula" help="formula">
             <Formula scaled={preview.scaled} />
           </Section>
         </>
