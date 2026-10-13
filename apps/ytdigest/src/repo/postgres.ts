@@ -181,6 +181,9 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
 
     async updateRule(userId, id, a) {
       const updates: ReturnType<typeof sql>[] = [];
+      if (a.scope !== undefined) {
+        updates.push(sql`scope = ${a.scope}`, sql`subscription_id = ${a.subscriptionId ?? null}`);
+      }
       if (a.name !== undefined) updates.push(sql`name = ${a.name}`);
       if (a.ruleJson !== undefined) updates.push(sql`rule_json = ${JSON.stringify(a.ruleJson)}`);
       if (a.enabled !== undefined) updates.push(sql`enabled = ${a.enabled}`);

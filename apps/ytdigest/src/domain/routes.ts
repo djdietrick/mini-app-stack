@@ -152,8 +152,16 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
       path: "/rules/:id",
       input: { params: idParam, body: patchRuleBody },
       handler: async ({ repo, user }, { params, body }) => {
-        if (body.name === undefined && body.ruleJson === undefined && body.enabled === undefined) {
+        if (
+          body.scope === undefined &&
+          body.name === undefined &&
+          body.ruleJson === undefined &&
+          body.enabled === undefined
+        ) {
           return ok;
+        }
+        if (body.subscriptionId && !(await repo.subscriptionExists(user.userId, body.subscriptionId))) {
+          throw notFound("subscription not found");
         }
         if (!(await repo.updateRule(user.userId, params.id, body))) throw notFound();
         return ok;
