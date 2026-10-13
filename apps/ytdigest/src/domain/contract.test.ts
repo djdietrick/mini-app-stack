@@ -479,6 +479,60 @@ for (const [backendName, backend] of Object.entries(backends)) {
         });
       });
 
+      it("edits a rule's name, conditions and scope", async () => {
+        const id = (
+          await as(alice)("POST", "/rules", {
+            scope: "global",
+            name: "Draft",
+            ruleJson: { op: "AND", conditions: [{ type: "duration", min: 1 }] },
+            enabled: false,
+          })
+        ).body.id;
+        const get = async () => (await as(alice)("GET", "/rules")).body.find((r: any) => r.id === id);
+
+        const ruleJson = {
+          op: "OR",
+          conditions: [{ type: "keyword", field: "title", match: "any", terms: ["bread"] }],
+        };
+        assert.equal(
+          (
+            await as(alice)("PATCH", `/rules/${id}`, {
+              scope: "subscription",
+              subscriptionId: kitchenSub,
+              name: "Bread",
+              ruleJson,
+            })
+          ).status,
+          200,
+        );
+        let r = await get();
+        assert.equal(r.name, "Bread");
+        assert.deepEqual(r.rule_json, ruleJson);
+        assert.equal(r.scope, "subscription");
+        assert.equal(r.subscription_id, kitchenSub);
+        assert.equal(r.enabled, false, "untouched fields are kept");
+
+        await as(alice)("PATCH", `/rules/${id}`, { scope: "global" });
+        r = await get();
+        assert.equal(r.scope, "global");
+        assert.equal(r.subscription_id, null);
+        assert.equal(r.name, "Bread");
+
+        for (const body of [
+          { scope: "subscription" },
+          { scope: "global", subscriptionId: kitchenSub },
+          { subscriptionId: kitchenSub },
+        ]) {
+          assert.equal((await as(alice)("PATCH", `/rules/${id}`, body)).status, 400, JSON.stringify(body));
+        }
+        assert.deepEqual(
+          await as(bob)("PATCH", `/rules/${randomUUID()}`, { scope: "subscription", subscriptionId: scienceSub }),
+          { status: 404, body: { error: "subscription not found" } },
+        );
+
+        assert.equal((await as(alice)("DELETE", `/rules/${id}`)).status, 200);
+      });
+
       it("polls subscribed channels for uploads and stats", async () => {
         videos.s1 = yt.upload(science, "s1", "Physics of flight", 30);
         videos.s2 = yt.upload(science, "s2", "Chemistry basics", 20);

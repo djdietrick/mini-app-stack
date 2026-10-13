@@ -157,7 +157,16 @@ export const api = {
     ruleJson: RuleGroup;
     enabled?: boolean;
   }) => request<{ id: string }>(`/rules`, { method: "POST", body: JSON.stringify(body) }),
-  updateRule: (id: string, body: Partial<{ name: string; ruleJson: RuleGroup; enabled: boolean }>) =>
+  updateRule: (
+    id: string,
+    body: Partial<{
+      scope: "subscription" | "global";
+      subscriptionId: string;
+      name: string;
+      ruleJson: RuleGroup;
+      enabled: boolean;
+    }>,
+  ) =>
     request<{ ok: true }>(`/rules/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteRule: (id: string) => request<{ ok: true }>(`/rules/${id}`, { method: "DELETE" }),
 

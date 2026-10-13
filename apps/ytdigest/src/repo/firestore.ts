@@ -357,6 +357,10 @@ export function createFirestoreYtdigestRepo(
 
     async updateRule(userId, id, a) {
       const patch: Partial<RuleDoc> = {};
+      if (a.scope !== undefined) {
+        patch.scope = a.scope;
+        patch.subscriptionId = a.subscriptionId ?? null;
+      }
       if (a.name !== undefined) patch.name = a.name;
       if (a.ruleJson !== undefined) patch.ruleJson = a.ruleJson as RuleGroup;
       if (a.enabled !== undefined) patch.enabled = a.enabled;

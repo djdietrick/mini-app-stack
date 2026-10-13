@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Rule, type RuleGroup, type Subscription } from "../api";
 import { RuleConditionEditor } from "../components/RuleConditionEditor";
 
@@ -10,29 +10,49 @@ export function Rules() {
   const [scope, setScope] = useState<"global" | string>("global");
   const [name, setName] = useState("");
   const [group, setGroup] = useState<RuleGroup>(EMPTY_GROUP);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const load = () => Promise.all([api.rules().then(setRules), api.subscriptions().then(setSubs)]);
   useEffect(() => {
     load();
   }, []);
 
+  const resetForm = () => {
+    setEditingId(null);
+    setScope("global");
+    setName("");
+    setGroup(EMPTY_GROUP);
+    setError(null);
+  };
+
+  const startEdit = (r: Rule) => {
+    setEditingId(r.id);
+    setScope(r.scope === "global" || !r.subscription_id ? "global" : r.subscription_id);
+    setName(r.name);
+    setGroup(r.rule_json);
+    setError(null);
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || group.conditions.length === 0) return;
     setError(null);
+    const fields = {
+      scope: scope === "global" ? ("global" as const) : ("subscription" as const),
+      subscriptionId: scope === "global" ? undefined : scope,
+      name: name.trim(),
+      ruleJson: group,
+    };
     try {
-      await api.createRule({
-        scope: scope === "global" ? "global" : "subscription",
-        subscriptionId: scope === "global" ? undefined : scope,
-        name: name.trim(),
-        ruleJson: group,
-      });
-      setName("");
-      setGroup(EMPTY_GROUP);
+      if (editingId) await api.updateRule(editingId, fields);
+      else await api.createRule(fields);
+      resetForm();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to create rule");
+      setError(err instanceof Error ? err.message : `failed to ${editingId ? "update" : "create"} rule`);
     }
   };
 
@@ -40,7 +60,12 @@ export function Rules() {
 
   return (
     <div className="space-y-6">
-      <form onSubmit={submit} className="space-y-3 rounded border border-canvas-200 bg-white p-4">
+      <form
+        ref={formRef}
+        onSubmit={submit}
+        className={`space-y-3 rounded border bg-white p-4 ${editingId ? "border-brand-500" : "border-canvas-200"}`}
+      >
+        {editingId && <p className="text-sm font-medium">Editing rule</p>}
         <div className="flex flex-wrap items-end gap-2">
           <div>
             <label className="block text-xs text-ink-muted">Applies to</label>
@@ -70,15 +95,25 @@ export function Rules() {
 
         <RuleConditionEditor group={group} onChange={setGroup} />
 
-        <button type="submit" className="rounded bg-brand-500 px-4 py-1.5 text-white hover:bg-brand-600">
-          Save rule
-        </button>
+        <div className="flex items-center gap-3">
+          <button type="submit" className="rounded bg-brand-500 px-4 py-1.5 text-white hover:bg-brand-600">
+            {editingId ? "Update rule" : "Save rule"}
+          </button>
+          {editingId && (
+            <button type="button" className="text-sm text-ink-muted hover:underline" onClick={resetForm}>
+              Cancel
+            </button>
+          )}
+        </div>
         {error && <p className="text-sm text-brand-600">{error}</p>}
       </form>
 
       <div className="space-y-2">
         {rules.map((r) => (
-          <div key={r.id} className="rounded border border-canvas-200 bg-white p-3">
+          <div
+            key={r.id}
+            className={`rounded border bg-white p-3 ${editingId === r.id ? "border-brand-500" : "border-canvas-200"}`}
+          >
             <div className="flex items-center gap-2">
               <span className="font-medium">{r.name}</span>
               <span className="rounded-full bg-canvas-100 px-2 py-0.5 text-xs text-ink-muted">
@@ -95,10 +130,14 @@ export function Rules() {
                 />
                 enabled
               </label>
+              <button className="text-sm text-brand-500 hover:underline" onClick={() => startEdit(r)}>
+                edit
+              </button>
               <button
                 className="text-sm text-brand-500 hover:underline"
                 onClick={async () => {
                   await api.deleteRule(r.id);
+                  if (editingId === r.id) resetForm();
                   load();
                 }}
               >

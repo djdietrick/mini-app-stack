@@ -291,9 +291,23 @@ export const createRuleBody = z
   });
 export type RuleInput = z.infer<typeof createRuleBody>;
 
-export const patchRuleBody = z.object({
-  name: z.string().min(1).max(120).optional(),
-  ruleJson: ruleGroupSchema.optional(),
-  enabled: z.boolean().optional(),
-});
+export const patchRuleBody = z
+  .object({
+    scope: z.enum(["subscription", "global"]).optional(),
+    subscriptionId: z.string().uuid().optional(),
+    name: z.string().min(1).max(120).optional(),
+    ruleJson: ruleGroupSchema.optional(),
+    enabled: z.boolean().optional(),
+  })
+  // Scope and subscriptionId change together, with the same pairing as create.
+  .refine(
+    (b) =>
+      b.scope === undefined
+        ? b.subscriptionId === undefined
+        : (b.scope === "subscription") === (b.subscriptionId !== undefined),
+    {
+      message: "subscriptionId is required for scope=subscription and forbidden otherwise",
+      path: ["subscriptionId"],
+    },
+  );
 export type RulePatch = z.infer<typeof patchRuleBody>;
