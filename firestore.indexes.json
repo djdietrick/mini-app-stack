@@ -176,6 +176,34 @@
         { "fieldPath": "pending", "order": "ASCENDING" },
         { "fieldPath": "dueAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "//": "highroller GET /api/ledger — one player's ledger, newest first, paged by seq.",
+      "collectionGroup": "highroller_ledger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "seq", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "highroller GET /api/hands — one player's hands, newest first (document id breaks ties).",
+      "collectionGroup": "highroller_hands",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "highroller GET /api/hands?game= — one player's hands of one game, newest first.",
+      "collectionGroup": "highroller_hands",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "game", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

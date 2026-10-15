@@ -22,6 +22,7 @@ services:
       APP_YTDIGEST_PASSWORD: ${APP_YTDIGEST_PASSWORD:?set APP_YTDIGEST_PASSWORD in .env}
       APP_FRETWORK_PASSWORD: ${APP_FRETWORK_PASSWORD:?set APP_FRETWORK_PASSWORD in .env}
       APP_CRUMB_PASSWORD: ${APP_CRUMB_PASSWORD:?set APP_CRUMB_PASSWORD in .env}
+      APP_HIGHROLLER_PASSWORD: ${APP_HIGHROLLER_PASSWORD:?set APP_HIGHROLLER_PASSWORD in .env}
       APP_AUTH_PASSWORD: ${APP_AUTH_PASSWORD:?set APP_AUTH_PASSWORD in .env}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -234,6 +235,31 @@ services:
       retries: 5
     networks: [appnet]
 
+  highroller:
+    build:
+      context: .
+      dockerfile: apps/highroller/Dockerfile
+    <<: *default-restart
+    environment:
+      HIGHROLLER_PORT: 3106
+      DATABASE_URL: postgres://highroller:${APP_HIGHROLLER_PASSWORD:?set APP_HIGHROLLER_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-appstack}
+      AUTH_URL: http://auth:3100
+      AUTH_VERIFY_SECRET: ${AUTH_VERIFY_SECRET:?set AUTH_VERIFY_SECRET in .env}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-stack_session}
+    ports:
+      - "${HIGHROLLER_PORT:-3106}:3106"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3106/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [appnet]
+
   # Static page linking to every app. Same page as the `landing` Hosting
   # target in the cloud.
   landing:
@@ -246,6 +272,7 @@ services:
         VITE_APP_URL_YTDIGEST: ${VITE_APP_URL_YTDIGEST:-}
         VITE_APP_URL_FRETWORK: ${VITE_APP_URL_FRETWORK:-}
         VITE_APP_URL_CRUMB: ${VITE_APP_URL_CRUMB:-}
+        VITE_APP_URL_HIGHROLLER: ${VITE_APP_URL_HIGHROLLER:-}
     <<: *default-restart
     ports:
       - "${LANDING_PORT:-3000}:80"

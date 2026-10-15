@@ -57,4 +57,12 @@ export const catalog: CatalogApp[] = [
     accent: "#c98a3c",
     localPort: 3105,
   },
+  {
+    id: "highroller",
+    name: "Highroller",
+    tagline: "Casino tables for fun chips",
+    description: "Blackjack, hold'em and roulette against the house, for chips that are never real money.",
+    accent: "#d4af37",
+    localPort: 3106,
+  },
 ];

@@ -57,6 +57,31 @@ resource "google_firestore_field" "lock_ttl" {
   index_config {}
 }
 
+/**
+ * highroller: settled hands keep their full state (the shoe, hole cards) for
+ * 90 days, for replay, then go; `purgeAt` is set when a hand settles. Big-win
+ * feed events (#52) last 7 days. Self-hosted, Postgres purges hands on boot.
+ */
+resource "google_firestore_field" "highroller_hands_ttl" {
+  project    = var.project
+  database   = google_firestore_database.this.name
+  collection = "highroller_hands"
+  field      = "purgeAt"
+
+  ttl_config {}
+  index_config {}
+}
+
+resource "google_firestore_field" "highroller_feed_events_ttl" {
+  project    = var.project
+  database   = google_firestore_database.this.name
+  collection = "highroller_feed_events"
+  field      = "expiresAt"
+
+  ttl_config {}
+  index_config {}
+}
+
 output "database_name" {
   value = google_firestore_database.this.name
 }
