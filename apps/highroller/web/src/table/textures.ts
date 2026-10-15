@@ -54,10 +54,17 @@ export function createTextureKit(initialDensity: number): TextureKit {
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.ceil(w * density));
     canvas.height = Math.max(1, Math.ceil(h * density));
+    // Pixi works the source's pixel size out as (pixels ÷ resolution) × resolution,
+    // which can land a hair off a whole pixel (124 → 124.00000000000001 at
+    // 1.875) and then writes it back to the canvas, which clears it. So the
+    // source is made first, its size rounded back by resize, and only then drawn.
+    const source = new CanvasSource({ resource: canvas, resolution: density });
+    source.resize(canvas.width / density, canvas.height / density);
     const ctx = canvas.getContext("2d")!;
     ctx.scale(density, density);
     draw(ctx);
-    const texture = new Texture({ source: new CanvasSource({ resource: canvas, resolution: density }) });
+    source.update();
+    const texture = new Texture({ source });
     cache.set(key, texture);
     return texture;
   }

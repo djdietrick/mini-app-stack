@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { type ComponentType, lazy, Suspense } from "react";
 import { AppShell } from "./components/AppShell";
 import { ToastProvider } from "./components/Toast";
 import { useRoute } from "./router";
@@ -14,9 +14,16 @@ import { Settings } from "./screens/Settings";
  */
 const TableDemo = import.meta.env.DEV ? lazy(() => import("./screens/TableDemo")) : null;
 
+const TABLES: Record<string, ComponentType<{ variant: string | null }>> = {
+  blackjack: lazy(() => import("./games/blackjack/Screen")),
+  uth: lazy(() => import("./games/uth/Screen")),
+  roulette: lazy(() => import("./games/roulette/Screen")),
+};
+
 export function App() {
   const route = useRoute();
-  const table = route.name === "table-demo";
+  const Table = route.name === "play" ? TABLES[route.game] : undefined;
+  const table = route.name === "table-demo" || !!Table;
 
   return (
     <ToastProvider>
@@ -28,7 +35,13 @@ export function App() {
         {route.name === "more" && <More />}
         {route.name === "ledger" && <Ledger />}
         {route.name === "settings" && <Settings />}
-        {table && TableDemo && (
+        {route.name === "play" && !Table && <Placeholder title="Not a table" what="There's no game here. Pick one in the lobby." />}
+        {Table && route.name === "play" && (
+          <Suspense fallback={<div className="flex-1 bg-felt-dark" />}>
+            <Table key={`${route.game}/${route.variant}`} variant={route.variant} />
+          </Suspense>
+        )}
+        {route.name === "table-demo" && TableDemo && (
           <Suspense fallback={<div className="flex-1 bg-felt-dark" />}>
             <TableDemo />
           </Suspense>

@@ -21,7 +21,9 @@ const MAX_RESOLUTION = 2;
  *
  * `scene` must be stable for the canvas's lifetime (create it with useState).
  * Each new `view` is handed to `scene.update(prev, next)`; updates queue so
- * one animation finishes before the next starts.
+ * one animation finishes before the next starts. `onShown(view)` fires once a
+ * view's animation has finished, which is when a screen should move the
+ * balance or announce a result: never before the cards have landed.
  */
 export function TableCanvas<View>({
   scene,
@@ -29,12 +31,14 @@ export function TableCanvas<View>({
   equipped = DEFAULT_EQUIPPED,
   className = "",
   onError,
+  onShown,
 }: {
   scene: Scene<View>;
   view: View | null;
   equipped?: Equipped;
   className?: string;
   onError?: (e: unknown) => void;
+  onShown?: (view: View) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const ready = useRef(false);
@@ -42,14 +46,17 @@ export function TableCanvas<View>({
   const queue = useRef<Promise<void>>(Promise.resolve());
   const latest = useRef(view);
   latest.current = view;
+  const shown = useRef(onShown);
+  shown.current = onShown;
 
   const enqueue = (next: View) => {
     queue.current = queue.current
-      .then(() => {
+      .then(async () => {
         if (!ready.current || next === applied.current) return;
         const prev = applied.current;
         applied.current = next;
-        return scene.update(prev, next);
+        await scene.update(prev, next);
+        shown.current?.(next);
       })
       .catch((e) => onError?.(e));
   };

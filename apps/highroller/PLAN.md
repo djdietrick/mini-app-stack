@@ -31,10 +31,14 @@ Work is tracked in GitHub: **#38** is the tracking issue, with one sub-issue per
 apps/highroller/
   src/games/       pure TS, no deps, shared by the server and the SPA (relative import, like
                    fretwork's theory): cards.ts, rng.ts (the Rng port + a seeded PRNG for tests),
-                   poker/eval.ts (5- and 7-card hand ranks), and one folder per game:
+                   poker/eval.ts (best five of up to seven, hand names, and handScore, an
+                   allocation-free score for simulations), and one folder per game:
                    blackjack/, uth/, roulette/, baccarat/, threecard/, videopoker/, slots/
                    Each game folder exports a GameEngine (see "Adding a game") and its tests,
-                   including a Monte Carlo test that checks the house edge.
+                   including a Monte Carlo test that checks the house edge (roulette's is exact).
+                   Strategy bots used by those tests live beside the engine (blackjack/strategy.ts,
+                   uth/strategy.ts). roulette/felt.ts is the phone felt's geometry (tap → bet,
+                   bet → chip position), here so it is node-tested.
   src/domain/      types.ts (zod wire types), routes.ts, hands.ts (the hand lifecycle),
                    settle.ts (one settlement → ledger, stats, XP, quests, feed, jackpot),
                    economy.ts (daily bonus, bailout, gifting rules), progress.ts (XP and level curve),
@@ -45,8 +49,10 @@ apps/highroller/
   web/src/
     table/         TableCanvas (mounts a Pixi Application in a resizing container),
                    textures.ts (procedural card faces, backs, chips and felts, rasterised at the
-                   device's pixel ratio), anim.ts (deal, flip, slide, stack, payout tweens)
-    games/         one folder per game: Scene.ts (Pixi) + Screen.tsx (React chrome + bet bar)
+                   device's pixel ratio), anim.ts (deal, flip, slide, stack, payout tweens),
+                   kit.ts (felt, lettering, cards and chip stacks the scenes share)
+    games/         one folder per game: Scene.ts (Pixi) + Screen.tsx (React chrome + bet bar),
+                   plus useHand.ts (resume, start, act, refusals → toasts) and TableFrame.tsx
     screens/       Lobby, Shop, Stats, Quests, Leaderboards, Settings
     settings.ts    per-device settings in localStorage: sound, haptics, reduced motion, speed
   web/public/      sw.js, manifest.webmanifest, icons/
@@ -61,7 +67,8 @@ apps/highroller/
   - Daily bonus: 1,000 × the streak day, capped at day 7. Missing a day resets the streak. "Day" is in the player's time zone, which the SPA sends.
   - Bailout: once a day, while the balance is under 500, tops it up to 2,000.
   - Gifting: up to 5,000 sent and 10,000 received per day. You can't gift below the bailout floor, so bailouts can't be farmed through a second account.
-- **Table limits** live in the registry per game. With no VIP rooms, each game has one table.
+- **Table limits** live in each engine's module (`BLACKJACK_LIMITS`, `UTH_LIMITS`, `ROULETTE_LIMITS`) and the registry points at them, so the SPA checks a bet with the same numbers before sending it. With no VIP rooms, each game has one table. Blackjack 10–5,000; UTH ante 10–1,000; roulette 5–1,000 a spot and 10,000 a spin.
+- **Measured edges** (each game's Monte Carlo test checks its bot against these): blackjack with basic strategy 0.31% of the first bet (20M hands; ~1.13 bets wagered per hand); UTH with the Wizard of Odds' simple strategy 2.43% of the ante (12M hands; optimal play is 2.19%, ~4.16 antes wagered per hand); roulette 2.70% / 5.26%, exactly.
 
 ## Hands: the server-authoritative lifecycle
 
@@ -115,7 +122,8 @@ No route, repo or migration changes. That is the test of the core design.
 
 - **`<TableCanvas>`** owns one Pixi `Application` per screen. It sizes to its container with a ResizeObserver, caps the resolution at a device pixel ratio of 2, stops the ticker while the tab is hidden, and is destroyed on unmount. Scenes receive the public view and **animate the difference from the previous view**. They never decide anything.
 - **No binary art.** Cards, card backs, felts and chips are drawn in code (`textures.ts`) and rasterised once per size and pixel ratio. They stay sharp on any screen and the bundle stays small. A cosmetic is a parameter set (colours, pattern, edge style), so adding one is data, not art.
-- **Phone layout:** every scene lays out in a 390 × 560 portrait design space (`web/src/table/scene.ts`) and scales to fit; the felt fills any letterbox. Tables built for wide screens (the roulette layout) pan and zoom: pinch, or tap a zone to zoom into it. Bet chips are placed by tapping, never by dragging.
+- **Phone layout:** every scene lays out in a 390 × 560 portrait design space (`web/src/table/scene.ts`) and scales to fit; the felt fills any letterbox. The top ~56 units sit under the frame's bar (back, title, rules), so nothing tappable goes there. The roulette felt runs top to bottom and pans and zooms: outside bets take a chip at full view, a tap on the numbers zooms 2× around it, where every line and corner is a thumb wide (`felt.test.ts` checks a 14-unit square around each bet). Bet chips are placed by tapping, never by dragging.
+- **Results land after the animation.** `TableCanvas` calls `onShown(view)` when a view's animation finishes; `useHand` takes a stake off the balance at once but holds a payout and the result toast until then, so the pill never gives the result away.
 - **Feel:** a short vibration (`navigator.vibrate` where available) on wins and on your turn. Sound is off by default. Reduced motion shortens or skips tweens, and a "fast deal" setting speeds them up.
 - **Latency:** after a tap, the scene starts the action's animation at once (cards slide off the shoe) and lands the result when the response arrives. On an error it rolls back.
 
@@ -192,9 +200,9 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 - ✅ #42 PixiJS table kit: TableCanvas, procedural textures, animations, bet bar
 
 **2 · Wave 1 games**
-- #43 Blackjack
-- #44 Ultimate Texas Hold'em (with the poker evaluator)
-- #45 Roulette, European and American
+- ✅ #43 Blackjack
+- ✅ #44 Ultimate Texas Hold'em (with the poker evaluator)
+- ✅ #45 Roulette, European and American
 - #46 Side bets: Perfect Pairs, 21+3, Trips
 
 **3 · Progression**

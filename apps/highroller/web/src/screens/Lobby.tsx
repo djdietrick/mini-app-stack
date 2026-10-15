@@ -3,8 +3,10 @@ import { ApiError, api } from "../api";
 import { useToast } from "../components/Toast";
 import { ErrorNote } from "../components/ui";
 import { chips } from "../format";
-import { GAME_TILES } from "../games/catalog";
+import { GAME_TILES, type GameTile } from "../games/catalog";
 import { usePlayer } from "../player";
+import { href } from "../router";
+import { useApi } from "../useApi";
 import { buzz } from "../settings";
 
 /** Matches DAILY_STREAK_CAP in src/domain/economy.ts. */
@@ -12,6 +14,8 @@ const STREAK_DAYS = 7;
 
 export function Lobby() {
   const { player, error, reload } = usePlayer();
+  const active = useApi("active-hands", api.activeHands);
+  const inPlay = new Set((active.data?.hands ?? []).map((h) => h.game));
 
   return (
     <div className="flex flex-col gap-5">
@@ -30,23 +34,7 @@ export function Lobby() {
         <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
           {GAME_TILES.map((g) => (
             <li key={g.id}>
-              <div
-                aria-disabled={!g.playable}
-                className="relative flex aspect-[4/5] flex-col justify-between overflow-hidden rounded-2xl border border-line p-3"
-                style={{ background: `radial-gradient(120% 90% at 30% 20%, ${g.colors[0]}, ${g.colors[1]})` }}
-              >
-                <span aria-hidden="true" className="absolute -right-3 -top-6 font-display text-[110px] leading-none text-white/10">
-                  {g.glyph}
-                  {"︎"}
-                </span>
-                <span className="self-start rounded-full bg-black/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted">
-                  Coming soon
-                </span>
-                <span>
-                  <span className="block font-display text-[19px] font-bold leading-tight">{g.name}</span>
-                  <span className="mt-1 block text-[12.5px] leading-snug text-ink/70">{g.blurb}</span>
-                </span>
-              </div>
+              <Tile tile={g} inPlay={inPlay.has(g.id)} />
             </li>
           ))}
         </ul>
@@ -54,6 +42,62 @@ export function Lobby() {
 
       <p className="text-center text-[13px] text-faint">Chips are for fun only. They can't be bought, cashed out or exchanged.</p>
     </div>
+  );
+}
+
+function Tile({ tile: g, inPlay }: { tile: GameTile; inPlay: boolean }) {
+  const play = (variant?: string) => href({ name: "play", game: g.id, variant: variant ?? null });
+  const body = (
+    <>
+      <span aria-hidden="true" className="absolute -right-3 -top-6 font-display text-[110px] leading-none text-white/10">
+        {g.glyph}
+        {"\uFE0E"}
+      </span>
+      {(!g.playable || inPlay) && (
+        <span
+          className={
+            "relative self-start rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider " +
+            (inPlay ? "bg-gold text-gold-ink" : "bg-black/40 text-muted")
+          }
+        >
+          {inPlay ? "Hand in play" : "Coming soon"}
+        </span>
+      )}
+      <span className="relative mt-auto">
+        <span className="block font-display text-[19px] font-bold leading-tight">{g.name}</span>
+        <span className="mt-1 block text-[12.5px] leading-snug text-ink/70">{g.blurb}</span>
+      </span>
+    </>
+  );
+  const cls = "relative flex aspect-[4/5] flex-col overflow-hidden rounded-2xl border border-line p-3";
+  const style = { background: `radial-gradient(120% 90% at 30% 20%, ${g.colors[0]}, ${g.colors[1]})` };
+
+  if (!g.playable) {
+    return (
+      <div aria-disabled="true" className={cls + " opacity-80"} style={style}>
+        {body}
+      </div>
+    );
+  }
+  if (g.variants) {
+    // The variant picker: the tile itself opens the first, the buttons pick.
+    return (
+      <div className={cls} style={style}>
+        {body}
+        <span className="relative mt-2 grid grid-cols-2 gap-1.5">
+          {g.variants.map((v) => (
+            <a key={v.id} href={play(v.id)} className="btn min-h-[44px] whitespace-nowrap bg-black/35 px-0 text-[12.5px]">
+              {v.name}
+            </a>
+          ))}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <a href={play()} className={cls + " focus-ring transition hover:brightness-110"} style={style}>
+      {body}
+    </a>
   );
 }
 
