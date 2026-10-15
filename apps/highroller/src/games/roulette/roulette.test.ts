@@ -8,13 +8,14 @@ import {
   ROULETTE_LIMITS,
   type RouletteBet,
   VARIANTS,
+  betFromKey,
   betReturn,
   pocketColor,
   roulette,
   spotKey,
   validBets,
 } from "./engine.js";
-import { BAND, FELT, anchorOf, hitTest, zoneAt } from "./felt.js";
+import { BAND, FELT, anchorOf, hitTest } from "./felt.js";
 
 const landOn = (pocket: number): Rng => ({ int: () => pocket });
 const bet = (kind: BetKind, numbers: number[], amount = 10): RouletteBet => ({ kind, numbers, amount });
@@ -35,6 +36,12 @@ describe("roulette layout", () => {
     assert.equal(count("american", "topline"), 1);
     assert.equal(count("european", "topline"), 0);
     assert.equal(count("american", "straight"), 38);
+  });
+
+  it("turns every spot key back into its bet", () => {
+    for (const variant of VARIANTS) {
+      for (const b of validBets(variant)) assert.deepEqual(betFromKey(spotKey(b.kind, b.numbers)), b);
+    }
   });
 });
 
@@ -132,10 +139,4 @@ describe("roulette felt", () => {
       assert.equal(hits.size, legal.size, "every bet is reachable");
     });
   }
-
-  it("zooms into a third of the numbers at a time", () => {
-    assert.ok(zoneAt(10)!.y === 0);
-    assert.ok(zoneAt(300)!.height < FELT.height / 2);
-    assert.equal(zoneAt(FELT.height - 5), null);
-  });
 });

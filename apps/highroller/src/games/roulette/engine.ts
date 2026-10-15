@@ -110,6 +110,32 @@ export function spotKey(kind: BetKind, numbers: readonly number[]): string {
 
 const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
+/** A spot key back to its bet: "split:0-00" → split [0, 37]. The SPA keys chips by spot. */
+export function betFromKey(key: string): { kind: BetKind; numbers: number[] } {
+  const [kind, rest = ""] = key.split(":") as [BetKind, string?];
+  switch (kind) {
+    case "red":
+      return { kind, numbers: [...RED_NUMBERS] };
+    case "black":
+      return { kind, numbers: range(1, 36).filter((n) => !RED_NUMBERS.includes(n)) };
+    case "odd":
+    case "even":
+      return { kind, numbers: range(1, 36).filter((n) => n % 2 === (kind === "odd" ? 1 : 0)) };
+    case "low":
+      return { kind, numbers: range(1, 18) };
+    case "high":
+      return { kind, numbers: range(19, 36) };
+    case "dozen": {
+      const [a, b] = rest.split("-").map(Number);
+      return { kind, numbers: range(a, b) };
+    }
+    case "column":
+      return { kind, numbers: range(1, 36).filter((n) => n % 3 === Number(rest) % 3) };
+    default:
+      return { kind, numbers: rest.split("-").map((x) => (x === "00" ? DOUBLE_ZERO : Number(x))) };
+  }
+}
+
 /** Every bet the felt allows, by spot key. */
 function buildLayout(variant: Variant): Map<string, { kind: BetKind; numbers: number[] }> {
   const am = variant === "american";

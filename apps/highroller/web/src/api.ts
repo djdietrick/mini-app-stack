@@ -70,10 +70,11 @@ export const api = {
     call<HandResponse>("POST", `/hands/${id}/actions`, { action, version }),
   activeHands: () => call<{ hands: HandRow[] }>("GET", "/hands/active"),
   hand: (id: string) => call<HandRow>("GET", `/hands/${id}`),
-  hands: (opts: { game?: string; cursor?: string } = {}) => {
+  hands: (opts: { game?: string; cursor?: string; limit?: number } = {}) => {
     const q = new URLSearchParams();
     if (opts.game) q.set("game", opts.game);
     if (opts.cursor) q.set("cursor", opts.cursor);
+    if (opts.limit) q.set("limit", String(opts.limit));
     const s = q.toString();
     return call<HandPage>("GET", `/hands${s ? `?${s}` : ""}`);
   },

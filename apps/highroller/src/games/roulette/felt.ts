@@ -1,4 +1,4 @@
-import { type BetKind, DOUBLE_ZERO, type Variant, sortNumbers, spotKey, validBets } from "./engine.js";
+import { type BetKind, DOUBLE_ZERO, type Variant, sortNumbers } from "./engine.js";
 
 /**
  * The betting felt's geometry, for the SPA's portrait layout: which bet a tap
@@ -25,15 +25,15 @@ import { type BetKind, DOUBLE_ZERO, type Variant, sortNumbers, spotKey, validBet
  * (splits, streets, corners) are hit within BAND of it, so every spot is at
  * least 2 × BAND across.
  */
-export const FELT = { width: 380, height: 540 } as const;
+export const FELT = { width: 380, height: 500 } as const;
 const OUT_W = 46;
 export const GRID_X = 2 * OUT_W;
 export const COL_W = 96;
-export const ZERO_H = 36;
+export const ZERO_H = 34;
 export const GRID_Y = ZERO_H;
-export const ROW_H = 39;
+export const ROW_H = 36;
 export const GRID_BOTTOM = GRID_Y + 12 * ROW_H;
-export const COLBET_H = 36;
+export const COLBET_H = 34;
 export const BAND = 8;
 
 const GRID_RIGHT = GRID_X + 3 * COL_W;
@@ -43,13 +43,6 @@ const MID_X = GRID_X + 1.5 * COL_W;
 export interface Spot {
   kind: BetKind;
   numbers: number[];
-}
-
-export interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 const spot = (kind: BetKind, numbers: number[]): Spot => ({ kind, numbers: sortNumbers(numbers) });
@@ -195,21 +188,4 @@ export function anchorOf(variant: Variant, s: Spot): { x: number; y: number } {
       return { x: OUT_W / 2, y: GRID_Y + (i + 0.5) * 2 * ROW_H };
     }
   }
-}
-
-/**
- * The three zones a tap zooms into from the whole felt, as felt rects: the
- * numbers 1–12 with the zero row, 13–24 and 25–36.
- */
-export function zoneAt(y: number): Rect | null {
-  if (y >= GRID_BOTTOM) return null;
-  const z = y < GRID_Y ? 0 : Math.min(2, Math.floor((y - GRID_Y) / (4 * ROW_H)));
-  const top = z === 0 ? 0 : GRID_Y + z * 4 * ROW_H - ROW_H / 2;
-  const bottom = GRID_Y + (z + 1) * 4 * ROW_H + (z < 2 ? ROW_H / 2 : 0);
-  return { x: GRID_X - BAND, y: top, width: GRID_RIGHT - GRID_X + BAND, height: bottom - top };
-}
-
-/** Every spot on a variant's felt with its anchor, for drawing and for tests. */
-export function feltSpots(variant: Variant) {
-  return validBets(variant).map((b) => ({ ...b, key: spotKey(b.kind, b.numbers), anchor: anchorOf(variant, b) }));
 }

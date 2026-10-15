@@ -25,7 +25,11 @@ export function ActionBar({
   const shown = actions.filter((a) => legal.includes(a.type));
   if (!shown.length) return null;
   return (
-    <div className="grid gap-2 border-t border-line bg-surface/95 px-3 pb-3 pt-3 backdrop-blur" style={{ gridTemplateColumns: `repeat(${Math.min(shown.length, 4)}, minmax(0, 1fr))` }}>
+    <div
+      className="grid gap-2 border-t border-line bg-surface/95 px-3 pb-3 pt-3 backdrop-blur"
+      // Up to four in a row; five or more split over two rows, so none is left alone.
+      style={{ gridTemplateColumns: `repeat(${shown.length > 4 ? Math.ceil(shown.length / 2) : shown.length}, minmax(0, 1fr))` }}
+    >
       {shown.map((a) => (
         <button
           key={a.type}
