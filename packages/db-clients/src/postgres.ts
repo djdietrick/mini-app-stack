@@ -3,6 +3,9 @@ import postgres from "postgres";
 
 export type PostgresClient = ReturnType<typeof createPostgresClient>;
 
+/** The handle `sql.begin` passes its callback, for helpers that run inside a transaction. */
+export type PostgresTx = postgres.TransactionSql;
+
 export interface PostgresClientOptions {
   /** Connection string, e.g. postgres://user:pass@host:5432/appstack */
   url: string;

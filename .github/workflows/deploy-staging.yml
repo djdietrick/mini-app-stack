@@ -95,6 +95,7 @@ jobs:
           YTDIGEST_FUNCTION_SA: ${{ vars.STAGING_YTDIGEST_FUNCTION_SA }}
           FRETWORK_FUNCTION_SA: ${{ vars.STAGING_FRETWORK_FUNCTION_SA }}
           CRUMB_FUNCTION_SA: ${{ vars.STAGING_CRUMB_FUNCTION_SA }}
+          HIGHROLLER_FUNCTION_SA: ${{ vars.STAGING_HIGHROLLER_FUNCTION_SA }}
           # ytdigest's non-secret mail settings. SMTP_PASSWORD is in Secret
           # Manager, bound in functions/src/index.ts.
           SMTP_HOST: ${{ vars.STAGING_SMTP_HOST }}
@@ -109,6 +110,7 @@ jobs:
           : "${YTDIGEST_FUNCTION_SA:?set the STAGING_YTDIGEST_FUNCTION_SA repository variable}"
           : "${FRETWORK_FUNCTION_SA:?set the STAGING_FRETWORK_FUNCTION_SA repository variable}"
           : "${CRUMB_FUNCTION_SA:?set the STAGING_CRUMB_FUNCTION_SA repository variable}"
+          : "${HIGHROLLER_FUNCTION_SA:?set the STAGING_HIGHROLLER_FUNCTION_SA repository variable}"
           : "${SMTP_HOST:?set the STAGING_SMTP_HOST repository variable}"
           : "${SMTP_USER:?set the STAGING_SMTP_USER repository variable}"
           : "${MAIL_FROM:?set the STAGING_MAIL_FROM repository variable}"

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Full bleed, with the art inside the maskable safe zone (a circle of radius 205). -->
+  <rect width="512" height="512" fill="#0b1410"/>
+  <circle cx="256" cy="256" r="196" fill="#14532d"/>
+  <!-- A chip: gold edge with six inserts, a felt-green inlay, and a pip. -->
+  <circle cx="256" cy="256" r="150" fill="#d4af37"/>
+  <g fill="#f8f3e3">
+    <rect x="236" y="106" width="40" height="44" rx="6"/>
+    <rect x="236" y="362" width="40" height="44" rx="6"/>
+    <rect x="236" y="106" width="40" height="44" rx="6" transform="rotate(60 256 256)"/>
+    <rect x="236" y="106" width="40" height="44" rx="6" transform="rotate(120 256 256)"/>
+    <rect x="236" y="106" width="40" height="44" rx="6" transform="rotate(240 256 256)"/>
+    <rect x="236" y="106" width="40" height="44" rx="6" transform="rotate(300 256 256)"/>
+  </g>
+  <circle cx="256" cy="256" r="98" fill="#0f3d24" stroke="#f8f3e3" stroke-width="6" stroke-dasharray="14 10"/>
+  <path d="M256 196c-22 30-58 48-58 78 0 20 16 34 34 34 10 0 18-4 24-11-2 18-8 31-20 43h40c-12-12-18-25-20-43 6 7 14 11 24 11 18 0 34-14 34-34 0-30-36-48-58-78z" fill="#d4af37"/>
+</svg>

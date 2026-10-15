@@ -24,6 +24,9 @@
         ],
         "crumb": [
           "crumb-staging-40765"
+        ],
+        "highroller": [
+          "highroller-staging-40765"
         ]
       }
     },
@@ -46,6 +49,9 @@
         ],
         "crumb": [
           "crumb-prod-5c26a"
+        ],
+        "highroller": [
+          "highroller-prod-5c26a"
         ]
       }
     }

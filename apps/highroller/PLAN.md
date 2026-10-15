@@ -69,7 +69,7 @@ Every game goes through the same three routes. Games differ only in their engine
 
 1. `POST /hands` `{ id, game, variant?, bets, timeZone }`. The client generates `id` (a UUID). The server validates the bets against the engine and the table limits, then **draws all the randomness the hand will ever need** (a shuffled shoe or deck, the spin, the reel stops) **before the transaction**. Inside one transaction it debits the stake, writes the `bet` ledger row and stores the hand. A single-decision game (roulette, slots) settles in the same transaction. The response is the public view.
    - Starting the same `id` twice returns the existing hand and never debits twice. Firestore gets this from a deterministic document id, Postgres from the primary key.
-   - There is at most one active hand per user per game: a partial unique index on Postgres, a `active_<game>` field on the player doc in a transaction on Firestore. A second start returns 409 `HAND_IN_PROGRESS` with the hand's id.
+   - There is at most one active hand per user per game: a partial unique index on Postgres, an `activeHands` map (game → hand id) on the player doc, read and written in every hand transaction, on Firestore. A second start returns 409 `HAND_IN_PROGRESS` with the hand's id.
 2. `POST /hands/:id/actions` `{ action, version }`. This is for hit, stand, double, split, surrender, insurance, check, bet 4×/3×/2×/1×, fold, hold/draw and so on. It applies the action with the engine. An extra wager (double, split, a UTH play bet, a 3CP play bet) is debited in the same transaction. A wrong `version` returns 409 `STALE_HAND`, so a double tap can't act twice. When the engine reports the hand finished, the same transaction settles it.
 3. `GET /hands/active` and `GET /hands/:id` return the public view, so a reload or a second device resumes mid-hand.
 
@@ -93,16 +93,17 @@ That is about 10 writes, far under Firestore's 500.
 
 ### Adding a game
 
-1. Write `src/games/<game>/` exporting a `GameEngine<Config, Bets, State, Action, View>`:
-   - `validateBets(bets, limits)`
-   - `deal(bets, rng)`: draws everything up front and returns the initial state
-   - `act(state, action)`
+1. Write `src/games/<game>/` exporting a `GameEngine<Bets, State, Action, View>` (`src/games/engine.ts`):
+   - `validateBets(bets, limits, variant)`
+   - `deal(bets, rng, variant)`: draws everything up front and returns the initial state
+   - `act(state, action)`: the next state, or null when illegal
+   - `staked(state)`: total wagered so far; a rise after an action is an extra wager the lifecycle debits
    - `legalActions(state)`
    - `isFinished(state)`
    - `settle(state)`: returns per-bet results and the total returned
    - `view(state)`
    - `summary(state)`: the facts quests read, such as `blackjack: true`, `handRank: "flush"` or `straightUp: true`
-   - `theoreticalRtp`
+   - `theoreticalRtp(variant)`
 2. Add node tests: rules, payouts, and a Monte Carlo house-edge check within tolerance.
 3. Register it in `src/domain/registry.ts` with its zod bet and action schemas and its table limits.
 4. Add `web/src/games/<game>/Scene.ts` and `Screen.tsx`, and a lobby tile.
@@ -114,7 +115,7 @@ No route, repo or migration changes. That is the test of the core design.
 
 - **`<TableCanvas>`** owns one Pixi `Application` per screen. It sizes to its container with a ResizeObserver, caps the resolution at a device pixel ratio of 2, stops the ticker while the tab is hidden, and is destroyed on unmount. Scenes receive the public view and **animate the difference from the previous view**. They never decide anything.
 - **No binary art.** Cards, card backs, felts and chips are drawn in code (`textures.ts`) and rasterised once per size and pixel ratio. They stay sharp on any screen and the bundle stays small. A cosmetic is a parameter set (colours, pattern, edge style), so adding one is data, not art.
-- **Phone layout:** every scene lays out in a portrait design space and scales to fit. Tables built for wide screens (the roulette layout) pan and zoom: pinch, or tap a zone to zoom into it. Bet chips are placed by tapping, never by dragging.
+- **Phone layout:** every scene lays out in a 390 × 560 portrait design space (`web/src/table/scene.ts`) and scales to fit; the felt fills any letterbox. Tables built for wide screens (the roulette layout) pan and zoom: pinch, or tap a zone to zoom into it. Bet chips are placed by tapping, never by dragging.
 - **Feel:** a short vibration (`navigator.vibrate` where available) on wins and on your turn. Sound is off by default. Reduced motion shortens or skips tweens, and a "fast deal" setting speeds them up.
 - **Latency:** after a tap, the scene starts the action's animation at once (cards slide off the shoe) and lands the result when the response arrives. On an error it rolls back.
 
@@ -125,8 +126,8 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 | Postgres | Firestore | Notes |
 |---|---|---|
 | `players` (user_id PK, display_name, email, balance, xp, daily_streak, last_daily_on, last_bailout_on, gifts_sent_today/received_today + day, leaderboard_listed, equipped jsonb, created_at) | `players/{userId}` | Created on first request from the session. The name and email are refreshed from the session, so gifting and leaderboards need no `shared.users` (which has no cloud twin). |
-| `ledger` | `ledger/{uuid}` | Index on (user_id, created_at desc). |
-| `hands` (id PK, user_id, game, variant, status, version, state jsonb, view jsonb, wagered, returned, created_at, settled_at) | `hands/{id}` | Partial unique index on (user_id, game) where status = 'active'. |
+| `ledger` ((user_id, seq) PK) | `ledger/{userId}_{seq}` | `seq` counts up per player (the player row keeps the last one) and orders the ledger, so a bet and its payout written in one transaction keep their order. The deterministic id makes a retried write land on the same document. |
+| `hands` (id PK, user_id, game, variant, status, version, state jsonb, view jsonb, wagered, returned, results jsonb, created_at, settled_at) | `hands/{id}` | Partial unique index on (user_id, game) where status = 'active'. Firestore stores `state`, `view` and `results` as JSON strings: engine state can hold nested arrays (split hands), which Firestore can't. |
 | `game_stats` (user_id, game) PK | `game_stats/{userId}_{game}` | |
 | `weekly_stats` (week, user_id) PK, index (week, net desc) | `weekly_stats/{week}_{userId}` | Composite index on (week, listed, net desc). |
 | `quest_progress` (user_id, quest_id, period) PK | `quest_progress/{userId}_{questId}_{period}` | Period is `d:2026-10-15`, `w:2026-W42` or `ever`. |
@@ -174,7 +175,8 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
   - `highrollerApi` is `onRequest`, mounting the route table under `/api`.
   - No scheduled function is needed: quests are picked deterministically and the feed expires by TTL.
 - **Firestore indexes:**
-  - ledger (userId, createdAt desc)
+  - ledger (userId, seq desc)
+  - hands (userId, createdAt desc) and (userId, game, createdAt desc)
   - weekly_stats (week, listed, net desc) and (week, listed, biggestWin desc)
   - players (listed, xp desc)
   - feed_events (createdAt desc)
@@ -184,10 +186,10 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 ## Milestones
 
 **1 · Foundation**
-- #39 Scaffold on both targets: players, ledger, daily bonus, bailout, lobby, PWA
+- ✅ #39 Scaffold on both targets: players, ledger, daily bonus, bailout, lobby, PWA
 - #40 First cloud deploy: repository variables and manual steps
-- #41 Hand lifecycle and settlement core (`src/games` primitives, `/hands` routes, settlement)
-- #42 PixiJS table kit: TableCanvas, procedural textures, animations, bet bar
+- ✅ #41 Hand lifecycle and settlement core (`src/games` primitives, `/hands` routes, settlement)
+- ✅ #42 PixiJS table kit: TableCanvas, procedural textures, animations, bet bar
 
 **2 · Wave 1 games**
 - #43 Blackjack

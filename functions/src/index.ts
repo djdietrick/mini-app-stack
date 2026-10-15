@@ -18,6 +18,9 @@ import { createWebPush, generateVapidKeys, vapidSubject } from "@stack/crumb/web
 import { createItunesGateway } from "@stack/crate/domain/itunes";
 import { createFirestoreCrateRepo } from "@stack/crate/repo/firestore";
 import { fretworkRoutes } from "@stack/fretwork/domain";
+import { cryptoRng } from "@stack/highroller/crypto-rng";
+import { highrollerRoutes, resolveHighrollerScope } from "@stack/highroller/domain";
+import { createFirestoreHighrollerRepo } from "@stack/highroller/repo/firestore";
 import { createFirestoreFretworkRepo } from "@stack/fretwork/repo/firestore";
 import { pantryRoutes, resolvePantryScope } from "@stack/pantry/domain";
 import { createFirestorePantryRepo } from "@stack/pantry/repo/firestore";
@@ -70,6 +73,7 @@ const pantryServiceAccount = process.env.PANTRY_FUNCTION_SA || undefined;
 const ytdigestServiceAccount = process.env.YTDIGEST_FUNCTION_SA || undefined;
 const fretworkServiceAccount = process.env.FRETWORK_FUNCTION_SA || undefined;
 const crumbServiceAccount = process.env.CRUMB_FUNCTION_SA || undefined;
+const highrollerServiceAccount = process.env.HIGHROLLER_FUNCTION_SA || undefined;
 const authServiceAccount = process.env.AUTH_FUNCTION_SA || undefined;
 
 // Module scope on purpose: these are reused across warm invocations.
@@ -301,4 +305,24 @@ export const crumbReminders = onSchedule(
       appUrl: process.env.CRUMB_APP_URL || undefined,
     });
   },
+);
+
+// ---------- highroller ----------
+
+/**
+ * Every outcome is decided here, never in the browser: cryptoRng deals,
+ * spins and shuffles, injected the same way src/index.ts does self-hosted.
+ * No schedule and no secrets: quests are picked deterministically and the
+ * feed and settled hands expire by TTL policy.
+ */
+export const highrollerApi = onRequest(
+  { serviceAccount: highrollerServiceAccount },
+  mount(
+    "/api",
+    toExpressApp(highrollerRoutes({ rng: cryptoRng }), {
+      repo: createFirestoreHighrollerRepo(db),
+      verify: verifier.verify,
+      resolveScope: resolveHighrollerScope,
+    }),
+  ),
 );
