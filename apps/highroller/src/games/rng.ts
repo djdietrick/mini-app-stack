@@ -39,3 +39,18 @@ export function shuffle<T>(items: readonly T[], rng: Rng): T[] {
   }
   return out;
 }
+
+/**
+ * The first `k` cards of a uniformly shuffled `items`, by a partial
+ * Fisher–Yates: k draws instead of items.length. Games that need only the top
+ * of a shoe (blackjack keeps 80 of 312) take this rather than a full shuffle.
+ */
+export function sample<T>(items: readonly T[], k: number, rng: Rng): T[] {
+  if (k > items.length) throw new RangeError(`can't take ${k} of ${items.length}`);
+  const out = items.slice();
+  for (let i = 0; i < k; i++) {
+    const j = i + rng.int(out.length - i);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out.slice(0, k);
+}

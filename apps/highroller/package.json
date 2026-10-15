@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "build:web": "vite build --config web/vite.config.ts",
     "dev:web": "vite --config web/vite.config.ts",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "node --import tsx --test src/*/*.test.ts src/games/*/*.test.ts"
   },
   "dependencies": {
     "@fastify/http-proxy": "^10.0.0",

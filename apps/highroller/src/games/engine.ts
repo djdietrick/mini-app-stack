@@ -63,6 +63,8 @@ export interface TableLimits {
   max: number;
   /** Stakes are multiples of this. */
   step: number;
+  /** Most chips on all spots together, for games with many spots (roulette). */
+  total?: number;
 }
 
 export type Outcome = "win" | "loss" | "push";
