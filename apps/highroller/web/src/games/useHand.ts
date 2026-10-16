@@ -121,12 +121,13 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
     [game, receive, fail],
   );
 
+  /** A decision: its type, or the whole action when it carries more (video poker's holds). */
   const act = useCallback(
-    async (type: string) => {
+    async (action: string | { type: string; [field: string]: unknown }) => {
       if (!hand || hand.status !== "active") return;
       setBusy(true);
       try {
-        receive(await api.act(hand.id, { type }, hand.version));
+        receive(await api.act(hand.id, typeof action === "string" ? { type: action } : action, hand.version));
       } catch (e) {
         await fail(e);
       } finally {

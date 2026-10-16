@@ -2,18 +2,21 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
 import { isAppError } from "@stack/service-kit";
-import { type BlackjackState, basicStrategy, dealFrom } from "../games/blackjack/index.js";
+import { type BlackjackState, dealFrom } from "../games/blackjack/index.js";
 import type { Card } from "../games/cards.js";
 import { seededRng } from "../games/rng.js";
 import { DOUBLE_ZERO, validBets } from "../games/roulette/engine.js";
-import { type UthState, simpleStrategy } from "../games/uth/index.js";
+import type { ThreeCardState } from "../games/threecard/index.js";
+import type { UthState } from "../games/uth/index.js";
+import type { VideoPokerState } from "../games/videopoker/index.js";
+import { botAction } from "./bots.testkit.js";
 import { newPlayer } from "./economy.js";
 import { type HandTxRead, planAction, planStart, toHandRow } from "./hands.js";
 import { GAMES } from "./registry.js";
 import type { HandRecord, PlayerRecord } from "./types.js";
 
 /**
- * The wave 1 games through the real registry and the pure lifecycle steps:
+ * Every game through the real registry and the pure lifecycle steps:
  * the request schemas the SPA's bodies must pass, and many hands played the
  * way the routes play them, with the state round-tripped through JSON between
  * steps as the repos store it. Chips must balance to the ledger, and nothing
@@ -30,6 +33,12 @@ describe("the registry's request schemas", () => {
     assert.ok(GAMES.uth.bets.safeParse({ ante: 25 }).success);
     assert.ok(GAMES.uth.action.safeParse({ type: "bet4" }).success);
     assert.ok(GAMES.roulette.bets.safeParse([{ kind: "split", numbers: [0, DOUBLE_ZERO], amount: 5 }]).success);
+    assert.ok(GAMES.baccarat.bets.safeParse({ banker: 25, tie: 5 }).success);
+    assert.ok(GAMES.threecard.bets.safeParse({ ante: 25, pairPlus: 5 }).success);
+    assert.ok(GAMES.threecard.action.safeParse({ type: "play" }).success);
+    assert.ok(GAMES.videopoker.bets.safeParse({ coins: 5, coinValue: 25 }).success);
+    assert.ok(GAMES.videopoker.action.safeParse({ type: "draw", hold: [true, false, false, true, false] }).success);
+    assert.ok(GAMES.slots.bets.safeParse({ lineBet: 5, lines: 20 }).success);
   });
 
   it("takes the side bets, and refuses unknown spots and anything that isn't an action", () => {
@@ -40,24 +49,21 @@ describe("the registry's request schemas", () => {
     assert.ok(!GAMES.blackjack.action.safeParse({ type: "peek" }).success);
     assert.ok(!GAMES.roulette.bets.safeParse([]).success);
     assert.ok(!GAMES.roulette.bets.safeParse([{ kind: "straight", numbers: [38], amount: 5 }]).success);
+    assert.ok(!GAMES.baccarat.bets.safeParse({ dragon: 5 }).success);
+    assert.ok(!GAMES.videopoker.action.safeParse({ type: "draw", hold: [true] }).success);
+    assert.ok(!GAMES.videopoker.action.safeParse({ type: "draw" }).success);
+    assert.ok(!GAMES.threecard.action.safeParse({ type: "check" }).success);
   });
 });
-
-type Strategy = (state: unknown, legal: string[]) => string;
-
-const strategies: Record<string, Strategy> = {
-  blackjack: (s, legal) => {
-    const b = s as BlackjackState;
-    return basicStrategy(b.hands[b.active].cards, b.dealer[0], legal);
-  },
-  uth: (s) => simpleStrategy(s as UthState),
-  roulette: () => "none",
-};
 
 function betsFor(game: string, i: number, variant: string | null): unknown {
   // Side bets on some hands, so early payouts and their ledger rows are exercised.
   if (game === "blackjack") return { main: 10 + 5 * (i % 7), ...(i % 2 ? { perfectPairs: 5, twentyOnePlusThree: 10 } : {}) };
   if (game === "uth") return { ante: 10 + 5 * (i % 3), ...(i % 3 === 0 ? { trips: 5 } : {}) };
+  if (game === "baccarat") return [{ player: 10 }, { banker: 15 }, { tie: 10 }, { player: 20, tie: 5 * 2 }][i % 4];
+  if (game === "threecard") return { ante: 10 + 5 * (i % 3), ...(i % 2 ? { pairPlus: 5 } : {}) };
+  if (game === "videopoker") return { coins: 1 + (i % 5), coinValue: [5, 25, 100][i % 3] };
+  if (game === "slots") return { lineBet: [1, 5, 25][i % 3], lines: i % 4 ? 20 : 1 + (i % 20) };
   const spots = validBets(variant as "european" | "american");
   return [0, 1, 2].map((k) => {
     const b = spots[(i * 7 + k * 31) % spots.length];
@@ -76,6 +82,16 @@ function hidden(game: string, state: unknown): string[] {
     const s = state as UthState;
     const unseen = [...s.dealer, ...s.board.slice(s.street === "preflop" ? 0 : s.street === "flop" ? 3 : 5)];
     return s.street === "done" ? [] : unseen.map((c) => JSON.stringify(c));
+  }
+  if (game === "threecard") {
+    const s = state as ThreeCardState;
+    return s.done ? [] : s.dealer.map((c) => JSON.stringify(c));
+  }
+  if (game === "videopoker") {
+    const s = state as VideoPokerState;
+    // The replacements; once drawn, only those never used.
+    const used = s.held ? s.held.filter((h) => !h).length : 0;
+    return s.cards.slice(5 + used).map((c) => JSON.stringify(c));
   }
   return [];
 }
@@ -122,8 +138,8 @@ for (const [gameId, game] of Object.entries(GAMES)) {
             break;
           }
           const legal = game.engine.legalActions(stored.state);
-          const action = strategies[gameId](stored.state, legal);
-          out = planAction(read(stored), { userId: "u1", handId: id, action: { type: action }, version: stored.version, games: GAMES, now: NOW, week: WEEK });
+          const action = botAction(gameId, stored.state, legal);
+          out = planAction(read(stored), { userId: "u1", handId: id, action, version: stored.version, games: GAMES, now: NOW, week: WEEK });
         }
       }
 
@@ -141,13 +157,23 @@ for (const [gameId, game] of Object.entries(GAMES)) {
         { player, hand: null, activeHandId: null, gameStats: null, weeklyStats: null },
         { userId: "u1", handId: id, gameId, game, variant, dealt: game.engine.deal(bets, seededRng(1), variant), now: NOW, week: WEEK },
       );
-      // Seed 1 deals blackjack a plain hand against a non-ace: even money isn't on offer.
-      const illegal = gameId === "uth" ? "bet1" : gameId === "blackjack" ? "even_money" : "spin";
+      // Seed 1 deals blackjack a plain hand against a non-ace: even money isn't on offer. Three Card
+      // Poker and video poker allow every well-formed action on the deal, so they are asked again once done.
+      let hand = started.hand;
+      let illegal: unknown = { type: gameId === "uth" ? "bet1" : gameId === "blackjack" ? "even_money" : "spin" };
+      if (gameId === "threecard" || gameId === "videopoker") {
+        illegal = botAction(gameId, hand.state, game.engine.legalActions(hand.state));
+        hand = planAction(
+          { player: started.player, hand, activeHandId: null, gameStats: null, weeklyStats: null },
+          { userId: "u1", handId: id, action: illegal, version: hand.version, games: GAMES, now: NOW, week: WEEK },
+        ).hand;
+        assert.equal(hand.status, "settled");
+      }
       let code = "";
       try {
         planAction(
-          { player: started.player, hand: started.hand, activeHandId: null, gameStats: null, weeklyStats: null },
-          { userId: "u1", handId: id, action: { type: illegal }, version: started.hand.version, games: GAMES, now: NOW, week: WEEK },
+          { player: started.player, hand, activeHandId: null, gameStats: null, weeklyStats: null },
+          { userId: "u1", handId: id, action: illegal, version: hand.version, games: GAMES, now: NOW, week: WEEK },
         );
       } catch (e) {
         if (!isAppError(e)) throw e;

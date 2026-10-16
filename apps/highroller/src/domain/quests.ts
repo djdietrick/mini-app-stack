@@ -1,6 +1,8 @@
 import { conflict } from "@stack/service-kit";
 import type { HandSummary } from "../games/engine.js";
 import { HAND_CATEGORIES, type HandCategory } from "../games/poker/eval.js";
+import { THREE_CARD_CATEGORIES, type ThreeCardCategory } from "../games/poker/rank3.js";
+import { VP_HANDS, type VpHand } from "../games/videopoker/engine.js";
 import { PAID_ITEMS, type ShopItem } from "./catalog.js";
 import { applyCreditTo } from "./economy.js";
 import type { LedgerEntry, PlayerRecord, QuestProgressRecord } from "./types.js";
@@ -87,6 +89,14 @@ const rankAtLeast = (s: HandSummary, at: HandCategory) =>
   s.game === "uth" &&
   s.facts.folded !== true &&
   HAND_CATEGORIES.indexOf(s.facts.handRank as HandCategory) >= HAND_CATEGORIES.indexOf(at);
+/** A played Three Card Poker hand of `at` or better. */
+const rank3AtLeast = (s: HandSummary, at: ThreeCardCategory) =>
+  s.game === "threecard" &&
+  s.facts.folded !== true &&
+  THREE_CARD_CATEGORIES.indexOf(s.facts.handRank as ThreeCardCategory) >= THREE_CARD_CATEGORIES.indexOf(at);
+/** A final video poker hand of `at` or better (VP_HANDS runs best first). */
+const vpAtLeast = (s: HandSummary, at: VpHand) =>
+  s.game === "videopoker" && VP_HANDS.indexOf(s.facts.handRank as VpHand) <= VP_HANDS.indexOf(at);
 /** A win, a loss, or (for a push) nothing either way. */
 const winRun = (s: HandSummary) => (s.outcome === "push" ? null : win(s));
 
@@ -121,6 +131,26 @@ export const DAILY_QUESTS: readonly QuestDef[] = [
   { id: "d-rl-red-5", kind: "daily", game: "roulette", text: "Land on red 5 times", target: 5, reward: r(1_000, 40), match: { count: (s) => one(s.game === "roulette" && s.facts.color === "red") } },
   { id: "d-rl-zero", kind: "daily", game: "roulette", text: "Land on a zero", target: 1, reward: r(1_500, 50), match: { count: (s) => one(s.game === "roulette" && s.facts.color === "green") } },
   { id: "d-rl-win-5", kind: "daily", game: "roulette", text: "Win 5 spins", target: 5, reward: r(1_500, 50), match: { count: (s) => one(s.game === "roulette" && win(s)) } },
+
+  { id: "d-bac-play-10", kind: "daily", game: "baccarat", text: "Play 10 hands of baccarat", target: 10, reward: r(1_000, 40), match: { count: (s) => one(s.game === "baccarat") } },
+  { id: "d-bac-natural-3", kind: "daily", game: "baccarat", text: "See 3 naturals at baccarat", target: 3, reward: r(1_000, 40), match: { count: (s) => one(s.game === "baccarat" && s.facts.natural === true) } },
+  { id: "d-bac-backed-5", kind: "daily", game: "baccarat", text: "Back the winning side 5 times", target: 5, reward: r(1_500, 50), match: { count: (s) => one(s.game === "baccarat" && s.facts.backedWinner === true) } },
+  { id: "d-bac-tie", kind: "daily", game: "baccarat", text: "Win a Tie bet", target: 1, reward: r(2_000, 60), match: { count: (s) => one(s.game === "baccarat" && s.facts.tieWon === true) } },
+
+  { id: "d-3cp-play-10", kind: "daily", game: "threecard", text: "Play 10 hands of Three Card Poker", target: 10, reward: r(1_000, 40), match: { count: (s) => one(s.game === "threecard") } },
+  { id: "d-3cp-win-4", kind: "daily", game: "threecard", text: "Win 4 hands of Three Card Poker", target: 4, reward: r(1_500, 50), match: { count: (s) => one(s.game === "threecard" && s.facts.won === true) } },
+  { id: "d-3cp-straight", kind: "daily", game: "threecard", text: "Play a straight or better in Three Card Poker", target: 1, reward: r(2_000, 60), match: { count: (s) => one(rank3AtLeast(s, "straight")) } },
+  { id: "d-3cp-pair-plus-3", kind: "daily", game: "threecard", text: "Win 3 Pair Plus bets", target: 3, reward: r(1_500, 50), match: { count: (s) => one(s.game === "threecard" && s.facts.pairPlusWon === true) } },
+
+  { id: "d-vp-play-15", kind: "daily", game: "videopoker", text: "Play 15 hands of video poker", target: 15, reward: r(1_000, 40), match: { count: (s) => one(s.game === "videopoker") } },
+  { id: "d-vp-two-pair-3", kind: "daily", game: "videopoker", text: "Make two pair or better 3 times in video poker", target: 3, reward: r(1_500, 50), match: { count: (s) => one(vpAtLeast(s, "two_pair")) } },
+  { id: "d-vp-full-house", kind: "daily", game: "videopoker", text: "Make a full house or better in video poker", target: 1, reward: r(2_000, 60), match: { count: (s) => one(vpAtLeast(s, "full_house")) } },
+  { id: "d-vp-max-5", kind: "daily", game: "videopoker", text: "Play 5 hands of video poker at 5 coins", target: 5, reward: r(1_000, 40), match: { count: (s) => one(s.game === "videopoker" && s.facts.coins === 5) } },
+
+  { id: "d-sl-spins-25", kind: "daily", game: "slots", text: "Spin the slots 25 times", target: 25, reward: r(1_000, 40), match: { count: (s) => one(s.game === "slots") } },
+  { id: "d-sl-free", kind: "daily", game: "slots", text: "Trigger free spins", target: 1, reward: r(2_000, 60), match: { count: (s) => one(s.game === "slots" && s.facts.freeSpins === true) } },
+  { id: "d-sl-five", kind: "daily", game: "slots", text: "Line up five of a kind on the slots", target: 1, reward: r(1_500, 50), match: { count: (s) => one(s.game === "slots" && s.facts.fiveOfAKind === true) } },
+  { id: "d-sl-5x", kind: "daily", game: "slots", text: "Win 5× your bet on one spin", target: 1, reward: r(1_500, 50), match: { count: (s) => one(s.game === "slots" && Number(s.facts.multiple) >= 5) } },
 ];
 
 // ---------- weekly ----------
@@ -139,6 +169,14 @@ export const WEEKLY_QUESTS: readonly QuestDef[] = [
   { id: "w-uth-full-house", kind: "weekly", game: "uth", text: "Make a full house or better in UTH", target: 1, reward: r(15_000, 300), match: { count: (s) => one(rankAtLeast(s, "full_house")) } },
   { id: "w-rl-spins-75", kind: "weekly", game: "roulette", text: "Spin the wheel 75 times", target: 75, reward: r(10_000, 250), match: { count: (s) => one(s.game === "roulette") } },
   { id: "w-rl-straight-3", kind: "weekly", game: "roulette", text: "Hit 3 straight-up numbers", target: 3, reward: r(15_000, 300), match: { count: (s) => one(s.facts.straightUp === true) } },
+  { id: "w-bac-play-50", kind: "weekly", game: "baccarat", text: "Play 50 hands of baccarat", target: 50, reward: r(10_000, 250), match: { count: (s) => one(s.game === "baccarat") } },
+  { id: "w-bac-tie-3", kind: "weekly", game: "baccarat", text: "Win 3 Tie bets", target: 3, reward: r(15_000, 300), match: { count: (s) => one(s.game === "baccarat" && s.facts.tieWon === true) } },
+  { id: "w-3cp-play-50", kind: "weekly", game: "threecard", text: "Play 50 hands of Three Card Poker", target: 50, reward: r(10_000, 250), match: { count: (s) => one(s.game === "threecard") } },
+  { id: "w-3cp-trips", kind: "weekly", game: "threecard", text: "Play three of a kind or better in Three Card Poker", target: 1, reward: r(15_000, 300), match: { count: (s) => one(rank3AtLeast(s, "trips")) } },
+  { id: "w-vp-play-75", kind: "weekly", game: "videopoker", text: "Play 75 hands of video poker", target: 75, reward: r(10_000, 250), match: { count: (s) => one(s.game === "videopoker") } },
+  { id: "w-vp-quads", kind: "weekly", game: "videopoker", text: "Make four of a kind or better in video poker", target: 1, reward: r(15_000, 300), match: { count: (s) => one(vpAtLeast(s, "quads")) } },
+  { id: "w-sl-spins-150", kind: "weekly", game: "slots", text: "Spin the slots 150 times", target: 150, reward: r(10_000, 250), match: { count: (s) => one(s.game === "slots") } },
+  { id: "w-sl-free-3", kind: "weekly", game: "slots", text: "Trigger free spins 3 times", target: 3, reward: r(15_000, 300), match: { count: (s) => one(s.game === "slots" && s.facts.freeSpins === true) } },
 ];
 
 // ---------- achievements ----------
@@ -191,7 +229,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     kind: "achievement",
     name: "Tourist",
     text: (n) => `Play ${fmt(n)} different games`,
-    tiers: tiers([2, 2_000, 100], [3, 5_000, 250]),
+    tiers: tiers([2, 2_000, 100], [3, 5_000, 250], [7, 25_000, 1_000]),
     match: { distinct: (s) => s.game },
   },
   {
@@ -238,6 +276,60 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     text: (n) => `Hit ${fmt(n)} straight-up numbers`,
     tiers: tiers([5, 5_000, 250], [50, 30_000, 1_500], [500, 200_000, 6_000]),
     match: { count: (s) => one(s.facts.straightUp === true) },
+  },
+  {
+    id: "a-bac-naturals",
+    kind: "achievement",
+    name: "Le grand",
+    game: "baccarat",
+    text: (n) => `See ${fmt(n)} naturals at baccarat`,
+    tiers: tiers([10, 3_000, 150], [100, 20_000, 1_000], [1_000, 150_000, 5_000]),
+    match: { count: (s) => one(s.game === "baccarat" && s.facts.natural === true) },
+  },
+  {
+    id: "a-bac-ties",
+    kind: "achievement",
+    name: "Dead even",
+    game: "baccarat",
+    text: (n) => (n === 1 ? "Win a Tie bet" : `Win ${fmt(n)} Tie bets`),
+    tiers: tiers([1, 2_000, 100], [25, 30_000, 1_500]),
+    match: { count: (s) => one(s.game === "baccarat" && s.facts.tieWon === true) },
+  },
+  {
+    id: "a-3cp-straight-flush",
+    kind: "achievement",
+    name: "Mini royal",
+    game: "threecard",
+    text: (n) => (n === 1 ? "Play a straight flush in Three Card Poker" : `Play ${fmt(n)} straight flushes in Three Card Poker`),
+    tiers: tiers([1, 10_000, 500], [10, 100_000, 4_000]),
+    match: { count: (s) => one(rank3AtLeast(s, "straight_flush")) },
+  },
+  {
+    id: "a-vp-quads",
+    kind: "achievement",
+    name: "Four on the floor",
+    game: "videopoker",
+    text: (n) => (n === 1 ? "Make four of a kind or better in video poker" : `Make four of a kind or better ${fmt(n)} times in video poker`),
+    tiers: tiers([1, 5_000, 250], [25, 50_000, 2_000]),
+    match: { count: (s) => one(vpAtLeast(s, "quads")) },
+  },
+  {
+    id: "a-vp-royal",
+    kind: "achievement",
+    name: "Royal draw",
+    game: "videopoker",
+    text: () => "Make a royal flush in video poker",
+    tiers: tiers([1, 250_000, 10_000]),
+    match: { count: (s) => one(vpAtLeast(s, "royal_flush")) },
+  },
+  {
+    id: "a-sl-free-spins",
+    kind: "achievement",
+    name: "Free spinner",
+    game: "slots",
+    text: (n) => `Trigger free spins ${fmt(n)} times`,
+    tiers: tiers([5, 5_000, 250], [50, 30_000, 1_500], [500, 200_000, 6_000]),
+    match: { count: (s) => one(s.game === "slots" && s.facts.freeSpins === true) },
   },
   {
     id: "a-collector",

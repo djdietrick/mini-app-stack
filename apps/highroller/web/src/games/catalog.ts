@@ -31,8 +31,8 @@ export const GAME_TILES: GameTile[] = [
       { id: "american", name: "American" },
     ],
   },
-  { id: "baccarat", name: "Baccarat", blurb: "Player, Banker or Tie.", colors: ["#3b0764", "#21043a"], glyph: "♦", playable: false },
-  { id: "threecard", name: "Three Card Poker", blurb: "Ante and play, with Pair Plus.", colors: ["#713f12", "#3f2309"], glyph: "♣", playable: false },
-  { id: "videopoker", name: "Video Poker", blurb: "Jacks or Better.", colors: ["#0c4a6e", "#062a40"], glyph: "J", playable: false },
-  { id: "slots", name: "Slots", blurb: "Five reels and the shared jackpot.", colors: ["#854d0e", "#4a2b07"], glyph: "7", playable: false },
+  { id: "baccarat", name: "Baccarat", blurb: "Player, Banker or Tie.", colors: ["#3b0764", "#21043a"], glyph: "♦", playable: true },
+  { id: "threecard", name: "Three Card Poker", blurb: "Ante and play, with Pair Plus.", colors: ["#713f12", "#3f2309"], glyph: "♣", playable: true },
+  { id: "videopoker", name: "Video Poker", blurb: "Jacks or Better.", colors: ["#0c4a6e", "#062a40"], glyph: "J", playable: true },
+  { id: "slots", name: "Slots", blurb: "Five reels, 20 lines and free spins.", colors: ["#854d0e", "#4a2b07"], glyph: "7", playable: true },
 ];

@@ -1,8 +1,12 @@
 import { type ZodType, type ZodTypeDef, z } from "zod";
+import { BACCARAT_LIMITS, baccarat } from "../games/baccarat/engine.js";
 import { BLACKJACK_LIMITS, ACTIONS as BLACKJACK_ACTIONS, blackjack } from "../games/blackjack/engine.js";
 import type { GameEngine, TableLimits } from "../games/engine.js";
 import { BET_KINDS, DOUBLE_ZERO, MAX_SPOTS, ROULETTE_LIMITS, roulette } from "../games/roulette/engine.js";
+import { SLOTS_LIMITS, slots } from "../games/slots/engine.js";
+import { THREECARD_LIMITS, ACTIONS as THREECARD_ACTIONS, threecard } from "../games/threecard/engine.js";
 import { UTH_LIMITS, ACTIONS as UTH_ACTIONS, uth } from "../games/uth/engine.js";
+import { VIDEOPOKER_LIMITS, videopoker } from "../games/videopoker/engine.js";
 
 /**
  * Game id → engine, the zod schemas for its bets and actions, and its table
@@ -35,8 +39,9 @@ const chips = z.number().int();
 
 /**
  * The games on offer, by the id the SPA sends. Wave 1 is blackjack (#43),
- * UTH (#44) and roulette (#45); wave 2 adds its engines here. Tests pass
- * their own registry to `highrollerRoutes`.
+ * UTH (#44) and roulette (#45); wave 2 is baccarat (#53), Three Card Poker
+ * (#54), video poker (#55) and slots (#56). Tests pass their own registry to
+ * `highrollerRoutes`.
  *
  * Bet schemas are strict, so an unknown spot is refused rather than ignored.
  * Side bets (#46) have their own range, `limits.side`.
@@ -74,5 +79,35 @@ export const GAMES: GameRegistry = {
     // A spin takes no decisions; any action is refused.
     action: z.object({ type: z.string() }),
     limits: ROULETTE_LIMITS,
+  }),
+  baccarat: defineGame({
+    name: "Baccarat",
+    engine: baccarat,
+    bets: z.object({ player: chips.optional(), banker: chips.optional(), tie: chips.optional() }).strict(),
+    // Dealt by fixed rules: no decisions.
+    action: z.object({ type: z.string() }),
+    limits: BACCARAT_LIMITS,
+  }),
+  threecard: defineGame({
+    name: "Three Card Poker",
+    engine: threecard,
+    bets: z.object({ ante: chips, pairPlus: chips.optional() }).strict(),
+    action: z.object({ type: z.enum(THREECARD_ACTIONS) }).strict(),
+    limits: THREECARD_LIMITS,
+  }),
+  videopoker: defineGame({
+    name: "Video Poker",
+    engine: videopoker,
+    bets: z.object({ coins: chips, coinValue: chips }).strict(),
+    action: z.object({ type: z.literal("draw"), hold: z.array(z.boolean()).length(5) }).strict(),
+    limits: VIDEOPOKER_LIMITS,
+  }),
+  slots: defineGame({
+    name: "Slots",
+    engine: slots,
+    bets: z.object({ lineBet: chips, lines: chips }).strict(),
+    // A spin takes no decisions; any action is refused.
+    action: z.object({ type: z.string() }),
+    limits: SLOTS_LIMITS,
   }),
 };
