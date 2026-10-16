@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
 import { isAppError } from "@stack/service-kit";
-import { type BlackjackState, basicStrategy } from "../games/blackjack/index.js";
+import { type BlackjackState, basicStrategy, dealFrom } from "../games/blackjack/index.js";
+import type { Card } from "../games/cards.js";
 import { seededRng } from "../games/rng.js";
 import { DOUBLE_ZERO, validBets } from "../games/roulette/engine.js";
 import { type UthState, simpleStrategy } from "../games/uth/index.js";
@@ -31,9 +32,11 @@ describe("the registry's request schemas", () => {
     assert.ok(GAMES.roulette.bets.safeParse([{ kind: "split", numbers: [0, DOUBLE_ZERO], amount: 5 }]).success);
   });
 
-  it("refuses side bets until #46, and anything that isn't an action", () => {
-    assert.ok(!GAMES.blackjack.bets.safeParse({ main: 25, perfectPairs: 5 }).success);
-    assert.ok(!GAMES.uth.bets.safeParse({ ante: 25, trips: 5 }).success);
+  it("takes the side bets, and refuses unknown spots and anything that isn't an action", () => {
+    assert.ok(GAMES.blackjack.bets.safeParse({ main: 25, perfectPairs: 5, twentyOnePlusThree: 10 }).success);
+    assert.ok(GAMES.uth.bets.safeParse({ ante: 25, trips: 5 }).success);
+    assert.ok(!GAMES.blackjack.bets.safeParse({ main: 25, luckyLadies: 5 }).success);
+    assert.ok(!GAMES.uth.bets.safeParse({ ante: 25, pairPlus: 5 }).success);
     assert.ok(!GAMES.blackjack.action.safeParse({ type: "peek" }).success);
     assert.ok(!GAMES.roulette.bets.safeParse([]).success);
     assert.ok(!GAMES.roulette.bets.safeParse([{ kind: "straight", numbers: [38], amount: 5 }]).success);
@@ -52,8 +55,9 @@ const strategies: Record<string, Strategy> = {
 };
 
 function betsFor(game: string, i: number, variant: string | null): unknown {
-  if (game === "blackjack") return { main: 10 + 5 * (i % 7) };
-  if (game === "uth") return { ante: 10 + 5 * (i % 3) };
+  // Side bets on some hands, so early payouts and their ledger rows are exercised.
+  if (game === "blackjack") return { main: 10 + 5 * (i % 7), ...(i % 2 ? { perfectPairs: 5, twentyOnePlusThree: 10 } : {}) };
+  if (game === "uth") return { ante: 10 + 5 * (i % 3), ...(i % 3 === 0 ? { trips: 5 } : {}) };
   const spots = validBets(variant as "european" | "american");
   return [0, 1, 2].map((k) => {
     const b = spots[(i * 7 + k * 31) % spots.length];
@@ -153,3 +157,30 @@ for (const [gameId, game] of Object.entries(GAMES)) {
     });
   });
 }
+
+describe("side bets through the lifecycle", () => {
+  it("pays blackjack's side bets in the start transaction, and only the rest at settlement", () => {
+    const player = newPlayer({ userId: "u1", email: "pat@example.com", displayName: "Pat" }, NOW).player;
+    const id = randomUUID();
+    // You 8h 8d (a coloured pair, 12:1), dealer 9d Ts; twos after.
+    const dealt = dealFrom([..."8h 9d 8d Ts".split(" "), ...Array(40).fill("2c")] as Card[], { main: 100, perfectPairs: 10, twentyOnePlusThree: 10 });
+    const started = planStart(
+      { player, hand: null, activeHandId: null, gameStats: null, weeklyStats: null },
+      { userId: "u1", handId: id, gameId: "blackjack", game: GAMES.blackjack, variant: null, dealt, now: NOW, week: WEEK },
+    );
+    assert.deepEqual(started.writes!.ledger.map((e) => [e.kind, e.amount]), [["bet", -120], ["payout", 130]]);
+    assert.equal(started.player.balance, player.balance - 120 + 130);
+    assert.equal(started.hand.status, "active");
+
+    const done = planAction(
+      { player: started.player, hand: started.hand, activeHandId: id, gameStats: null, weeklyStats: null },
+      { userId: "u1", handId: id, action: { type: "stand" }, version: 0, games: GAMES, now: NOW, week: WEEK },
+    );
+    // 16 against 19: the main bet loses, so settlement has nothing left to pay.
+    assert.equal(done.hand.status, "settled");
+    assert.equal(done.hand.returned, 130);
+    assert.deepEqual(done.writes!.ledger, []);
+    assert.equal(done.player.balance, player.balance - 120 + 130);
+    assert.equal(done.writes!.gameStats!.returned, 130);
+  });
+});

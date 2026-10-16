@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from "react";
-import { checkStake } from "../../../../src/games/engine.js";
+import { checkSideStake, checkStake } from "../../../../src/games/engine.js";
 import { UTH_LIMITS, type UthView } from "../../../../src/games/uth/engine.js";
 import type { HandRow } from "../../api";
 import { ActionBar } from "../../components/ActionBar";
 import { BetBar } from "../../components/BetBar";
 import { useToast } from "../../components/Toast";
-import { chipsShort } from "../../format";
+import { chipsShort, signed } from "../../format";
 import { usePlayer } from "../../player";
 import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
@@ -22,32 +22,38 @@ export default function UthScreen() {
   const balance = player?.balance ?? 0;
   const table = useHand("uth");
   // The Blind matches the Ante, so a chip on the Ante costs twice its value.
-  const betting = useBetting(Math.floor(balance / 2), { max: UTH_LIMITS.max, chip: 25 });
-  const placeRef = useRef(() => undefined as void);
-  const [scene] = useState(() => createUthScene({ onAnteTap: () => placeRef.current() }));
+  const betting = useBetting(balance, {
+    max: (spot) => (spot === "ante" ? UTH_LIMITS.max : UTH_LIMITS.side!.max),
+    weight: (spot) => (spot === "ante" ? 2 : 1),
+    chip: 25,
+  });
+  const placeRef = useRef((_spot: "ante" | "trips") => undefined as void);
+  const [scene] = useState(() => createUthScene({ onSpotTap: (spot) => placeRef.current(spot) }));
 
   const hand = table.hand;
   const v = hand?.view as UthView | undefined;
   const betweenHands = !table.live;
 
-  placeRef.current = () => {
+  placeRef.current = (spot) => {
     if (!betweenHands || table.busy) return;
-    betting.place("ante");
+    betting.place(spot);
     buzz(8);
   };
 
   const view = useMemo<UthSceneView>(
     () =>
       betweenHands && (betting.total > 0 || !hand)
-        ? { id: "", hand: null, ante: betting.total }
-        : { id: hand!.id, hand: hand!.view as UthView, ante: 0 },
-    [betweenHands, betting.total, hand],
+        ? { id: "", hand: null, ante: betting.bets.ante ?? 0, trips: betting.bets.trips ?? 0 }
+        : { id: hand!.id, hand: hand!.view as UthView, ante: 0, trips: 0 },
+    [betweenHands, betting.total, betting.bets, hand],
   );
 
   async function deal() {
-    const reason = checkStake(betting.total, UTH_LIMITS);
+    const { ante = 0, trips } = betting.bets;
+    if (!ante) return toast("Put a bet on the Ante too", "loss");
+    const reason = checkStake(ante, UTH_LIMITS) ?? checkSideStake("Trips", trips, UTH_LIMITS);
     if (reason) return toast(reason[0].toUpperCase() + reason.slice(1), "loss");
-    if (await table.start({ ante: betting.total })) {
+    if (await table.start({ ante, ...(trips ? { trips } : {}) })) {
       betting.commit();
       buzz(12);
     }
@@ -92,7 +98,7 @@ export default function UthScreen() {
           <BetBar
             chip={betting.chip}
             onChip={betting.setChip}
-            total={betting.total * 2}
+            total={betting.cost}
             balance={balance}
             canRebet={!!betting.last}
             onUndo={betting.undo}
@@ -112,8 +118,11 @@ export default function UthScreen() {
 
 function uthResult(h: HandRow) {
   const v = h.view as UthView;
-  if (v.folded) return { text: `Folded −${chipsShort(h.wagered)}`, tone: "loss" as const };
-  const r = resultText(h);
+  if (v.folded) {
+    const net = h.returned - h.wagered;
+    return { text: `Folded ${signed(net)}${v.returned?.trips ? " (Trips paid)" : ""}`, tone: net > 0 ? ("win" as const) : ("loss" as const) };
+  }
+  const r = resultText(h)!;
   return v.showdown && v.showdown.winner === "player" ? { ...r, text: `${v.showdown.player.label}. ${r.text}` } : r;
 }
 
@@ -129,6 +138,7 @@ function Rules() {
         <li>The dealer needs a pair or better to qualify; if not, the Ante pushes.</li>
         <li>Lose: Ante, Blind and Play lose. A tie pushes everything. Folding loses Ante and Blind.</li>
         <li>Ante 10 to 1,000. Payouts round down to whole chips.</li>
+        <li>Trips (optional, 5 to 500) pays on your best five whatever the dealer has, even if you fold.</li>
       </ul>
       <Paytable
         caption="Blind pays (when you win)"
@@ -140,6 +150,18 @@ function Rules() {
           ["Flush", "3 to 2"],
           ["Straight", "1 to 1"],
           ["Anything less", "push"],
+        ]}
+      />
+      <Paytable
+        caption="Trips"
+        rows={[
+          ["Royal flush", "50 to 1"],
+          ["Straight flush", "40 to 1"],
+          ["Four of a kind", "30 to 1"],
+          ["Full house", "8 to 1"],
+          ["Flush", "7 to 1"],
+          ["Straight", "4 to 1"],
+          ["Three of a kind", "3 to 1"],
         ]}
       />
     </>

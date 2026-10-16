@@ -136,11 +136,15 @@ export class Animator {
     await this.tween(card, { x: to.x, y: to.y, rotation: opts.rotation ?? 0 }, { duration: 320, delay: opts.delay, ease: ease.out });
   }
 
-  /** Turns a card over to `face` by squashing it to an edge and back. */
-  async flip(card: Container & { texture: Texture }, face: Texture) {
+  /**
+   * Turns a card over to `face` by squashing it to an edge and back. Pass a
+   * function to take the texture at the moment it shows: a resize during the
+   * first half re-densities the kit and frees a texture taken earlier.
+   */
+  async flip(card: Container & { texture: Texture }, face: Texture | (() => Texture)) {
     const sx = Math.abs(card.scale.x) || 1;
     await this.tween(card, { "scale.x": 0 }, { duration: 110, ease: ease.in });
-    card.texture = face;
+    card.texture = typeof face === "function" ? face() : face;
     await this.tween(card, { "scale.x": sx }, { duration: 130, ease: ease.out });
   }
 

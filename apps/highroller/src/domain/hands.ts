@@ -93,6 +93,15 @@ export function planStart(read: HandTxRead, plan: StartPlan): HandTxOutcome {
   const stake = engine.staked(plan.dealt);
   const debit = applyCreditTo(player, { kind: "bet", amount: -stake, handId: plan.handId }, plan.now);
   if (!debit) throw conflict("INSUFFICIENT_FUNDS");
+  const ledger = [debit.entry];
+  let after = debit.player;
+  // Bets that settle on the deal (blackjack's side bets) are paid now, after the stake.
+  const early = engine.paidEarly?.(plan.dealt) ?? 0;
+  if (early > 0) {
+    const paid = applyCreditTo(after, { kind: "payout", amount: early, handId: plan.handId }, plan.now)!;
+    after = paid.player;
+    ledger.push(paid.entry);
+  }
 
   const hand: HandRecord = {
     id: plan.handId,
@@ -109,7 +118,7 @@ export function planStart(read: HandTxRead, plan: StartPlan): HandTxOutcome {
     createdAt: plan.now,
     settledAt: null,
   };
-  return finish(read, plan.game, hand, debit.player, [debit.entry], plan.now, plan.week);
+  return finish(read, plan.game, hand, after, ledger, plan.now, plan.week);
 }
 
 export interface ActionPlan {
@@ -151,6 +160,12 @@ export function planAction(read: HandTxRead, plan: ActionPlan): HandTxOutcome {
     player = debit.player;
     ledger.push(debit.entry);
   }
+  const early = (engine.paidEarly?.(next) ?? 0) - (engine.paidEarly?.(hand.state) ?? 0);
+  if (early > 0) {
+    const paid = applyCreditTo(player, { kind: "payout", amount: early, handId: hand.id }, plan.now)!;
+    player = paid.player;
+    ledger.push(paid.entry);
+  }
 
   const updated: HandRecord = {
     ...hand,
@@ -183,7 +198,8 @@ function finish(
     weeklyStats: read.weeklyStats,
     settlement: engine.settle(hand.state),
     facts: engine.summary(hand.state),
-    rtp: engine.theoreticalRtp(hand.variant),
+    expectedReturn: engine.expectedReturn?.(hand.state) ?? engine.theoreticalRtp(hand.variant) * hand.wagered,
+    paidEarly: engine.paidEarly?.(hand.state) ?? 0,
     now,
     week,
   });

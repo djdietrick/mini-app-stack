@@ -45,6 +45,20 @@ export interface GameEngine<Bets, State, Action extends { type: string }, View> 
   /** Only called once the hand is finished. Whole chips: fractions round down. */
   settle(state: State): Settlement;
 
+  /**
+   * Chips already paid back before the hand finishes: bets that settle on
+   * the deal (blackjack's side bets). The lifecycle credits each rise as it
+   * happens; `settle` still counts them in `returned`, and settlement pays
+   * only the rest. Never falls. Omit for a game that pays everything at the end.
+   */
+  paidEarly?(state: State): number;
+
+  /**
+   * What "average luck" returns on this hand, for the stats dashboard, when
+   * it isn't `theoreticalRtp × staked` (a side bet with its own edge).
+   */
+  expectedReturn?(state: State): number;
+
   /** What the client may see. Never the undealt cards or a hidden hole card. */
   view(state: State): View;
 
@@ -65,6 +79,8 @@ export interface TableLimits {
   step: number;
   /** Most chips on all spots together, for games with many spots (roulette). */
   total?: number;
+  /** Side bet spots, each with its own range (in `step`s like the main spot). */
+  side?: { min: number; max: number };
 }
 
 export type Outcome = "win" | "loss" | "push";
@@ -110,6 +126,17 @@ export function checkStake(amount: number, limits: TableLimits, min = limits.min
   if (!Number.isInteger(amount)) return "stakes are whole chips";
   if (amount < min) return `minimum bet is ${min}`;
   if (amount > limits.max) return `maximum bet is ${limits.max}`;
+  if (amount % limits.step !== 0) return `bets go in steps of ${limits.step}`;
+  return null;
+}
+
+/** The same check for a side bet (`name` for the message), against `limits.side`. Absent is fine. */
+export function checkSideStake(name: string, amount: number | undefined, limits: TableLimits): string | null {
+  if (amount === undefined) return null;
+  const side = limits.side ?? { min: limits.min, max: limits.max };
+  if (!Number.isInteger(amount)) return "stakes are whole chips";
+  if (amount < side.min) return `minimum ${name} bet is ${side.min}`;
+  if (amount > side.max) return `maximum ${name} bet is ${side.max}`;
   if (amount % limits.step !== 0) return `bets go in steps of ${limits.step}`;
   return null;
 }

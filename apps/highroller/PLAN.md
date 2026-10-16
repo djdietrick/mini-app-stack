@@ -68,6 +68,7 @@ apps/highroller/
   - Bailout: once a day, while the balance is under 500, tops it up to 2,000.
   - Gifting: up to 5,000 sent and 10,000 received per day. You can't gift below the bailout floor, so bailouts can't be farmed through a second account.
 - **Table limits** live in each engine's module (`BLACKJACK_LIMITS`, `UTH_LIMITS`, `ROULETTE_LIMITS`) and the registry points at them, so the SPA checks a bet with the same numbers before sending it. With no VIP rooms, each game has one table. Blackjack 10–5,000; UTH ante 10–1,000; roulette 5–1,000 a spot and 10,000 a spin.
+- **Side bets** are 5–500 (`limits.side`). Perfect Pairs and 21+3 settle on blackjack's deal and are paid in the start transaction (`engine.paidEarly`; settlement then pays only the rest); Trips settles at UTH's showdown, even after a fold. Exact edges, asserted by their tests: Perfect Pairs 6.11% (six decks), 21+3 4.62%, Trips 3.50% (from the seven-card hand counts). A suited three of a kind on 21+3 and a royal on Trips set `jackpotEligible` for #57. Stats use the engine's `expectedReturn(state)`, so side bets count at their own edge.
 - **Measured edges** (each game's Monte Carlo test checks its bot against these): blackjack with basic strategy 0.31% of the first bet (20M hands; ~1.13 bets wagered per hand); UTH with the Wizard of Odds' simple strategy 2.43% of the ante (12M hands; optimal play is 2.19%, ~4.16 antes wagered per hand); roulette 2.70% / 5.26%, exactly.
 
 ## Hands: the server-authoritative lifecycle
@@ -203,7 +204,7 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 - ✅ #43 Blackjack
 - ✅ #44 Ultimate Texas Hold'em (with the poker evaluator)
 - ✅ #45 Roulette, European and American
-- #46 Side bets: Perfect Pairs, 21+3, Trips
+- ✅ #46 Side bets: Perfect Pairs, 21+3, Trips
 
 **3 · Progression**
 - #47 XP, level badge and stats dashboard

@@ -20,8 +20,10 @@ export interface SettleInput {
   weeklyStats: WeeklyStatsRecord | null;
   settlement: Settlement;
   facts: Facts;
-  /** The engine's theoretical RTP for this hand's variant. */
-  rtp: number;
+  /** What the hand returns with average luck (theoretical RTP × wagered, or the engine's own figure). */
+  expectedReturn: number;
+  /** Chips the lifecycle already paid back mid-hand (engine.paidEarly); the payout row is the rest. */
+  paidEarly: number;
   now: string;
   week: string;
 }
@@ -29,7 +31,7 @@ export interface SettleInput {
 export interface SettleOutput {
   hand: HandRecord;
   player: PlayerRecord;
-  /** The payout entry, when anything came back. */
+  /** The payout entry, when anything is left to pay. */
   ledger: LedgerEntry[];
   gameStats: GameStatsRecord;
   weeklyStats: WeeklyStatsRecord;
@@ -46,14 +48,14 @@ export function settleHand(input: SettleInput): SettleOutput {
   const { hand, settlement, now } = input;
   const wagered = hand.wagered;
   const returned = settlement.returned;
-  if (!Number.isInteger(returned) || returned < 0) throw new Error(`bad settlement: returned ${returned}`);
+  if (!Number.isInteger(returned) || returned < input.paidEarly) throw new Error(`bad settlement: returned ${returned}`);
   const net = returned - wagered;
   const outcome = outcomeOf(wagered, returned);
 
   let player = { ...input.player, xp: input.player.xp + xpForHand(wagered) };
   const ledger: LedgerEntry[] = [];
-  if (returned > 0) {
-    const paid = applyCreditTo(player, { kind: "payout", amount: returned, handId: hand.id }, now)!;
+  if (returned > input.paidEarly) {
+    const paid = applyCreditTo(player, { kind: "payout", amount: returned - input.paidEarly, handId: hand.id }, now)!;
     player = paid.player;
     ledger.push(paid.entry);
   }
@@ -68,7 +70,7 @@ export function settleHand(input: SettleInput): SettleOutput {
     losses: g.losses + (outcome === "loss" ? 1 : 0),
     pushes: g.pushes + (outcome === "push" ? 1 : 0),
     biggestWin: Math.max(g.biggestWin, net),
-    expectedReturn: g.expectedReturn + input.rtp * wagered,
+    expectedReturn: g.expectedReturn + input.expectedReturn,
   };
 
   const w = input.weeklyStats ?? emptyWeeklyStats(input.week, hand.userId);

@@ -1,6 +1,7 @@
 import { Container, Graphics, Sprite, type Text } from "pixi.js";
 import type { BlackjackView, HandOutcome } from "../../../../src/games/blackjack/engine.js";
 import { totalLabel } from "../../../../src/games/blackjack/engine.js";
+import { PAIR_NAMES, type PairHand, THREE_CARD_NAMES, type ThreeCardHand } from "../../../../src/games/blackjack/sidebets.js";
 import type { Card } from "../../../../src/games/index.js";
 import { chipsShort } from "../../format";
 import type { Point } from "../../table/anim";
@@ -14,15 +15,21 @@ import { DESIGN, type Layout, type Scene, type SceneContext } from "../../table/
  *
  * It animates the difference between two views: new cards come off the
  * shoe, the hole card turns, a split slides the second card to a new hand,
- * and at the end each hand's chips are paid to the balance or swept.
+ * and at the end each hand's chips are paid to the balance or swept. The
+ * side bets' circles flank the main one; they settle as soon as the opening
+ * cards are down, with the winning hand's name over the circle.
  */
+export type Spot = "main" | "perfectPairs" | "twentyOnePlusThree";
+export const SIDE_SPOTS = ["perfectPairs", "twentyOnePlusThree"] as const;
+type SideSpot = (typeof SIDE_SPOTS)[number];
+
 export interface BlackjackSceneView {
   /** The hand's id, "" while betting: a new id sweeps the last hand away. */
   id: string;
   /** Null while the next hand's bet is being placed. */
   hand: BlackjackView | null;
-  /** The bet on the circle while betting. */
-  bet: number;
+  /** The chips on each circle while betting. */
+  bets: Partial<Record<Spot, number>>;
 }
 
 // Below the frame's top bar (back, title, info), which sits over the canvas.
@@ -32,7 +39,10 @@ const DEALER_Y = 118;
 const PLAYER_Y = 344;
 const SPOT_Y = 474;
 const SPOT_R = 32;
+const SIDE_R = 24;
 const DEALER_W = 62;
+const SIDE_AT: Record<SideSpot, Point> = { perfectPairs: { x: 70, y: SPOT_Y }, twentyOnePlusThree: { x: 320, y: SPOT_Y } };
+const SIDE_TEXT: Record<SideSpot, string> = { perfectPairs: "PAIRS", twentyOnePlusThree: "21+3" };
 
 const OUTCOME_TEXT: Record<HandOutcome, string> = {
   blackjack: "BLACKJACK",
@@ -61,7 +71,7 @@ function dealerCardPos(j: number, len: number): Point {
   return { x: DESIGN.width / 2 - ((len - 1) * dx) / 2 + j * dx, y: DEALER_Y };
 }
 
-export function createBlackjackScene(opts: { onSpotTap: () => void }): Scene<BlackjackSceneView> {
+export function createBlackjackScene(opts: { onSpotTap: (spot: Spot) => void }): Scene<BlackjackSceneView> {
   let ctx: SceneContext;
   let cards: Cards;
   let labels: Labels;
@@ -73,8 +83,9 @@ export function createBlackjackScene(opts: { onSpotTap: () => void }): Scene<Bla
   let hands: CardSprite[][] = [];
   let stacks: ChipStack[] = [];
   let insurance: ChipStack;
-  let spot: Graphics;
-  let spotText: Text[] = [];
+  let side: Record<SideSpot, ChipStack>;
+  /** The circles and their lettering, shown only while betting. */
+  let circles: (Graphics | Text)[] = [];
   let dealerLabel: Text;
   let handLabels: Text[] = [];
   let highlight: Graphics;
@@ -113,8 +124,32 @@ export function createBlackjackScene(opts: { onSpotTap: () => void }): Scene<Bla
       await ctx.anim.collect(all, DISCARD);
       for (const s of all) s.destroy();
     }
-    spot.visible = true;
-    for (const t of spotText) t.visible = true;
+    for (const c of circles) c.visible = true;
+  }
+
+  /** Pays or sweeps each side bet straight after the opening cards, naming a winning hand over its circle. */
+  async function settleSides(h: BlackjackView) {
+    const jobs: Promise<void>[] = [];
+    for (const k of SIDE_SPOTS) {
+      const r = h.side?.[k];
+      if (!r || !side[k].amount) continue;
+      if (r.hand) {
+        const name = k === "perfectPairs" ? PAIR_NAMES[r.hand as PairHand] : THREE_CARD_NAMES[r.hand as ThreeCardHand];
+        const t = labels.make(name.toUpperCase(), 11, { x: SIDE_AT[k].x, y: SPOT_Y - 44 }, { fill: 0x6ee7a8, fontWeight: "800", letterSpacing: 1 });
+        t.alpha = 0;
+        layer.addChild(t);
+        // The name shows long enough to read, then clears the way for split hands' chips.
+        jobs.push(
+          ctx.anim
+            .tween(t, { alpha: 1 }, { duration: 160 })
+            .then(() => ctx.anim.wait(1600))
+            .then(() => ctx.anim.tween(t, { alpha: 0 }, { duration: 300 }))
+            .then(() => t.destroy()),
+        );
+      }
+      jobs.push(side[k].settle(r.returned, { x: DESIGN.width / 2, y: 20 }));
+    }
+    await Promise.all(jobs);
   }
 
   function relabel(h: BlackjackView) {
@@ -259,10 +294,19 @@ export function createBlackjackScene(opts: { onSpotTap: () => void }): Scene<Bla
       shoe.rotation = -0.5;
       layer.addChild(shoe);
 
-      spot = betCircle({ x: DESIGN.width / 2, y: SPOT_Y }, SPOT_R, opts.onSpotTap);
-      layer.addChild(spot);
-      spotText = [labels.make("BET", 11, { x: DESIGN.width / 2, y: SPOT_Y }, { alpha: 0.5, letterSpacing: 2 }), labels.make("10 – 5,000", 10, { x: DESIGN.width / 2, y: SPOT_Y + SPOT_R + 12 }, { alpha: 0.45 })];
-      for (const t of spotText) layer.addChild(t);
+      circles = [
+        betCircle({ x: DESIGN.width / 2, y: SPOT_Y }, SPOT_R, () => opts.onSpotTap("main")),
+        labels.make("BET", 11, { x: DESIGN.width / 2, y: SPOT_Y }, { alpha: 0.5, letterSpacing: 2 }),
+        labels.make("10 – 5,000", 10, { x: DESIGN.width / 2, y: SPOT_Y + SPOT_R + 12 }, { alpha: 0.45 }),
+      ];
+      for (const k of SIDE_SPOTS) {
+        circles.push(
+          betCircle(SIDE_AT[k], SIDE_R, () => opts.onSpotTap(k), 0.45),
+          labels.make(SIDE_TEXT[k], 10, SIDE_AT[k], { alpha: 0.5, letterSpacing: 1 }),
+          labels.make("5 – 500", 9, { x: SIDE_AT[k].x, y: SPOT_Y + SIDE_R + 11 }, { alpha: 0.4 }),
+        );
+      }
+      layer.addChild(...circles);
 
       dealerLabel = labels.make("", 13, { x: DESIGN.width / 2, y: DEALER_Y + 60 });
       layer.addChild(dealerLabel);
@@ -273,6 +317,10 @@ export function createBlackjackScene(opts: { onSpotTap: () => void }): Scene<Bla
       layer.addChild(cardLayer);
       stacks = [new ChipStack(ctx, layer, { x: DESIGN.width / 2, y: SPOT_Y })];
       insurance = new ChipStack(ctx, layer, { x: 64, y: 236 }, 30, 2.5);
+      side = {
+        perfectPairs: new ChipStack(ctx, layer, SIDE_AT.perfectPairs, 32, 2.5),
+        twentyOnePlusThree: new ChipStack(ctx, layer, SIDE_AT.twentyOnePlusThree, 32, 2.5),
+      };
     },
 
     async update(prev, next) {
@@ -280,20 +328,25 @@ export function createBlackjackScene(opts: { onSpotTap: () => void }): Scene<Bla
       if (!h) {
         if (shownId) await sweep();
         shownId = "";
-        await stacks[0].set(next.bet);
+        await Promise.all([stacks[0].set(next.bets.main ?? 0), ...SIDE_SPOTS.map((k) => side[k].set(next.bets[k] ?? 0))]);
         return;
       }
+      // Dealt from the bets on the felt (not resumed after a reload): the side bets are still to settle on screen.
+      const dealtHere = next.id !== shownId && prev?.id === "";
       if (next.id !== shownId) {
         if (shownId) await sweep();
         shownId = next.id;
-        if (!prev || prev.id !== "") stacks[0].place(h.hands[0].bet);
+        if (!dealtHere) {
+          stacks[0].place(h.hands[0].bet);
+          for (const k of SIDE_SPOTS) side[k].clear();
+        }
       }
-      spot.visible = false;
-      for (const t of spotText) t.visible = false;
+      for (const c of circles) c.visible = false;
       const before = prev && prev.id === next.id ? prev.hand : null;
       restructure(before, h);
       await syncChips(h);
       await syncCards(h);
+      if (dealtHere) await settleSides(h);
       relabel(h);
       if (h.phase === "done" && before?.phase !== "done") await settle(h);
     },
@@ -302,7 +355,7 @@ export function createBlackjackScene(opts: { onSpotTap: () => void }): Scene<Bla
       placeFelt(felt, ctx, layout);
       cards.retexture(allCards());
       shoe.texture = cards.texture(null, 54);
-      for (const st of [...stacks, insurance]) st.retexture();
+      for (const st of [...stacks, insurance, ...Object.values(side)]) st.retexture();
       labels.retexture();
     },
 

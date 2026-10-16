@@ -133,7 +133,7 @@ export function TableCanvas<View>({
         place();
         textures.setDensity(layout.scale * resolution);
         scene.resize(layout);
-        textures.flushStale();
+        textures.flushStale(app.stage);
       });
       ro.observe(el);
 
