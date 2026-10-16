@@ -204,6 +204,16 @@
         { "fieldPath": "game", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "//": "highroller GET /api/stats/balance — a player's last ledger entry before each day's end.",
+      "collectionGroup": "highroller_ledger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "seq", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

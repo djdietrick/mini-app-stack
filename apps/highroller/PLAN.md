@@ -43,13 +43,17 @@ apps/highroller/
                    settle.ts (one settlement → ledger, stats, XP, quests, feed, jackpot),
                    economy.ts (daily bonus, bailout, gifting rules), progress.ts (XP and level curve),
                    quests.ts (achievement and quest definitions + the pure evaluator),
-                   catalog.ts (shop items with fixed UUIDs), registry.ts (game id → engine + limits)
+                   catalog.ts (shop items with fixed UUIDs, pure, imported by the SPA too),
+                   shop.ts (the purchase step), stats.ts (dashboard figures, chart days),
+                   registry.ts (game id → engine + limits)
   src/repo/        types.ts (the port), postgres.ts, firestore.ts
   migrations/      Postgres schema `highroller`
   web/src/
     table/         TableCanvas (mounts a Pixi Application in a resizing container),
                    textures.ts (procedural card faces, backs, chips and felts, rasterised at the
-                   device's pixel ratio), anim.ts (deal, flip, slide, stack, payout tweens),
+                   device's pixel ratio), paint.ts (the Canvas 2D painters for backs, chips and
+                   felts, shared with the shop's previews so they need no Pixi), cosmetics.ts
+                   (catalog params → styles), anim.ts (deal, flip, slide, stack, payout tweens),
                    kit.ts (felt, lettering, cards and chip stacks the scenes share)
     games/         one folder per game: Scene.ts (Pixi) + Screen.tsx (React chrome + bet bar),
                    plus useHand.ts (resume, start, act, refusals → toasts) and TableFrame.tsx
@@ -139,8 +143,8 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 | `hands` (id PK, user_id, game, variant, status, version, state jsonb, view jsonb, wagered, returned, results jsonb, created_at, settled_at) | `hands/{id}` | Partial unique index on (user_id, game) where status = 'active'. Firestore stores `state`, `view` and `results` as JSON strings: engine state can hold nested arrays (split hands), which Firestore can't. |
 | `game_stats` (user_id, game) PK | `game_stats/{userId}_{game}` | |
 | `weekly_stats` (week, user_id) PK, index (week, net desc) | `weekly_stats/{week}_{userId}` | Composite index on (week, listed, net desc). |
-| `quest_progress` (user_id, quest_id, period) PK | `quest_progress/{userId}_{questId}_{period}` | Period is `d:2026-10-15`, `w:2026-W42` or `ever`. |
-| `inventory` (user_id, item_id) PK | `inventory/{userId}_{itemId}` | |
+| `quest_progress` (user_id, quest_id, period) PK: progress, run, marks jsonb, claimed, updated_at, claimed_at | `quest_progress/{userId}_{questId}_{period}` | Period is `d:2026-10-15`, `w:2026-W42` or `ever`. One row per achievement (not per tier); `claimed` counts tiers paid. |
+| `inventory` (user_id, item_id) PK | `inventory/{userId}_{itemId}` | Defaults are never stored. The deterministic id makes a second purchase a conflict the purchase transaction reads. |
 | `feed_events` | `feed_events/{uuid}` | Read newest first; a 7-day TTL (Firestore TTL policy, plus a check on read). |
 | `jackpot` (one row) + `jackpot_hits` | `jackpot_shards/{0..9}` + `jackpot_hits` | See below. |
 
@@ -163,10 +167,15 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
   - hands, wagered, net, win rate and biggest win, per game and in total
   - actual vs expected return, with a line on what variance means
   - a balance chart from the ledger
+  - `GET /stats/balance?range=7d|30d|90d&timeZone=` samples the ledger at the end of each of the player's days (`balancesAt`: one LATERAL query on Postgres, one `limit 1` query per day on Firestore); today's point is the balance now.
+- **Level badge:** a ring next to the balance pill. Hand responses carry the new level; `useHand` holds it with the payout, so the badge and the "Level N!" toast land after the animation.
 - **Quests:**
-  - Three daily quests and three weekly ones, picked deterministically from a hash of (user, period) out of `quests.ts`. They need no scheduler and no storage until you make progress.
-  - Rewards are paid when you claim them, never automatically, so claiming is visible.
-  - Achievements are permanent, with tiers such as "Play 100 / 1,000 / 10,000 hands".
+  - Three daily quests and three weekly ones, picked deterministically from a hash of (user, period) out of `quests.ts`, at most one per game. They need no scheduler and no storage until you make progress. The pool is filtered to the registered games, so adding a game changes the picks from its first day.
+  - The period is the player's calendar day (`d:`) and the ISO week of that day (`w:`), from the time zone the SPA sends with each start, action and claim. Only the current period's quests can be claimed: yesterday's expire with the day.
+  - Progress is folded in the transaction that causes it: settlement for hands, the purchase for the collector achievement. Progress never falls (a streak keeps its current `run` separately), so a completed tier stays completed.
+  - Rewards (chips and XP) are paid when you claim them, never automatically, so claiming is visible. `quest_reward` / `achievement_reward` ledger rows.
+  - Achievements are permanent, with tiers such as "Play 100 / 1,000 / 10,000 hands", claimed in order.
+- **Shop:** about six of each kind priced 5,000 to 1,000,000; the first of each is the free default. `PUT /equipped` (403 `NOT_OWNED`); `/me` carries `equipped`, and the tables and the bet bar draw from it.
 
 ## Social
 
@@ -184,7 +193,7 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
   - `highrollerApi` is `onRequest`, mounting the route table under `/api`.
   - No scheduled function is needed: quests are picked deterministically and the feed expires by TTL.
 - **Firestore indexes:**
-  - ledger (userId, seq desc)
+  - ledger (userId, seq desc) and (userId, createdAt desc, seq desc) for the balance chart
   - hands (userId, createdAt desc) and (userId, game, createdAt desc)
   - weekly_stats (week, listed, net desc) and (week, listed, biggestWin desc)
   - players (listed, xp desc)
@@ -207,9 +216,9 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 - ✅ #46 Side bets: Perfect Pairs, 21+3, Trips
 
 **3 · Progression**
-- #47 XP, level badge and stats dashboard
-- #48 Shop: card backs, felts and chip sets
-- #49 Achievements and daily/weekly quests
+- ✅ #47 XP, level badge and stats dashboard
+- ✅ #48 Shop: card backs, felts and chip sets
+- ✅ #49 Achievements and daily/weekly quests
 
 **4 · Social**
 - #50 Leaderboards

@@ -1,5 +1,6 @@
 import { chipsShort } from "../format";
-import { DENOMINATIONS, STANDARD_CHIPS, chipColors } from "../table/cosmetics";
+import { useEquipped } from "../player";
+import { DENOMINATIONS, chipColors } from "../table/cosmetics";
 
 /**
  * The chip selector and bet controls, at thumb height under the table. Tap a
@@ -33,11 +34,12 @@ export function BetBar({
   dealLabel?: string;
   busy?: boolean;
 }) {
+  const set = useEquipped().chips;
   return (
     <div className="flex flex-col gap-2 border-t border-line bg-surface/95 px-3 pb-3 pt-2 backdrop-blur">
       <div role="radiogroup" aria-label="Chip value" className="flex justify-between gap-1">
         {DENOMINATIONS.map((d) => {
-          const c = chipColors(STANDARD_CHIPS, d);
+          const c = chipColors(set, d);
           const selected = d === chip;
           return (
             <button

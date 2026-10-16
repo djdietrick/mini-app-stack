@@ -1,81 +1,49 @@
+import {
+  type CardBackParams,
+  CATALOG,
+  type ChipColors,
+  type ChipSetParams,
+  DEFAULT_EQUIPPED as DEFAULT_IDS,
+  type Equipped as EquippedIds,
+  type FeltParams,
+  shopItem,
+} from "../../../src/domain/catalog.js";
+
 /**
  * Cosmetics are parameter sets, not art: textures.ts draws every card back,
- * felt and chip from one of these. The shop (#48) adds items by adding data
- * here (and a catalog entry with a fixed UUID on the server), never images.
+ * felt and chip from one of these. They come from the server's catalog
+ * (src/domain/catalog.ts, pure, imported here by relative path), so the shop
+ * adds an item by adding data there, never images. A style is the item's
+ * params plus its id, which keys the texture cache.
  */
 
-export interface CardBackStyle {
-  id: string;
-  name: string;
-  base: string;
-  /** Pattern and border colour. */
-  accent: string;
-  pattern: "lattice" | "dots" | "stripes";
-  /** The white margin real decks have. */
-  margin: boolean;
-}
+export type { ChipColors };
 
-export interface FeltStyle {
-  id: string;
-  name: string;
-  /** Centre of the radial gradient. */
-  light: string;
-  /** Edge of the radial gradient. */
-  dark: string;
-  /** Table markings: bet circles, lines, lettering. */
-  line: string;
-  weave: boolean;
-}
-
-export interface ChipColors {
-  base: string;
-  /** The edge inserts and the inner ring. */
-  stripe: string;
-  text: string;
-}
-
-export interface ChipSet {
-  id: string;
-  name: string;
-  edge: "inserts" | "dashes" | "solid";
-  /** Colours by denomination; a value takes the largest denomination at or below it. */
-  colors: Record<number, ChipColors>;
-}
+export type CardBackStyle = CardBackParams & { id: string; name: string };
+export type FeltStyle = FeltParams & { id: string; name: string };
+export type ChipSet = ChipSetParams & { id: string; name: string };
 
 /** The chips the bet bar offers, smallest first. */
 export const DENOMINATIONS = [5, 25, 100, 500, 1_000, 5_000] as const;
 
-export const CLASSIC_BACK: CardBackStyle = {
-  id: "classic-red",
-  name: "Classic red",
-  base: "#b91c1c",
-  accent: "#fde8e8",
-  pattern: "lattice",
-  margin: true,
-};
+type Params = { card_back: CardBackParams; felt: FeltParams; chip_set: ChipSetParams };
 
-export const GREEN_FELT: FeltStyle = {
-  id: "green",
-  name: "Casino green",
-  light: "#1d7a43",
-  dark: "#0c3a20",
-  line: "rgba(243, 239, 226, 0.55)",
-  weave: true,
-};
+function style<K extends keyof Params>(id: string, kind: K): Params[K] & { id: string; name: string } {
+  const item = shopItem(id);
+  // An id the catalog doesn't know (or of another kind) draws the default.
+  const found = item && item.kind === kind ? item : shopItem(DEFAULT_IDS[kind])!;
+  return { ...(found.params as Params[K]), id: found.id, name: found.name };
+}
 
-export const STANDARD_CHIPS: ChipSet = {
-  id: "standard",
-  name: "Standard",
-  edge: "inserts",
-  colors: {
-    5: { base: "#c62828", stripe: "#f8f3e3", text: "#f8f3e3" },
-    25: { base: "#2e7d32", stripe: "#f8f3e3", text: "#f8f3e3" },
-    100: { base: "#1f1f1f", stripe: "#d4af37", text: "#f8f3e3" },
-    500: { base: "#6a1b9a", stripe: "#f8f3e3", text: "#f8f3e3" },
-    1_000: { base: "#f9a825", stripe: "#1f1f1f", text: "#1f1f1f" },
-    5_000: { base: "#e65100", stripe: "#f8f3e3", text: "#f8f3e3" },
-  },
-};
+export const cardBackStyle = (id: string): CardBackStyle => style(id, "card_back");
+export const feltStyle = (id: string): FeltStyle => style(id, "felt");
+export const chipSetStyle = (id: string): ChipSet => style(id, "chip_set");
+
+export const CLASSIC_BACK = cardBackStyle(DEFAULT_IDS.card_back);
+export const GREEN_FELT = feltStyle(DEFAULT_IDS.felt);
+export const STANDARD_CHIPS = chipSetStyle(DEFAULT_IDS.chip_set);
+
+export { CATALOG };
 
 export function chipColors(set: ChipSet, value: number): ChipColors {
   const denoms = Object.keys(set.colors)
@@ -103,7 +71,7 @@ export function chipBreakdown(amount: number, max = 12): number[] {
   return out;
 }
 
-/** What the player has equipped. The shop and Settings change this later (#48). */
+/** What the player has equipped, as styles the textures draw. */
 export interface Equipped {
   back: CardBackStyle;
   felt: FeltStyle;
@@ -111,3 +79,8 @@ export interface Equipped {
 }
 
 export const DEFAULT_EQUIPPED: Equipped = { back: CLASSIC_BACK, felt: GREEN_FELT, chips: STANDARD_CHIPS };
+
+/** The styles for a player's equipped item ids (PlayerRow.equipped). */
+export function equippedStyles(ids: EquippedIds): Equipped {
+  return { back: cardBackStyle(ids.card_back), felt: feltStyle(ids.felt), chips: chipSetStyle(ids.chip_set) };
+}

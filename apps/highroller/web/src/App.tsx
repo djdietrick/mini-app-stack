@@ -1,11 +1,13 @@
 import { type ComponentType, lazy, Suspense } from "react";
 import { AppShell } from "./components/AppShell";
-import { ToastProvider } from "./components/Toast";
 import { useRoute } from "./router";
 import { Ledger } from "./screens/Ledger";
 import { Lobby } from "./screens/Lobby";
 import { More, Placeholder } from "./screens/More";
+import { Quests } from "./screens/Quests";
 import { Settings } from "./screens/Settings";
+import { Shop } from "./screens/Shop";
+import { Stats } from "./screens/Stats";
 
 /**
  * Table screens load on demand, so PixiJS stays out of the lobby's bundle.
@@ -26,27 +28,25 @@ export function App() {
   const table = route.name === "table-demo" || !!Table;
 
   return (
-    <ToastProvider>
-      <AppShell route={route} bleed={table}>
-        {route.name === "lobby" && <Lobby />}
-        {route.name === "shop" && <Placeholder title="Shop" what="Card backs, table felts and chip sets, bought with chips. Coming soon." />}
-        {route.name === "quests" && <Placeholder title="Quests" what="Daily and weekly quests, and achievements. Coming soon." />}
-        {route.name === "stats" && <Placeholder title="Stats" what="Hands, wagered, net and biggest wins, per game and in total. Coming soon." />}
-        {route.name === "more" && <More />}
-        {route.name === "ledger" && <Ledger />}
-        {route.name === "settings" && <Settings />}
-        {route.name === "play" && !Table && <Placeholder title="Not a table" what="There's no game here. Pick one in the lobby." />}
-        {Table && route.name === "play" && (
-          <Suspense fallback={<div className="flex-1 bg-felt-dark" />}>
-            <Table key={`${route.game}/${route.variant}`} variant={route.variant} />
-          </Suspense>
-        )}
-        {route.name === "table-demo" && TableDemo && (
-          <Suspense fallback={<div className="flex-1 bg-felt-dark" />}>
-            <TableDemo />
-          </Suspense>
-        )}
-      </AppShell>
-    </ToastProvider>
+    <AppShell route={route} bleed={table}>
+      {route.name === "lobby" && <Lobby />}
+      {route.name === "shop" && <Shop />}
+      {route.name === "quests" && <Quests />}
+      {route.name === "stats" && <Stats />}
+      {route.name === "more" && <More />}
+      {route.name === "ledger" && <Ledger />}
+      {route.name === "settings" && <Settings />}
+      {route.name === "play" && !Table && <Placeholder title="Not a table" what="There's no game here. Pick one in the lobby." />}
+      {Table && route.name === "play" && (
+        <Suspense fallback={<div className="flex-1 bg-felt-dark" />}>
+          <Table key={`${route.game}/${route.variant}`} variant={route.variant} />
+        </Suspense>
+      )}
+      {route.name === "table-demo" && TableDemo && (
+        <Suspense fallback={<div className="flex-1 bg-felt-dark" />}>
+          <TableDemo />
+        </Suspense>
+      )}
+    </AppShell>
   );
 }

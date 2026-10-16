@@ -6,7 +6,7 @@ import { ActionBar } from "../../components/ActionBar";
 import { BetBar } from "../../components/BetBar";
 import { useToast } from "../../components/Toast";
 import { chipsShort, signed } from "../../format";
-import { usePlayer } from "../../player";
+import { useEquipped, usePlayer } from "../../player";
 import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
 import { useBetting } from "../../table/betting";
@@ -18,6 +18,7 @@ const MULTIPLE: Record<string, number> = { bet4: 4, bet3: 3, bet2: 2, bet1: 1 };
 
 export default function UthScreen() {
   const { player } = usePlayer();
+  const equipped = useEquipped();
   const toast = useToast();
   const balance = player?.balance ?? 0;
   const table = useHand("uth");
@@ -87,6 +88,7 @@ export default function UthScreen() {
       canvas={
         <TableCanvas
           scene={scene}
+          equipped={equipped}
           view={table.resuming ? null : view}
           onShown={(s) => s.id && s.id === hand?.id && table.shown(hand, uthResult)}
           onError={(e) => toast(`Table error: ${String(e)}`, "loss")}

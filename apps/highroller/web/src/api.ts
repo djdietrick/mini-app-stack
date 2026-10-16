@@ -3,18 +3,61 @@
  * module, type-only, so zod and the server stay out of the bundle and the SPA
  * and both backends share one definition.
  */
+import type { CosmeticKind } from "../../src/domain/catalog.js";
 import type {
+  AchievementRow,
+  BalancePoint,
+  BalanceRange,
+  BalanceSeries,
+  BuyResponse,
   ClaimResponse,
+  CompletionRow,
+  EquipResponse,
+  GameStatsRow,
   HandPage,
   HandResponse,
   HandRow,
   LedgerKind,
   LedgerPage,
   LedgerRow,
+  LevelRow,
   PlayerRow,
+  QuestClaimResponse,
+  QuestRow,
+  QuestsResponse,
+  RewardRow,
+  ShopItemRow,
+  ShopResponse,
+  StatsResponse,
 } from "../../src/domain/types.js";
 
-export type { ClaimResponse, HandPage, HandResponse, HandRow, LedgerKind, LedgerPage, LedgerRow, PlayerRow };
+export type {
+  AchievementRow,
+  BalancePoint,
+  BalanceRange,
+  BalanceSeries,
+  BuyResponse,
+  ClaimResponse,
+  CompletionRow,
+  CosmeticKind,
+  EquipResponse,
+  GameStatsRow,
+  HandPage,
+  HandResponse,
+  HandRow,
+  LedgerKind,
+  LedgerPage,
+  LedgerRow,
+  LevelRow,
+  PlayerRow,
+  QuestClaimResponse,
+  QuestRow,
+  QuestsResponse,
+  RewardRow,
+  ShopItemRow,
+  ShopResponse,
+  StatsResponse,
+};
 
 export class ApiError extends Error {
   /** The error code: a string body, or `error.code` when the body carries details. */
@@ -67,7 +110,7 @@ export const api = {
   startHand: (input: { id: string; game: string; variant?: string; bets: unknown }) =>
     call<HandResponse>("POST", "/hands", { ...input, timeZone: timeZone() }),
   act: (id: string, action: unknown, version: number) =>
-    call<HandResponse>("POST", `/hands/${id}/actions`, { action, version }),
+    call<HandResponse>("POST", `/hands/${id}/actions`, { action, version, timeZone: timeZone() }),
   activeHands: () => call<{ hands: HandRow[] }>("GET", "/hands/active"),
   hand: (id: string) => call<HandRow>("GET", `/hands/${id}`),
   hands: (opts: { game?: string; cursor?: string; limit?: number } = {}) => {
@@ -78,4 +121,15 @@ export const api = {
     const s = q.toString();
     return call<HandPage>("GET", `/hands${s ? `?${s}` : ""}`);
   },
+
+  stats: () => call<StatsResponse>("GET", "/stats"),
+  balanceSeries: (range: BalanceRange) =>
+    call<BalanceSeries>("GET", `/stats/balance?range=${range}&timeZone=${encodeURIComponent(timeZone())}`),
+
+  shop: () => call<ShopResponse>("GET", "/shop"),
+  buy: (itemId: string) => call<BuyResponse>("POST", `/shop/${itemId}/buy`, { timeZone: timeZone() }),
+  equip: (kind: CosmeticKind, itemId: string) => call<EquipResponse>("PUT", "/equipped", { kind, itemId }),
+
+  quests: () => call<QuestsResponse>("GET", `/quests?timeZone=${encodeURIComponent(timeZone())}`),
+  claimQuest: (id: string) => call<QuestClaimResponse>("POST", `/quests/${encodeURIComponent(id)}/claim`, { timeZone: timeZone() }),
 };

@@ -4,6 +4,7 @@ import {
   badRequest,
   conflict,
   createRouteBuilder,
+  forbidden,
   notFound,
 } from "@stack/service-kit";
 import type { Rng } from "../games/rng.js";
@@ -18,24 +19,55 @@ import {
   dailyBonus,
   dayIn,
 } from "./economy.js";
-import { decodeHandCursor, encodeHandCursor, planAction, planStart, toHandRow } from "./hands.js";
+import { CATALOG, shopItem } from "./catalog.js";
+import { decodeHandCursor, encodeHandCursor, planAction, planStart, type QuestKey, toHandRow } from "./hands.js";
 import { levelProgress, isoWeek } from "./progress.js";
-import { GAMES, type GameRegistry } from "./registry.js";
 import {
+  type ActiveQuest,
+  type Completion,
+  QUESTS,
+  type QuestPool,
+  activeQuests,
+  isoWeekOfDay,
+  planClaim,
+  tiersDone,
+} from "./quests.js";
+import { GAMES, type GameRegistry } from "./registry.js";
+import { planPurchase, toShopItemRow } from "./shop.js";
+import { chartDays, startOfDay, toStatsResponse } from "./stats.js";
+import {
+  type AchievementRow,
+  type BalanceSeries,
+  type BuyResponse,
   type ClaimResponse,
+  type CompletionRow,
+  type EquipResponse,
   type HandPage,
   type HandResponse,
   type HandRow,
   type LedgerPage,
+  type LevelRow,
   type PlayerRecord,
   type PlayerRow,
+  type QuestClaimResponse,
+  type QuestProgressRecord,
+  type QuestRow,
+  type QuestsResponse,
+  type ShopResponse,
+  type StatsResponse,
   actionInput,
   claimInput,
+  equipInput,
   handIdParam,
   handsQuery,
+  itemIdParam,
   ledgerQuery,
   meQuery,
+  questClaimInput,
+  questIdParam,
+  questsQuery,
   startHandInput,
+  statsBalanceQuery,
   toLedgerRow,
 } from "./types.js";
 
@@ -55,25 +87,31 @@ export interface HighrollerRouteDeps {
   rng: Rng;
   /** The games on offer. Defaults to the registry; tests pass their own. */
   games?: GameRegistry;
+  /** The quest pools and achievements. Defaults to quests.ts; tests pass their own. */
+  quests?: QuestPool;
   /** Injectable clock for tests. */
   now?: () => Date;
 }
 
 export const resolveHighrollerScope = (user: SessionUser, repo: HighrollerRepo) => repo.ensurePlayer(user);
 
+export function toLevelRow(xp: number): LevelRow {
+  const lv = levelProgress(xp);
+  return { level: lv.level, level_xp: lv.into, level_xp_needed: lv.needed };
+}
+
+const toCompletionRow = (c: Completion): CompletionRow => ({ quest_id: c.questId, kind: c.kind, text: c.text, tier: c.tier });
+
 export function toPlayerRow(p: PlayerRecord, today: string): PlayerRow {
   const daily = dailyBonus(p, today);
   const streak = currentStreak(p, today);
-  const lv = levelProgress(p.xp);
   const bail = bailout(p, today);
   return {
     user_id: p.userId,
     display_name: p.displayName,
     balance: p.balance,
     xp: p.xp,
-    level: lv.level,
-    level_xp: lv.into,
-    level_xp_needed: lv.needed,
+    ...toLevelRow(p.xp),
     daily: { available: daily.ok, streak, amount: daily.ok ? daily.amount : bonusFor(streak) },
     bailout: {
       available: bail.ok,
@@ -81,13 +119,67 @@ export function toPlayerRow(p: PlayerRecord, today: string): PlayerRow {
       floor: BAILOUT_FLOOR,
       top_up_to: BAILOUT_TOP_UP,
     },
+    equipped: p.equipped,
     created_at: p.createdAt,
+  };
+}
+
+const nextDay = (day: string, n = 1) => {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+function toQuestRow(q: ActiveQuest, row: QuestProgressRecord | undefined): QuestRow {
+  const def = q.def;
+  if (def.kind === "achievement") throw new Error("not a quest");
+  const progress = row?.progress ?? 0;
+  return {
+    id: def.id,
+    kind: def.kind,
+    game: def.game ?? null,
+    text: def.text,
+    target: def.target,
+    progress: Math.min(progress, def.target),
+    reward: def.reward,
+    complete: progress >= def.target,
+    claimed: (row?.claimed ?? 0) > 0,
+  };
+}
+
+function toAchievementRow(q: ActiveQuest, row: QuestProgressRecord | undefined): AchievementRow {
+  const def = q.def;
+  if (def.kind !== "achievement") throw new Error("not an achievement");
+  const progress = row?.progress ?? 0;
+  const claimed = row?.claimed ?? 0;
+  return {
+    id: def.id,
+    name: def.name,
+    game: def.game ?? null,
+    progress,
+    tiers: def.tiers.map((t, i) => ({
+      target: t.target,
+      text: def.text(t.target),
+      reward: t.reward,
+      complete: progress >= t.target,
+      claimed: i < claimed,
+    })),
+    claimable: claimed < tiersDone(def, progress),
   };
 }
 
 export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<HighrollerRepo, PlayerRecord>[] {
   const now = deps.now ?? (() => new Date());
   const games = deps.games ?? GAMES;
+  const pool = deps.quests ?? QUESTS;
+  const gameIds = Object.keys(games);
+
+  /** The player's quests on their calendar day in `timeZone`, and the rows to read for them. */
+  const questsFor = (userId: string, at: Date, timeZone: string) => {
+    const active = activeQuests(pool, gameIds, userId, dayIn(at, timeZone));
+    const keys: QuestKey[] = active.map((q) => ({ questId: q.def.id, period: q.period }));
+    return { active, keys };
+  };
 
   /** One claim: eligibility decided inside the transaction, on the player it read. */
   function claim(kind: "daily_bonus" | "bailout", rule: (p: PlayerRecord, today: string) => Eligibility) {
@@ -108,10 +200,16 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
     });
   }
 
-  const handResponse = (out: { hand: Parameters<typeof toHandRow>[0]; player: PlayerRecord }): HandResponse => ({
+  const handResponse = (out: {
+    hand: Parameters<typeof toHandRow>[0];
+    player: PlayerRecord;
+    completed: Completion[];
+  }): HandResponse => ({
     hand: toHandRow(out.hand, games),
     balance: out.player.balance,
     xp: out.player.xp,
+    ...toLevelRow(out.player.xp),
+    completed: out.completed.map(toCompletionRow),
   });
 
   return [
@@ -176,7 +274,9 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
         const dealt = game.engine.deal(bets.data, deps.rng, variant);
         const at = now();
         const week = isoWeek(at);
-        const out = await ctx.repo.handTransaction(ctx.user.userId, { handId: body.id, game: body.game, week }, (read) =>
+        const quests = questsFor(ctx.user.userId, at, body.timeZone);
+        const key = { handId: body.id, game: body.game, week, quests: quests.keys };
+        const out = await ctx.repo.handTransaction(ctx.user.userId, key, (read) =>
           planStart(read, {
             userId: ctx.user.userId,
             handId: body.id,
@@ -186,6 +286,7 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
             dealt,
             now: at.toISOString(),
             week,
+            quests: quests.active,
           }),
         );
         return handResponse(out);
@@ -199,7 +300,9 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
       async handler(ctx, { params, body }): Promise<HandResponse> {
         const at = now();
         const week = isoWeek(at);
-        const out = await ctx.repo.handTransaction(ctx.user.userId, { handId: params.id, game: null, week }, (read) =>
+        const quests = questsFor(ctx.user.userId, at, body.timeZone ?? "UTC");
+        const key = { handId: params.id, game: null, week, quests: quests.keys };
+        const out = await ctx.repo.handTransaction(ctx.user.userId, key, (read) =>
           planAction(read, {
             userId: ctx.user.userId,
             handId: params.id,
@@ -208,6 +311,7 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
             games,
             now: at.toISOString(),
             week,
+            quests: quests.active,
           }),
         );
         return handResponse(out);
@@ -246,6 +350,147 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
         return {
           hands: rows.map((h) => toHandRow(h, games)),
           next_cursor: rows.length === query.limit && last ? encodeHandCursor(last) : null,
+        };
+      },
+    }),
+
+    // ---------- stats ----------
+
+    route({
+      method: "GET",
+      path: "/stats",
+      async handler(ctx): Promise<StatsResponse> {
+        return toStatsResponse(await ctx.repo.getGameStats(ctx.user.userId));
+      },
+    }),
+
+    route({
+      method: "GET",
+      path: "/stats/balance",
+      input: { query: statsBalanceQuery },
+      async handler(ctx, { query }): Promise<BalanceSeries> {
+        const days = chartDays(query.range, query.timeZone, now(), new Date(ctx.scope.createdAt));
+        // Today's point is the balance now; past days' come from the ledger.
+        const past = await ctx.repo.balancesAt(ctx.user.userId, days.slice(0, -1).map((d) => d.end));
+        const balances = [...past, ctx.scope.balance];
+        return {
+          range: query.range,
+          points: days.flatMap((d, i) => (balances[i] === null ? [] : [{ day: d.day, balance: balances[i]! }])),
+        };
+      },
+    }),
+
+    // ---------- shop ----------
+
+    route({
+      method: "GET",
+      path: "/shop",
+      async handler(ctx): Promise<ShopResponse> {
+        const owned = new Set(await ctx.repo.getInventory(ctx.user.userId));
+        const equipped = ctx.scope.equipped;
+        return { items: CATALOG.map((item) => toShopItemRow(item, owned, equipped)), equipped };
+      },
+    }),
+
+    route({
+      method: "POST",
+      path: "/shop/:itemId/buy",
+      input: { params: itemIdParam, body: claimInput },
+      async handler(ctx, { params, body }): Promise<BuyResponse> {
+        const item = shopItem(params.itemId);
+        if (!item) throw notFound();
+        const at = now();
+        // A purchase moves only achievements, whose period is "ever"; the zone just names the day.
+        const quests = questsFor(ctx.user.userId, at, body.timeZone);
+        const active = quests.active.filter((q) => q.def.kind === "achievement" && "purchases" in q.def.match);
+        const out = await ctx.repo.purchase(
+          ctx.user.userId,
+          { itemId: item.id, quests: active.map((q) => ({ questId: q.def.id, period: q.period })) },
+          (read) => planPurchase(read, { item, quests: active, now: at.toISOString() }),
+        );
+        return {
+          item: toShopItemRow(item, new Set([item.id]), ctx.scope.equipped),
+          balance: out.player.balance,
+          completed: out.completed.map(toCompletionRow),
+        };
+      },
+    }),
+
+    route({
+      method: "PUT",
+      path: "/equipped",
+      input: { body: equipInput },
+      async handler(ctx, { body }): Promise<EquipResponse> {
+        const item = shopItem(body.itemId);
+        if (!item) throw notFound();
+        if (item.kind !== body.kind) throw badRequest("WRONG_KIND", { code: "WRONG_KIND" });
+        const owned = toShopItemRow(item, new Set(await ctx.repo.getInventory(ctx.user.userId)), ctx.scope.equipped).owned;
+        if (!owned) throw forbidden("NOT_OWNED");
+        const equipped = { ...ctx.scope.equipped, [body.kind]: item.id };
+        await ctx.repo.setEquipped(ctx.user.userId, equipped);
+        return { equipped };
+      },
+    }),
+
+    // ---------- quests ----------
+
+    route({
+      method: "GET",
+      path: "/quests",
+      input: { query: questsQuery },
+      async handler(ctx, { query }): Promise<QuestsResponse> {
+        const at = now();
+        const today = dayIn(at, query.timeZone);
+        const { active, keys } = questsFor(ctx.user.userId, at, query.timeZone);
+        const rows = new Map(
+          (await ctx.repo.getQuestProgress(ctx.user.userId, keys)).map((r) => [`${r.questId}|${r.period}`, r]),
+        );
+        const rowOf = (q: ActiveQuest) => rows.get(`${q.def.id}|${q.period}`);
+        const of = (kind: string) => active.filter((q) => q.def.kind === kind);
+        const daily = of("daily");
+        const weekly = of("weekly");
+        // Days to next Monday: the ISO week turns over there.
+        const dow = new Date(`${today}T12:00:00Z`).getUTCDay() || 7;
+        const claimableCount = active.reduce((n, q) => {
+          const row = rowOf(q);
+          return n + Math.max(0, tiersDone(q.def, row?.progress ?? 0) - (row?.claimed ?? 0));
+        }, 0);
+        return {
+          daily: {
+            period: daily[0]?.period ?? `d:${today}`,
+            resets_at: startOfDay(nextDay(today), query.timeZone).toISOString(),
+            quests: daily.map((q) => toQuestRow(q, rowOf(q))),
+          },
+          weekly: {
+            period: weekly[0]?.period ?? `w:${isoWeekOfDay(today)}`,
+            resets_at: startOfDay(nextDay(today, 8 - dow), query.timeZone).toISOString(),
+            quests: weekly.map((q) => toQuestRow(q, rowOf(q))),
+          },
+          achievements: of("achievement").map((q) => toAchievementRow(q, rowOf(q))),
+          claimable: claimableCount,
+        };
+      },
+    }),
+
+    route({
+      method: "POST",
+      path: "/quests/:id/claim",
+      input: { params: questIdParam, body: questClaimInput },
+      async handler(ctx, { params, body }): Promise<QuestClaimResponse> {
+        const at = now();
+        // Only today's and this week's quests can be claimed: yesterday's expire with the day.
+        const quest = questsFor(ctx.user.userId, at, body.timeZone).active.find((q) => q.def.id === params.id);
+        if (!quest) throw notFound();
+        const key = { questId: quest.def.id, period: quest.period };
+        const out = await ctx.repo.claimQuest(ctx.user.userId, key, (read) =>
+          planClaim(read, { quest: quest.def, period: quest.period, now: at.toISOString() }),
+        );
+        return {
+          quest_id: quest.def.id,
+          reward: out.reward,
+          balance: out.player.balance,
+          xp: out.player.xp,
+          ...toLevelRow(out.player.xp),
         };
       },
     }),

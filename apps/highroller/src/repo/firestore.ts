@@ -1,13 +1,15 @@
 import { FieldPath, Timestamp } from "@google-cloud/firestore";
 import type { Firestore, Transaction } from "@google-cloud/firestore";
+import { equippedOf } from "../domain/catalog.js";
 import { applyCreditTo, displayNameOf, newPlayer } from "../domain/economy.js";
-import { type HandTxRead, type HandTxWrites, SETTLED_HAND_RETENTION_DAYS } from "../domain/hands.js";
+import { type HandTxRead, type HandTxWrites, type QuestKey, SETTLED_HAND_RETENTION_DAYS } from "../domain/hands.js";
 import type {
   GameStatsRecord,
   HandRecord,
   LedgerEntry,
   LedgerKind,
   PlayerRecord,
+  QuestProgressRecord,
   WeeklyStatsRecord,
 } from "../domain/types.js";
 import type { HighrollerRepo } from "./types.js";
@@ -20,6 +22,7 @@ import type { HighrollerRepo } from "./types.js";
  *                                        That map is what keeps one active hand per
  *                                        game (Firestore has no partial unique index):
  *                                        every hand transaction reads and writes it.
+ *                                        `equipped` is written only by setEquipped.
  *   highroller_ledger/{userId}_{seq}     one per balance change; the deterministic id
  *                                        (seq zero-padded) makes a retried write land
  *                                        on the same document
@@ -30,6 +33,10 @@ import type { HighrollerRepo } from "./types.js";
  *                                        gets `purgeAt`, the field its TTL policy reads.
  *   highroller_game_stats/{userId}_{game}
  *   highroller_weekly_stats/{week}_{userId}
+ *   highroller_inventory/{userId}_{itemId}   one per cosmetic bought; the deterministic id
+ *                                        makes a second purchase a conflict the purchase
+ *                                        transaction sees when it reads
+ *   highroller_quest_progress/{userId}_{questId}_{period}
  *
  * Every transaction does all its reads before any write and calls only pure
  * domain functions, so contention retries are safe.
@@ -40,6 +47,8 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
   const hands = db.collection(`${prefix}hands`);
   const gameStats = db.collection(`${prefix}game_stats`);
   const weeklyStats = db.collection(`${prefix}weekly_stats`);
+  const inventory = db.collection(`${prefix}inventory`);
+  const questProgress = db.collection(`${prefix}quest_progress`);
 
   interface PlayerDoc {
     userId: string;
@@ -53,6 +62,8 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
     ledgerSeq: number;
     createdAt: Timestamp;
     activeHands: Record<string, string>;
+    /** Absent on players from before the shop. */
+    equipped?: Record<string, string>;
   }
 
   const toPlayer = (d: PlayerDoc): PlayerRecord => ({
@@ -65,10 +76,11 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
     lastDailyOn: d.lastDailyOn,
     lastBailoutOn: d.lastBailoutOn,
     ledgerSeq: d.ledgerSeq,
+    equipped: equippedOf(d.equipped),
     createdAt: d.createdAt.toDate().toISOString(),
   });
 
-  /** The record's fields as stored; `activeHands` is written separately. */
+  /** The record's fields as stored; `activeHands` and `equipped` are written separately. */
   const playerFields = (p: PlayerRecord) => ({
     userId: p.userId,
     displayName: p.displayName,
@@ -170,6 +182,49 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
   const gameStatsRef = (userId: string, game: string) => gameStats.doc(`${userId}_${game}`);
   const weeklyRef = (week: string, userId: string) => weeklyStats.doc(`${week}_${userId}`);
 
+  interface QuestDoc {
+    userId: string;
+    questId: string;
+    period: string;
+    progress: number;
+    run: number;
+    marks: string[];
+    claimed: number;
+    updatedAt: Timestamp;
+    claimedAt: Timestamp | null;
+  }
+
+  const questRef = (userId: string, k: QuestKey) => questProgress.doc(`${userId}_${k.questId}_${k.period}`);
+
+  const toQuestDoc = (q: QuestProgressRecord): QuestDoc => ({
+    ...q,
+    updatedAt: Timestamp.fromDate(new Date(q.updatedAt)),
+    claimedAt: q.claimedAt === null ? null : Timestamp.fromDate(new Date(q.claimedAt)),
+  });
+
+  const toQuest = (d: QuestDoc): QuestProgressRecord => ({
+    userId: d.userId,
+    questId: d.questId,
+    period: d.period,
+    progress: d.progress,
+    run: d.run,
+    marks: d.marks,
+    claimed: d.claimed,
+    updatedAt: d.updatedAt.toDate().toISOString(),
+    claimedAt: d.claimedAt === null ? null : d.claimedAt.toDate().toISOString(),
+  });
+
+  async function readQuests(tx: Transaction | null, userId: string, keys: QuestKey[]): Promise<QuestProgressRecord[]> {
+    if (!keys.length) return [];
+    const refs = keys.map((k) => questRef(userId, k));
+    const snaps = tx ? await tx.getAll(...refs) : await db.getAll(...refs);
+    return snaps.filter((d) => d.exists).map((d) => toQuest(d.data() as QuestDoc));
+  }
+
+  const writeQuests = (tx: Transaction, rows: QuestProgressRecord[]) => {
+    for (const q of rows) tx.set(questRef(q.userId, q), toQuestDoc(q));
+  };
+
   async function readPlayer(tx: Transaction, userId: string): Promise<PlayerDoc | null> {
     const snap = await tx.get(players.doc(userId));
     return snap.exists ? (snap.data() as PlayerDoc) : null;
@@ -186,6 +241,7 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
     tx.set(hands.doc(h.id), toHandDoc(h));
     if (w.gameStats) tx.set(gameStatsRef(w.gameStats.userId, w.gameStats.game), w.gameStats);
     if (w.weeklyStats) tx.set(weeklyRef(w.weeklyStats.week, w.weeklyStats.userId), w.weeklyStats);
+    writeQuests(tx, w.quests);
   }
 
   return {
@@ -209,6 +265,7 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
           ...playerFields(player),
           createdAt: Timestamp.fromDate(new Date(player.createdAt)),
           activeHands: {},
+          equipped: player.equipped,
         } satisfies PlayerDoc);
         tx.create(ledgerRef(entry), toLedgerDoc(entry));
         return player;
@@ -247,7 +304,8 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
         const hand = handSnap.exists ? toHand(handSnap.id, handSnap.data() as HandDoc) : null;
         const game = key.game ?? (hand?.userId === userId ? hand.game : null);
 
-        let read: HandTxRead = { player: toPlayer(p), hand, activeHandId: null, gameStats: null, weeklyStats: null };
+        const quests = await readQuests(tx, userId, key.quests ?? []);
+        let read: HandTxRead = { player: toPlayer(p), hand, activeHandId: null, gameStats: null, weeklyStats: null, quests };
         if (game) {
           const [g, w] = await tx.getAll(gameStatsRef(userId, game), weeklyRef(key.week, userId));
           read = {
@@ -300,6 +358,69 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
     async getWeeklyStats(userId, week) {
       const snap = await weeklyRef(week, userId).get();
       return snap.exists ? (snap.data() as WeeklyStatsRecord) : null;
+    },
+
+    async balancesAt(userId, instants) {
+      return Promise.all(
+        instants.map(async (at) => {
+          const snap = await ledger
+            .where("userId", "==", userId)
+            .where("createdAt", "<=", Timestamp.fromDate(at))
+            .orderBy("createdAt", "desc")
+            .orderBy("seq", "desc")
+            .limit(1)
+            .get();
+          return snap.empty ? null : (snap.docs[0].data() as LedgerDoc).balanceAfter;
+        }),
+      );
+    },
+
+    async getInventory(userId) {
+      const snap = await inventory.where("userId", "==", userId).get();
+      return snap.docs
+        .map((d) => d.data() as { itemId: string; acquiredAt: Timestamp })
+        .sort((a, b) => a.acquiredAt.toMillis() - b.acquiredAt.toMillis())
+        .map((d) => d.itemId);
+    },
+
+    async purchase(userId, key, step) {
+      return db.runTransaction(async (tx) => {
+        const p = await readPlayer(tx, userId);
+        if (!p) throw new Error(`no player ${userId}`);
+        const owned = (await tx.get(inventory.doc(`${userId}_${key.itemId}`))).exists;
+        const quests = await readQuests(tx, userId, key.quests);
+        const out = step({ player: toPlayer(p), owned, quests });
+        tx.update(players.doc(userId), playerFields(out.player));
+        for (const e of out.ledger) tx.create(ledgerRef(e), toLedgerDoc(e));
+        tx.create(inventory.doc(`${userId}_${out.itemId}`), {
+          userId,
+          itemId: out.itemId,
+          acquiredAt: Timestamp.fromDate(new Date(out.ledger[0]?.createdAt ?? Date.now())),
+        });
+        writeQuests(tx, out.quests);
+        return out;
+      });
+    },
+
+    async setEquipped(userId, equipped) {
+      await players.doc(userId).update({ equipped });
+    },
+
+    async getQuestProgress(userId, keys) {
+      return readQuests(null, userId, keys);
+    },
+
+    async claimQuest(userId, key, step) {
+      return db.runTransaction(async (tx) => {
+        const p = await readPlayer(tx, userId);
+        if (!p) throw new Error(`no player ${userId}`);
+        const [row] = await readQuests(tx, userId, [key]);
+        const out = step({ player: toPlayer(p), row: row ?? null });
+        tx.update(players.doc(userId), playerFields(out.player));
+        tx.create(ledgerRef(out.entry), toLedgerDoc(out.entry));
+        writeQuests(tx, [out.row]);
+        return out;
+      });
     },
 
     async close() {

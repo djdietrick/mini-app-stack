@@ -159,6 +159,21 @@ describe("progress", () => {
     assert.deepEqual(levelProgress(150), { level: 2, into: 50, needed: 300 });
   });
 
+  it("never goes backwards", () => {
+    for (let w = 0; w < 200_000; w += 37) assert.ok(xpForHand(w + 37) >= xpForHand(w));
+    for (let xp = 0; xp < 1_000_000; xp += 97) assert.ok(levelFor(xp + 97) >= levelFor(xp));
+    for (let n = 1; n < 200; n++) assert.ok(xpForLevel(n + 1) > xpForLevel(n));
+  });
+
+  it("lets no single bet jump more than a level or two at low levels", () => {
+    // The largest stake on any table: roulette's 10,000 a spin.
+    const maxBet = xpForHand(10_000);
+    for (let xp = 0; xp < xpForLevel(6); xp++) {
+      assert.ok(levelFor(xp + maxBet) - levelFor(xp) <= 1, `at ${xp} XP`);
+    }
+    assert.ok(levelFor(maxBet) <= 2, "a new player's first max bet");
+  });
+
   it("names ISO weeks in UTC", () => {
     assert.equal(isoWeek(new Date("2026-10-15T12:00:00Z")), "2026-W42");
     assert.equal(isoWeek(new Date("2026-10-12T00:00:00Z")), "2026-W42", "Monday starts the week");

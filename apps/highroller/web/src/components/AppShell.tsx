@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { usePlayer } from "../player";
 import { type Route, href } from "../router";
 import { BalancePill } from "./BalancePill";
+import { LevelBadge } from "./LevelBadge";
 
 /**
  * Phone first: one column, the balance pinned in the header, and a bottom
@@ -64,8 +65,30 @@ function isActive(tab: Route, current: Route): boolean {
   return tab.name === current.name;
 }
 
+/** The count of quest rewards waiting, on the Quests tab. */
+function Badge({ n }: { n: number }) {
+  if (n <= 0) return null;
+  return (
+    <span className="absolute -right-2 -top-1.5 min-w-[18px] rounded-full bg-gold px-1 text-center font-mono text-[11px] font-bold leading-[18px] text-gold-ink">
+      {n > 9 ? "9+" : n}
+    </span>
+  );
+}
+
+function TabIcon({ tab, claimable }: { tab: (typeof TABS)[number]; claimable: number }) {
+  return (
+    <span className="relative">
+      {tab.icon}
+      {tab.route.name === "quests" && <Badge n={claimable} />}
+    </span>
+  );
+}
+
+const tabLabel = (tab: (typeof TABS)[number], claimable: number) =>
+  tab.route.name === "quests" && claimable > 0 ? `${tab.label}, ${claimable} to claim` : tab.label;
+
 export function AppShell({ route, bleed = false, children }: { route: Route; bleed?: boolean; children: ReactNode }) {
-  const { player } = usePlayer();
+  const { claimable } = usePlayer();
 
   return (
     <div className="min-h-[100dvh] lg:grid lg:grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[232px_minmax(0,1fr)]">
@@ -81,13 +104,14 @@ export function AppShell({ route, bleed = false, children }: { route: Route; ble
             key={t.label}
             href={href(t.route)}
             title={t.label}
+            aria-label={tabLabel(t, claimable)}
             aria-current={isActive(t.route, route) ? "page" : undefined}
             className={
               "focus-ring flex min-h-[44px] items-center justify-center gap-3 rounded-xl px-3 text-[15px] xl:justify-start " +
               (isActive(t.route, route) ? "bg-raised text-gold" : "text-muted hover:text-ink")
             }
           >
-            {t.icon}
+            <TabIcon tab={t} claimable={claimable} />
             <span className="sr-only xl:not-sr-only">{t.label}</span>
           </a>
         ))}
@@ -99,11 +123,7 @@ export function AppShell({ route, bleed = false, children }: { route: Route; ble
             Highroller
           </a>
           <div className="flex items-center gap-2">
-            {player && (
-              <span title={`${player.xp} XP`} className="rounded-full border border-line px-2.5 py-1 font-mono text-[12px] font-bold text-muted">
-                Lv {player.level}
-              </span>
-            )}
+            <LevelBadge />
             <BalancePill />
           </div>
         </header>
@@ -126,13 +146,14 @@ export function AppShell({ route, bleed = false, children }: { route: Route; ble
             <a
               key={t.label}
               href={href(t.route)}
+              aria-label={tabLabel(t, claimable)}
               aria-current={isActive(t.route, route) ? "page" : undefined}
               className={
                 "focus-ring flex min-h-[56px] flex-col items-center justify-center gap-1 text-xs " +
                 (isActive(t.route, route) ? "text-gold" : "text-muted")
               }
             >
-              {t.icon}
+              <TabIcon tab={t} claimable={claimable} />
               {t.label}
             </a>
           ))}

@@ -1,11 +1,15 @@
 import type { Closable, SessionUser } from "@stack/service-kit";
+import type { Equipped } from "../domain/catalog.js";
 import type { Credit } from "../domain/economy.js";
-import type { HandTxKey, HandTxOutcome, HandTxRead } from "../domain/hands.js";
+import type { HandTxKey, HandTxOutcome, HandTxRead, QuestKey } from "../domain/hands.js";
+import type { ClaimOutcome, ClaimRead } from "../domain/quests.js";
+import type { PurchaseKey, PurchaseOutcome, PurchaseRead } from "../domain/shop.js";
 import type {
   GameStatsRecord,
   HandRecord,
   LedgerEntry,
   PlayerRecord,
+  QuestProgressRecord,
   WeeklyStatsRecord,
 } from "../domain/types.js";
 
@@ -13,7 +17,7 @@ import type {
  * Highroller's data port. Implemented by postgres.ts (self-hosted) and
  * firestore.ts (cloud); src/domain depends only on this.
  *
- * The two transactional methods take a pure function and run it inside the
+ * The transactional methods take a pure function and run it inside the
  * transaction on what it read. That function may run more than once on
  * Firestore (contention retries), so it must not draw randomness or touch
  * anything outside its arguments; the domain makes sure of both.
@@ -59,4 +63,26 @@ export interface HighrollerRepo extends Closable {
 
   getGameStats(userId: string): Promise<GameStatsRecord[]>;
   getWeeklyStats(userId: string, week: string): Promise<WeeklyStatsRecord | null>;
+
+  /**
+   * The balance at each instant: `balance_after` of the player's last ledger
+   * entry created at or before it, or null before their first.
+   */
+  balancesAt(userId: string, instants: Date[]): Promise<(number | null)[]>;
+
+  /** Ids of the items the player has bought (defaults are never stored). */
+  getInventory(userId: string): Promise<string[]>;
+  /**
+   * One purchase transaction (domain/shop.ts): reads the PurchaseRead set for
+   * `key`, runs `step`, and writes the player, ledger, inventory row and
+   * quest progress it returns.
+   */
+  purchase(userId: string, key: PurchaseKey, step: (read: PurchaseRead) => PurchaseOutcome): Promise<PurchaseOutcome>;
+  /** Replaces the player's equipped map. Ownership is the caller's check. */
+  setEquipped(userId: string, equipped: Equipped): Promise<void>;
+
+  /** The progress rows that exist among `keys`. */
+  getQuestProgress(userId: string, keys: QuestKey[]): Promise<QuestProgressRecord[]>;
+  /** One claim transaction (domain/quests.ts `planClaim`): player, progress row, ledger row. */
+  claimQuest(userId: string, key: QuestKey, step: (read: ClaimRead) => ClaimOutcome): Promise<ClaimOutcome>;
 }

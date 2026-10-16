@@ -1,12 +1,14 @@
 import type { PostgresClient, PostgresTx } from "@stack/db-clients";
+import { equippedOf } from "../domain/catalog.js";
 import { applyCreditTo, displayNameOf, newPlayer } from "../domain/economy.js";
-import { type HandTxRead, type HandTxWrites, SETTLED_HAND_RETENTION_DAYS } from "../domain/hands.js";
+import { type HandTxRead, type HandTxWrites, type QuestKey, SETTLED_HAND_RETENTION_DAYS } from "../domain/hands.js";
 import type {
   GameStatsRecord,
   HandRecord,
   LedgerEntry,
   LedgerKind,
   PlayerRecord,
+  QuestProgressRecord,
   WeeklyStatsRecord,
 } from "../domain/types.js";
 import type { HighrollerRepo } from "./types.js";
@@ -39,6 +41,7 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     last_daily_on: string | null;
     last_bailout_on: string | null;
     ledger_seq: number;
+    equipped: Record<string, unknown> | null;
     created_at: string;
   }
 
@@ -52,6 +55,7 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     lastDailyOn: day(r.last_daily_on),
     lastBailoutOn: day(r.last_bailout_on),
     ledgerSeq: r.ledger_seq,
+    equipped: equippedOf(r.equipped),
     createdAt: iso(r.created_at),
   });
 
@@ -153,6 +157,58 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     biggestWin: Number(r.biggest_win),
   });
 
+  interface QuestDbRow {
+    user_id: string;
+    quest_id: string;
+    period: string;
+    progress: string;
+    run: number;
+    marks: string[];
+    claimed: number;
+    updated_at: string;
+    claimed_at: string | null;
+  }
+
+  const toQuest = (r: QuestDbRow): QuestProgressRecord => ({
+    userId: r.user_id,
+    questId: r.quest_id,
+    period: r.period,
+    progress: Number(r.progress),
+    run: r.run,
+    marks: r.marks,
+    claimed: r.claimed,
+    updatedAt: iso(r.updated_at),
+    claimedAt: r.claimed_at === null ? null : iso(r.claimed_at),
+  });
+
+  async function readQuests(tx: Sql, userId: string, keys: QuestKey[]): Promise<QuestProgressRecord[]> {
+    if (!keys.length) return [];
+    const rows = await tx<QuestDbRow[]>`
+      SELECT q.* FROM quest_progress q
+      JOIN unnest(${keys.map((k) => k.questId)}::text[], ${keys.map((k) => k.period)}::text[]) AS k(quest_id, period)
+        ON q.quest_id = k.quest_id AND q.period = k.period
+      WHERE q.user_id = ${userId}
+    `;
+    return rows.map(toQuest);
+  }
+
+  async function writeQuests(tx: Sql, rows: QuestProgressRecord[]): Promise<void> {
+    for (const q of rows) {
+      await tx`
+        INSERT INTO quest_progress (user_id, quest_id, period, progress, run, marks, claimed, updated_at, claimed_at)
+        VALUES (${q.userId}, ${q.questId}, ${q.period}, ${q.progress}, ${q.run}, ${JSON.stringify(q.marks)}::jsonb,
+                ${q.claimed}, ${q.updatedAt}::timestamptz, ${q.claimedAt}::timestamptz)
+        ON CONFLICT (user_id, quest_id, period) DO UPDATE SET
+          progress = EXCLUDED.progress,
+          run = EXCLUDED.run,
+          marks = EXCLUDED.marks,
+          claimed = EXCLUDED.claimed,
+          updated_at = EXCLUDED.updated_at,
+          claimed_at = EXCLUDED.claimed_at
+      `;
+    }
+  }
+
   async function lockPlayer(tx: Sql, userId: string): Promise<PlayerRecord | null> {
     const [row] = await tx<PlayerDbRow[]>`SELECT * FROM players WHERE user_id = ${userId} FOR UPDATE`;
     return row ? toPlayer(row) : null;
@@ -220,6 +276,7 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
           expected_return = EXCLUDED.expected_return
       `;
     }
+    await writeQuests(tx, w.quests);
     const wk = w.weeklyStats;
     if (wk) {
       await tx`
@@ -303,7 +360,8 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
         const hand = handRow ? toHand(handRow) : null;
         const game = key.game ?? (hand?.userId === userId ? hand.game : null);
 
-        let read: HandTxRead = { player, hand, activeHandId: null, gameStats: null, weeklyStats: null };
+        const quests = await readQuests(tx, userId, key.quests ?? []);
+        let read: HandTxRead = { player, hand, activeHandId: null, gameStats: null, weeklyStats: null, quests };
         if (game) {
           const [active] = await tx<{ id: string }[]>`
             SELECT id FROM hands WHERE user_id = ${userId} AND game = ${game} AND status = 'active'
@@ -362,6 +420,70 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
         SELECT * FROM weekly_stats WHERE week = ${week} AND user_id = ${userId}
       `;
       return row ? toWeekly(row) : null;
+    },
+
+    async balancesAt(userId, instants) {
+      if (!instants.length) return [];
+      const rows = await sql<{ i: number; balance_after: string | null }[]>`
+        SELECT t.i, l.balance_after
+        FROM unnest(${instants.map((d) => d.toISOString())}::timestamptz[]) WITH ORDINALITY AS t(at, i)
+        LEFT JOIN LATERAL (
+          SELECT balance_after FROM ledger
+          WHERE user_id = ${userId} AND created_at <= t.at
+          ORDER BY created_at DESC, seq DESC
+          LIMIT 1
+        ) l ON true
+        ORDER BY t.i
+      `;
+      return rows.map((r) => (r.balance_after === null ? null : Number(r.balance_after)));
+    },
+
+    async getInventory(userId) {
+      const rows = await sql<{ item_id: string }[]>`
+        SELECT item_id FROM inventory WHERE user_id = ${userId} ORDER BY acquired_at
+      `;
+      return rows.map((r) => r.item_id);
+    },
+
+    async purchase(userId, key, step) {
+      return sql.begin(async (tx) => {
+        const player = await lockPlayer(tx, userId);
+        if (!player) throw new Error(`no player ${userId}`);
+        const [owned] = await tx`
+          SELECT 1 FROM inventory WHERE user_id = ${userId} AND item_id = ${key.itemId}
+        `;
+        const quests = await readQuests(tx, userId, key.quests);
+        const out = step({ player, owned: !!owned, quests });
+        await writePlayer(tx, out.player);
+        await insertLedger(tx, out.ledger);
+        await tx`
+          INSERT INTO inventory (user_id, item_id, acquired_at)
+          VALUES (${userId}, ${out.itemId}, ${out.ledger[0]?.createdAt ?? new Date().toISOString()}::timestamptz)
+        `;
+        await writeQuests(tx, out.quests);
+        return out;
+      });
+    },
+
+    async setEquipped(userId, equipped) {
+      await sql`UPDATE players SET equipped = ${JSON.stringify(equipped)}::jsonb WHERE user_id = ${userId}`;
+    },
+
+    async getQuestProgress(userId, keys) {
+      return sql.begin((tx) => readQuests(tx, userId, keys));
+    },
+
+    async claimQuest(userId, key, step) {
+      return sql.begin(async (tx) => {
+        const player = await lockPlayer(tx, userId);
+        if (!player) throw new Error(`no player ${userId}`);
+        const [row] = await readQuests(tx, userId, [key]);
+        const out = step({ player, row: row ?? null });
+        await writePlayer(tx, out.player);
+        await insertLedger(tx, [out.entry]);
+        await writeQuests(tx, [out.row]);
+        return out;
+      });
     },
 
     async close() {

@@ -1,15 +1,24 @@
 import { type Facts, type HandSummary, type Settlement, outcomeOf } from "../games/engine.js";
 import { applyCreditTo } from "./economy.js";
 import { xpForHand } from "./progress.js";
-import type { GameStatsRecord, HandRecord, LedgerEntry, PlayerRecord, WeeklyStatsRecord } from "./types.js";
+import { type ActiveQuest, type Completion, foldQuests } from "./quests.js";
+import type {
+  GameStatsRecord,
+  HandRecord,
+  LedgerEntry,
+  PlayerRecord,
+  QuestProgressRecord,
+  WeeklyStatsRecord,
+} from "./types.js";
 
 /**
  * Settlement: one finished hand → every write it causes, computed once from
  * what the transaction read. Pure, so a retried Firestore transaction gets
  * the same answer and both repos apply exactly the same rule.
  *
- * Quests (#49), the big-win feed (#52) and the jackpot (#57) hook in here;
- * until they land their outputs are empty.
+ * Quest and achievement progress (quests.ts) is folded here. The big-win
+ * feed (#52) and the jackpot (#57) hook in here too; until they land their
+ * outputs are empty.
  */
 export interface SettleInput {
   /** The hand with its final state, wagered already totalled. */
@@ -24,6 +33,8 @@ export interface SettleInput {
   expectedReturn: number;
   /** Chips the lifecycle already paid back mid-hand (engine.paidEarly); the payout row is the rest. */
   paidEarly: number;
+  /** The player's active quests and the progress rows the transaction read for them. */
+  quests?: { active: readonly ActiveQuest[]; rows: readonly QuestProgressRecord[] };
   now: string;
   week: string;
 }
@@ -36,8 +47,10 @@ export interface SettleOutput {
   gameStats: GameStatsRecord;
   weeklyStats: WeeklyStatsRecord;
   summary: HandSummary;
-  /** Filled by #49: quest and achievement progress. */
-  quests: never[];
+  /** Quest progress rows that changed. */
+  quests: QuestProgressRecord[];
+  /** What this hand completed. */
+  completed: Completion[];
   /** Filled by #52: a big-win event. */
   feed: never[];
   /** Filled by #57: a jackpot contribution or hit. */
@@ -82,14 +95,20 @@ export function settleHand(input: SettleInput): SettleOutput {
     biggestWin: Math.max(w.biggestWin, net),
   };
 
+  const summary: HandSummary = { game: hand.game, variant: hand.variant, wagered, returned, net, outcome, facts: input.facts };
+  const quests = input.quests
+    ? foldQuests(input.quests.active, input.quests.rows, { hand: summary }, hand.userId, now)
+    : { rows: [], completed: [] };
+
   return {
     hand: { ...hand, status: "settled", returned, results: settlement.results, settledAt: now },
     player,
     ledger,
     gameStats,
     weeklyStats,
-    summary: { game: hand.game, variant: hand.variant, wagered, returned, net, outcome, facts: input.facts },
-    quests: [],
+    summary,
+    quests: quests.rows,
+    completed: quests.completed,
     feed: [],
     jackpot: null,
   };

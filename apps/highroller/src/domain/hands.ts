@@ -1,5 +1,6 @@
 import { badRequest, conflict, notFound } from "@stack/service-kit";
 import { applyCreditTo } from "./economy.js";
+import type { ActiveQuest, Completion } from "./quests.js";
 import type { GameRegistry, RegisteredGame } from "./registry.js";
 import { settleHand } from "./settle.js";
 import type {
@@ -8,6 +9,7 @@ import type {
   HandRow,
   LedgerEntry,
   PlayerRecord,
+  QuestProgressRecord,
   WeeklyStatsRecord,
 } from "./types.js";
 
@@ -18,7 +20,8 @@ import type {
  *
  *   1. The repo reads a fixed set of documents (HandTxRead) inside its
  *      transaction: the player (locked on Postgres), the hand by id, the
- *      player's active hand for that game, and that game's and week's stats.
+ *      player's active hand for that game, that game's and week's stats, and
+ *      the progress rows of the quests the hand could move.
  *   2. A pure step (`planStart` / `planAction`) turns those reads into the
  *      writes (HandTxWrites), or throws an AppError and writes nothing.
  *
@@ -38,6 +41,8 @@ export interface HandTxRead {
   activeHandId: string | null;
   gameStats: GameStatsRecord | null;
   weeklyStats: WeeklyStatsRecord | null;
+  /** The rows for HandTxKey.quests that exist. */
+  quests?: QuestProgressRecord[];
 }
 
 export interface HandTxWrites {
@@ -48,6 +53,8 @@ export interface HandTxWrites {
   /** Present once the hand settles. */
   gameStats: GameStatsRecord | null;
   weeklyStats: WeeklyStatsRecord | null;
+  /** Quest progress rows that changed, upserted by (questId, period). */
+  quests: QuestProgressRecord[];
 }
 
 export interface HandTxOutcome {
@@ -55,6 +62,14 @@ export interface HandTxOutcome {
   writes: HandTxWrites | null;
   hand: HandRecord;
   player: PlayerRecord;
+  /** Quests and achievement tiers this hand completed. */
+  completed: Completion[];
+}
+
+/** A quest progress row's key. */
+export interface QuestKey {
+  questId: string;
+  period: string;
 }
 
 /** What the repo needs to know before reading: the hand id, and its game when known (a start). */
@@ -63,6 +78,8 @@ export interface HandTxKey {
   /** Null for an action: the repo takes the game from the stored hand. */
   game: string | null;
   week: string;
+  /** The progress rows to read: the player's active quests (quests.ts). */
+  quests?: QuestKey[];
 }
 
 export interface StartPlan {
@@ -75,6 +92,8 @@ export interface StartPlan {
   dealt: unknown;
   now: string;
   week: string;
+  /** What settling may move; their rows are HandTxRead.quests. None when absent. */
+  quests?: ActiveQuest[];
 }
 
 export function planStart(read: HandTxRead, plan: StartPlan): HandTxOutcome {
@@ -84,7 +103,7 @@ export function planStart(read: HandTxRead, plan: StartPlan): HandTxOutcome {
   if (read.hand) {
     // The same id again (a retry, a double tap): the hand as it is, no debit.
     if (read.hand.userId !== plan.userId || read.hand.game !== plan.gameId) throw conflict("HAND_ID_TAKEN");
-    return { writes: null, hand: read.hand, player };
+    return { writes: null, hand: read.hand, player, completed: [] };
   }
   if (read.activeHandId) {
     throw conflict("HAND_IN_PROGRESS", { code: "HAND_IN_PROGRESS", hand_id: read.activeHandId });
@@ -118,7 +137,7 @@ export function planStart(read: HandTxRead, plan: StartPlan): HandTxOutcome {
     createdAt: plan.now,
     settledAt: null,
   };
-  return finish(read, plan.game, hand, after, ledger, plan.now, plan.week);
+  return finish(read, plan.game, hand, after, ledger, plan);
 }
 
 export interface ActionPlan {
@@ -130,6 +149,7 @@ export interface ActionPlan {
   games: GameRegistry;
   now: string;
   week: string;
+  quests?: ActiveQuest[];
 }
 
 export function planAction(read: HandTxRead, plan: ActionPlan): HandTxOutcome {
@@ -174,7 +194,7 @@ export function planAction(read: HandTxRead, plan: ActionPlan): HandTxOutcome {
     view: engine.view(next),
     wagered: hand.wagered + Math.max(0, extra),
   };
-  return finish(read, game, updated, player, ledger, plan.now, plan.week);
+  return finish(read, game, updated, player, ledger, plan);
 }
 
 /** Settles the hand in the same writes when the engine says it is over. */
@@ -184,12 +204,11 @@ function finish(
   hand: HandRecord,
   player: PlayerRecord,
   ledger: LedgerEntry[],
-  now: string,
-  week: string,
+  { now, week, quests = [] }: { now: string; week: string; quests?: ActiveQuest[] },
 ): HandTxOutcome {
   const { engine } = game;
   if (!engine.isFinished(hand.state)) {
-    return { writes: { player, ledger, hand, gameStats: null, weeklyStats: null }, hand, player };
+    return { writes: { player, ledger, hand, gameStats: null, weeklyStats: null, quests: [] }, hand, player, completed: [] };
   }
   const settled = settleHand({
     hand,
@@ -200,6 +219,7 @@ function finish(
     facts: engine.summary(hand.state),
     expectedReturn: engine.expectedReturn?.(hand.state) ?? engine.theoreticalRtp(hand.variant) * hand.wagered,
     paidEarly: engine.paidEarly?.(hand.state) ?? 0,
+    quests: { active: quests, rows: read.quests ?? [] },
     now,
     week,
   });
@@ -210,9 +230,11 @@ function finish(
       hand: settled.hand,
       gameStats: settled.gameStats,
       weeklyStats: settled.weeklyStats,
+      quests: settled.quests,
     },
     hand: settled.hand,
     player: settled.player,
+    completed: settled.completed,
   };
 }
 
