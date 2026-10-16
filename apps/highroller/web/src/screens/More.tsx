@@ -38,7 +38,7 @@ export function More() {
   );
 }
 
-/** A tab whose screen a later issue delivers. */
+/** A screen with nothing on it but a note. */
 export function Placeholder({ title, what }: { title: string; what: string }) {
   return (
     <div>

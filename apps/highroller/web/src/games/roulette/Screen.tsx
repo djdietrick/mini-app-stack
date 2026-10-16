@@ -11,7 +11,7 @@ import { type HandRow, api } from "../../api";
 import { BetBar } from "../../components/BetBar";
 import { useToast } from "../../components/Toast";
 import { chips } from "../../format";
-import { usePlayer } from "../../player";
+import { useEquipped, usePlayer } from "../../player";
 import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
 import { useBetting } from "../../table/betting";
@@ -24,6 +24,7 @@ const HISTORY = 12;
 export default function RouletteScreen({ variant: requested }: { variant: string | null }) {
   const variant: Variant = requested === "american" ? "american" : "european";
   const { player } = usePlayer();
+  const equipped = useEquipped();
   const toast = useToast();
   const balance = player?.balance ?? 0;
   const table = useHand("roulette");
@@ -88,7 +89,7 @@ export default function RouletteScreen({ variant: requested }: { variant: string
     <TableFrame
       title={variant === "american" ? "American roulette" : "European roulette"}
       info={<Rules variant={variant} />}
-      canvas={<TableCanvas scene={scene} view={view} onShown={shown} onError={(e) => toast(`Table error: ${String(e)}`, "loss")} />}
+      canvas={<TableCanvas scene={scene} equipped={equipped} view={view} onShown={shown} onError={(e) => toast(`Table error: ${String(e)}`, "loss")} />}
       overlay={
         zoomed && !spinning ? (
           <button type="button" className="btn absolute right-2 top-14 z-10 min-h-[40px] bg-raised/85 px-3 text-[14px] backdrop-blur" onClick={() => scene.zoomOut()}>

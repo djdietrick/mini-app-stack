@@ -1,9 +1,11 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 /**
- * One short message at a time, just under the header, where it never covers
- * the bet or action bar: a claimed bonus, a hand's result, an error. Tables
- * use it for "Blackjack! +150"; anything longer belongs on the screen itself.
+ * Short messages just under the header, where they never cover the bet or
+ * action bar: a claimed bonus, a hand's result, a level gained, a quest
+ * done, an error. One shows at a time; when several arrive together (a win
+ * that also completes a quest) they queue and follow each other. Tables use
+ * it for "Blackjack! +150"; anything longer belongs on the screen itself.
  */
 export type ToastTone = "win" | "loss" | "info";
 
@@ -13,17 +15,41 @@ interface Toast {
   tone: ToastTone;
 }
 
+/** How long one toast stays up: shorter while others wait behind it. */
+const ALONE_MS = 2600;
+const QUEUED_MS = 1700;
+/** Older messages are dropped past this, so a burst can't hold the strip for long. */
+const MAX_QUEUE = 4;
+
 const ToastContext = createContext<(text: string, tone?: ToastTone) => void>(() => undefined);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<Toast | null>(null);
+  const queue = useRef<Toast[]>([]);
   const timer = useRef<number | undefined>(undefined);
+  const nextId = useRef(0);
 
-  const show = useCallback((text: string, tone: ToastTone = "info") => {
-    window.clearTimeout(timer.current);
-    setToast({ id: Date.now(), text, tone });
-    timer.current = window.setTimeout(() => setToast(null), 2600);
+  const advance = useCallback(() => {
+    const next = queue.current.shift() ?? null;
+    setToast(next);
+    if (next) timer.current = window.setTimeout(advance, queue.current.length ? QUEUED_MS : ALONE_MS);
+    else timer.current = undefined;
   }, []);
+
+  const show = useCallback(
+    (text: string, tone: ToastTone = "info") => {
+      queue.current.push({ id: ++nextId.current, text, tone });
+      if (queue.current.length > MAX_QUEUE) queue.current.shift();
+      if (timer.current === undefined) {
+        advance();
+      } else if (queue.current.length === 1) {
+        // Something is showing alone: cut it to the queued length.
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(advance, QUEUED_MS);
+      }
+    },
+    [advance],
+  );
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 

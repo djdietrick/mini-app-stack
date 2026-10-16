@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, type HandResponse, type HandRow, api } from "../api";
+import { ApiError, type CompletionRow, type HandResponse, type HandRow, type LevelRow, api } from "../api";
 import { useToast } from "../components/Toast";
 import { chips } from "../format";
 import { usePlayer } from "../player";
@@ -14,19 +14,29 @@ import { buzz } from "../settings";
  * when the screen calls `shown(hand)` from TableCanvas's `onShown`, after
  * the cards have turned or the ball has dropped. That holds for payouts made
  * mid-hand too (blackjack's side bets, paid on the deal): `paidSoFar` reads
- * them from a live hand's view.
+ * them from a live hand's view. XP, a level gained and quests completed are
+ * held with the payout, so the badge and the toasts follow the cards too.
  */
 export type Announcement = { text: string; tone: "win" | "loss" | "info" } | null;
 
 export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number } = {}) {
   const paidSoFar = opts.paidSoFar;
-  const { setBalance } = usePlayer();
+  const { setBalance, setClaimable } = usePlayer();
   const toast = useToast();
   const [hand, setHand] = useState<HandRow | null>(null);
   const [resuming, setResuming] = useState(true);
   const [busy, setBusy] = useState(false);
-  /** The balance to show once the table has shown hand `id`, which by then has paid back `back`. */
-  const payout = useRef<{ id: string; balance: number; xp: number; back: number } | null>(null);
+  /**
+   * What to show once the table has shown hand `id`: the balance (by then it
+   * has paid back `back`), the XP and level, and the quests it completed.
+   */
+  const payout = useRef<{
+    id: string;
+    balance: number;
+    progress: Progress;
+    back: number;
+    completed: CompletionRow[];
+  } | null>(null);
   /** What the pill already includes from hand `id`'s payouts. */
   const seen = useRef<{ id: string; back: number } | null>(null);
   /** Hands played here (not resumed), and what has been announced for them. */
@@ -52,11 +62,12 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
       fresh.current.add(h.id);
       const back = h.status === "settled" ? h.returned : (paidSoFar?.(h) ?? 0);
       const unseen = back - (seen.current?.id === h.id ? seen.current.back : 0);
-      if (unseen > 0) {
-        setBalance(res.balance - unseen, res.xp);
-        payout.current = { id: h.id, balance: res.balance, xp: res.xp, back };
+      const progress = progressOf(res);
+      if (unseen > 0 || h.status === "settled") {
+        setBalance(res.balance - Math.max(0, unseen));
+        payout.current = { id: h.id, balance: res.balance, progress, back, completed: res.completed };
       } else {
-        setBalance(res.balance, res.xp);
+        setBalance(res.balance, progress);
       }
     },
     [setBalance, paidSoFar],
@@ -137,21 +148,36 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
       if (p?.id === h.id) {
         payout.current = null;
         seen.current = { id: h.id, back: p.back };
-        setBalance(p.balance, p.xp);
+        setBalance(p.balance, p.progress);
       }
       const key = `${h.id}:${h.status}`;
-      if (!fresh.current.has(h.id) || announced.current.has(key)) return;
-      const r = describe(h);
-      if (!r) return;
-      announced.current.add(key);
-      toast(r.text, r.tone);
-      if (r.tone === "win") buzz([10, 40, 10]);
+      if (fresh.current.has(h.id) && !announced.current.has(key)) {
+        const r = describe(h);
+        if (r) {
+          announced.current.add(key);
+          toast(r.text, r.tone);
+          if (r.tone === "win") buzz([10, 40, 10]);
+        }
+      }
+      if (p?.id === h.id && p.completed.length) {
+        for (const c of p.completed) toast(`${c.kind === "achievement" ? "Achievement" : "Quest"} done: ${c.text}`, "win");
+        setClaimable((n) => n + p.completed.length);
+      }
     },
-    [setBalance, toast],
+    [setBalance, setClaimable, toast],
   );
 
   return { hand, resuming, busy, start, act, shown, live: hand?.status === "active" };
 }
+
+type Progress = Pick<HandResponse, "xp"> & LevelRow;
+
+const progressOf = (r: HandResponse): Progress => ({
+  xp: r.xp,
+  level: r.level,
+  level_xp: r.level_xp,
+  level_xp_needed: r.level_xp_needed,
+});
 
 /** "Win +150", "Push", "Lose −100". */
 export function resultText(h: HandRow): Announcement {

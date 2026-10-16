@@ -1,3 +1,4 @@
+import { DEFAULT_EQUIPPED } from "./catalog.js";
 import type { LedgerEntry, LedgerKind, PlayerRecord } from "./types.js";
 
 /**
@@ -111,6 +112,7 @@ export function newPlayer(
     lastDailyOn: null,
     lastBailoutOn: null,
     ledgerSeq: 0,
+    equipped: { ...DEFAULT_EQUIPPED },
     createdAt: now,
   };
   return applyCreditTo(blank, { kind: "initial_grant", amount: STARTING_BALANCE }, now)!;

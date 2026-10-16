@@ -7,7 +7,7 @@ import { ActionBar } from "../../components/ActionBar";
 import { BetBar } from "../../components/BetBar";
 import { useToast } from "../../components/Toast";
 import { chips } from "../../format";
-import { usePlayer } from "../../player";
+import { useEquipped, usePlayer } from "../../player";
 import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
 import { useBetting } from "../../table/betting";
@@ -28,6 +28,7 @@ const ACTIONS = [
 
 export default function BlackjackScreen() {
   const { player } = usePlayer();
+  const equipped = useEquipped();
   const toast = useToast();
   const balance = player?.balance ?? 0;
   const table = useHand("blackjack", { paidSoFar: sidesReturned });
@@ -91,6 +92,7 @@ export default function BlackjackScreen() {
       canvas={
         <TableCanvas
           scene={scene}
+          equipped={equipped}
           view={table.resuming ? null : view}
           onShown={(s) => s.id && s.id === hand?.id && table.shown(hand, blackjackResult)}
           onError={(e) => toast(`Table error: ${String(e)}`, "loss")}

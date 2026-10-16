@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { AuthGate } from "@stack/auth-ui";
 import { StackAuthProvider } from "./authProvider";
 import { App } from "./App";
+import { ToastProvider } from "./components/Toast";
 import { PlayerProvider } from "./player";
 import "./index.css";
 
@@ -10,9 +11,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <StackAuthProvider>
       <AuthGate>
-        <PlayerProvider>
-          <App />
-        </PlayerProvider>
+        <ToastProvider>
+          <PlayerProvider>
+            <App />
+          </PlayerProvider>
+        </ToastProvider>
       </AuthGate>
     </StackAuthProvider>
   </React.StrictMode>,
