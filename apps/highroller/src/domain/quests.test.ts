@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { isAppError } from "@stack/service-kit";
-import { type BlackjackState, basicStrategy } from "../games/blackjack/index.js";
 import { type HandSummary, outcomeOf } from "../games/engine.js";
 import { type Rng, seededRng } from "../games/rng.js";
 import { validBets } from "../games/roulette/engine.js";
-import { type UthState, simpleStrategy } from "../games/uth/index.js";
+import { botAction } from "./bots.testkit.js";
 import { PAID_ITEMS } from "./catalog.js";
 import { newPlayer } from "./economy.js";
 import {
@@ -63,6 +62,10 @@ function playedSummaries(perGame: number): HandSummary[] {
       // Now and then a big bet, so the big-win quests can fire.
       if (game === "blackjack") bets = { main: i % 20 ? 25 : 1_000, perfectPairs: 5, twentyOnePlusThree: 5 };
       else if (game === "uth") bets = { ante: 25, trips: 5 };
+      else if (game === "baccarat") bets = { [i % 2 ? "player" : "banker"]: 25, tie: 5 };
+      else if (game === "threecard") bets = { ante: 25, pairPlus: 5 };
+      else if (game === "videopoker") bets = { coins: i % 2 ? 5 : 1, coinValue: 25 };
+      else if (game === "slots") bets = { lineBet: 1, lines: 20 };
       else {
         const spots = validBets(variant as "european" | "american");
         const straight = spots.filter((b) => b.kind === "straight")[rng.int(37)];
@@ -73,12 +76,7 @@ function playedSummaries(perGame: number): HandSummary[] {
       let state = g.engine.deal(g.bets.parse(bets), rng, variant);
       for (let n = 0; !g.engine.isFinished(state); n++) {
         assert.ok(n < 30);
-        const legal = g.engine.legalActions(state);
-        const type =
-          game === "blackjack"
-            ? basicStrategy((state as BlackjackState).hands[(state as BlackjackState).active].cards, (state as BlackjackState).dealer[0], legal)
-            : simpleStrategy(state as UthState);
-        state = g.engine.act(state, { type });
+        state = g.engine.act(state, botAction(game, state, g.engine.legalActions(state)));
       }
       const wagered = g.engine.staked(state);
       const { returned } = g.engine.settle(state);
@@ -128,7 +126,7 @@ describe("quest definitions", () => {
         if (hit) hits.set(q.id, (hits.get(q.id) ?? 0) + 1);
       }
     }
-    // A quest that 4,500 hands never move reads a fact no engine reports: a typo.
+    // A quest that 1,500 hands of its game never move reads a fact no engine reports: a typo.
     for (const q of [...DAILY_QUESTS, ...WEEKLY_QUESTS]) assert.ok(hits.get(q.id), `${q.id} never matched`);
     // Game quests only move for their own game.
     for (const q of [...DAILY_QUESTS, ...WEEKLY_QUESTS].filter((q) => q.game)) {

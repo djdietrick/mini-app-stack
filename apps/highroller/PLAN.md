@@ -32,13 +32,16 @@ apps/highroller/
   src/games/       pure TS, no deps, shared by the server and the SPA (relative import, like
                    fretwork's theory): cards.ts, rng.ts (the Rng port + a seeded PRNG for tests),
                    poker/eval.ts (best five of up to seven, hand names, and handScore, an
-                   allocation-free score for simulations), and one folder per game:
+                   allocation-free score for simulations), poker/rank3.ts (three-card ranks,
+                   where a straight beats a flush), and one folder per game:
                    blackjack/, uth/, roulette/, baccarat/, threecard/, videopoker/, slots/
                    Each game folder exports a GameEngine (see "Adding a game") and its tests,
                    including a Monte Carlo test that checks the house edge (roulette's is exact).
                    Strategy bots used by those tests live beside the engine (blackjack/strategy.ts,
-                   uth/strategy.ts). roulette/felt.ts is the phone felt's geometry (tap → bet,
-                   bet → chip position), here so it is node-tested.
+                   uth/strategy.ts, threecard/strategy.ts, videopoker/strategy.ts). roulette/felt.ts
+                   is the phone felt's geometry (tap → bet, bet → chip position), here so it is
+                   node-tested. slots/ is machines.ts (machines as data), evaluate.ts (what a spin
+                   shows and pays) and rtp.ts (the exact return, multiplied out from the strips).
   src/domain/      types.ts (zod wire types), routes.ts, hands.ts (the hand lifecycle),
                    settle.ts (one settlement → ledger, stats, XP, quests, feed, jackpot),
                    economy.ts (daily bonus, bailout, gifting rules), progress.ts (XP and level curve),
@@ -71,9 +74,14 @@ apps/highroller/
   - Daily bonus: 1,000 × the streak day, capped at day 7. Missing a day resets the streak. "Day" is in the player's time zone, which the SPA sends.
   - Bailout: once a day, while the balance is under 500, tops it up to 2,000.
   - Gifting: up to 5,000 sent and 10,000 received per day. You can't gift below the bailout floor, so bailouts can't be farmed through a second account.
-- **Table limits** live in each engine's module (`BLACKJACK_LIMITS`, `UTH_LIMITS`, `ROULETTE_LIMITS`) and the registry points at them, so the SPA checks a bet with the same numbers before sending it. With no VIP rooms, each game has one table. Blackjack 10–5,000; UTH ante 10–1,000; roulette 5–1,000 a spot and 10,000 a spin.
+- **Table limits** live in each engine's module (`BLACKJACK_LIMITS`, `UTH_LIMITS`, `ROULETTE_LIMITS`, …) and the registry points at them, so the SPA checks a bet with the same numbers before sending it. With no VIP rooms, each game has one table. Blackjack 10–5,000; UTH ante 10–1,000; roulette 5–1,000 a spot and 10,000 a spin; baccarat 10–5,000 a spot; Three Card Poker ante 10–2,500 and Pair Plus 5–500; video poker 1–5 coins at 5, 25 or 100; slots 1–20 lines at 1, 5, 25 or 100 a line.
 - **Side bets** are 5–500 (`limits.side`). Perfect Pairs and 21+3 settle on blackjack's deal and are paid in the start transaction (`engine.paidEarly`; settlement then pays only the rest); Trips settles at UTH's showdown, even after a fold. Exact edges, asserted by their tests: Perfect Pairs 6.11% (six decks), 21+3 4.62%, Trips 3.50% (from the seven-card hand counts). A suited three of a kind on 21+3 and a royal on Trips set `jackpotEligible` for #57. Stats use the engine's `expectedReturn(state)`, so side bets count at their own edge.
 - **Measured edges** (each game's Monte Carlo test checks its bot against these): blackjack with basic strategy 0.31% of the first bet (20M hands; ~1.13 bets wagered per hand); UTH with the Wizard of Odds' simple strategy 2.43% of the ante (12M hands; optimal play is 2.19%, ~4.16 antes wagered per hand); roulette 2.70% / 5.26%, exactly.
+- **Wave 2 edges**, exact unless noted:
+  - Baccarat (eight decks, every card sequence enumerated): Banker 1.06%, Player 1.24%, Tie 14.36%. The commission's rounding makes a small Banker bet worse (a win on 10 pays 9); `expectedReturn` counts it per stake.
+  - Three Card Poker with the optimal Q-6-4 strategy (all 22,100 × 18,424 deals): 3.37% of the ante, 1.674 antes wagered per hand. Pair Plus pays 40-30-6-**4**-1, a 2.32% edge: #54 listed a flush at 3:1 and a 2.3% edge, which can't both hold (3:1 is a 7.28% edge), so the edge won. Pair Plus doesn't feed the jackpot.
+  - Video poker, 9/6 Jacks or Better: 99.54% at 5 coins (the published optimal figure); with fewer coins the royal pays 250, about 98.18%. The test checks hold values worked by hand and a brute force, and the simple strategy (99.46% published) by Monte Carlo.
+  - Slots, the Fruit Classic: 94.97% (35% of it from scatters and free spins), free spins 1 in 140 spins, the jackpot line 20 in 32⁵ (about 1 in 1.68 million).
 
 ## Hands: the server-authoritative lifecycle
 
@@ -226,10 +234,10 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 - #52 Big-win feed
 
 **5 · Wave 2 games**
-- #53 Baccarat
-- #54 Three Card Poker
-- #55 Video Poker (Jacks or Better)
-- #56 Slots
+- ✅ #53 Baccarat
+- ✅ #54 Three Card Poker
+- ✅ #55 Video Poker (Jacks or Better)
+- ✅ #56 Slots (flags `jackpotEligible`; #57 pays it)
 - #57 Shared progressive jackpot
 
 **6 · Polish**

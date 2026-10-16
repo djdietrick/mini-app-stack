@@ -34,6 +34,11 @@ export interface TextureKit {
   /** A chip `d` across, showing `value`. */
   chip(set: ChipSet, value: number, d: number): Texture;
   felt(style: FeltStyle, w: number, h: number): Texture;
+  /**
+   * Anything else a scene paints itself (a slot symbol, a paytable), cached
+   * under `key` like the rest. The key must name everything `draw` depends on.
+   */
+  custom(key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void): Texture;
   destroy(): void;
 }
 
@@ -118,6 +123,10 @@ export function createTextureKit(initialDensity: number): TextureKit {
 
     felt(style, w, h) {
       return make(`felt:${style.id}:${w}x${h}`, w, h, (ctx) => drawFelt(ctx, style, w, h));
+    },
+
+    custom(key, w, h, draw) {
+      return make(`custom:${key}:${w}x${h}`, w, h, draw);
     },
 
     destroy() {

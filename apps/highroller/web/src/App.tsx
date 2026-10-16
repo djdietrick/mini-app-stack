@@ -20,6 +20,10 @@ const TABLES: Record<string, ComponentType<{ variant: string | null }>> = {
   blackjack: lazy(() => import("./games/blackjack/Screen")),
   uth: lazy(() => import("./games/uth/Screen")),
   roulette: lazy(() => import("./games/roulette/Screen")),
+  baccarat: lazy(() => import("./games/baccarat/Screen")),
+  threecard: lazy(() => import("./games/threecard/Screen")),
+  videopoker: lazy(() => import("./games/videopoker/Screen")),
+  slots: lazy(() => import("./games/slots/Screen")),
 };
 
 export function App() {
