@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Card } from "../cards.js";
+import { type Card, freshDeck } from "../cards.js";
+import { categoryOf, handScore } from "../poker/eval.js";
+import { sample } from "../rng.js";
 import { seededRng } from "../rng.js";
 import { simulate } from "../simulate.js";
-import { HOUSE_EDGE_PER_ANTE, UTH_LIMITS, type UthState, WAGER_PER_ANTE, dealFrom, uth } from "./engine.js";
+import { HOUSE_EDGE_PER_ANTE, TRIPS_PAYS, TRIPS_RTP, UTH_LIMITS, type UthState, WAGER_PER_ANTE, dealFrom, uth } from "./engine.js";
 import { SIMPLE_STRATEGY_EDGE, simpleStrategy } from "./strategy.js";
 
 /** Nine stacked cards: yours, the dealer's, then the board. */
-const stack = (you: string, dealer: string, board: string, ante = 10) =>
-  dealFrom([...you.split(" "), ...dealer.split(" "), ...board.split(" ")] as Card[], { ante });
+const stack = (you: string, dealer: string, board: string, ante = 10, trips?: number) =>
+  dealFrom([...you.split(" "), ...dealer.split(" "), ...board.split(" ")] as Card[], { ante, trips });
 
 function play(s: UthState, ...types: string[]): UthState {
   for (const type of types) {
@@ -104,12 +106,63 @@ describe("UTH settlement", () => {
 
   it("reports facts for quests", () => {
     const f = uth.summary(play(stack("As Ks", "4c 4d", "Qs Js Ts 2d 3c"), "bet4"));
-    assert.deepEqual(f, { handRank: "royal_flush", raiseStreet: "preflop", dealerQualified: true, folded: false, won: true });
+    assert.deepEqual(f, { handRank: "royal_flush", raiseStreet: "preflop", dealerQualified: true, folded: false, won: true, tripsHand: "none", jackpotEligible: false });
   });
 
   it("validates the ante against the table limits", () => {
     assert.equal(uth.validateBets({ ante: 25 }, UTH_LIMITS, null), null);
     assert.match(uth.validateBets({ ante: 5 }, UTH_LIMITS, null)!, /minimum/);
+  });
+});
+
+describe("UTH Trips", () => {
+  it("pays on your best five whatever the dealer has, even after a fold", () => {
+    const trips = (you: string, dealer: string, board: string, ...actions: string[]) =>
+      spots(play(stack(you, dealer, board, 10, 5), ...actions)).trips;
+    assert.equal(trips("9s 9h", "Ac Ad", "9d 4c 5s 2d Kc", "check", "check", "fold"), 5 * 4, "three of a kind 3:1, folded");
+    assert.equal(trips("9s 9h", "Ac Ad", "9d 9c 5s 2d Kc", "bet4"), 5 * 31, "quads 30:1, losing nothing to the dealer");
+    assert.equal(trips("As Ks", "4c 4d", "Qs Js Ts 2d 3c", "bet4"), 5 * 51, "royal flush 50:1");
+    assert.equal(trips("Ac Ad", "Kc Kd", BOARD, "bet4"), 0, "a pair loses");
+  });
+
+  it("counts in the stake, the results and the facts", () => {
+    const s = play(stack("As Ks", "4c 4d", "Qs Js Ts 2d 3c", 10, 5), "bet4");
+    assert.equal(uth.staked(s), 20 + 40 + 5);
+    assert.deepEqual(uth.settle(s).results.map((r) => r.spot), ["ante", "blind", "play", "trips"]);
+    assert.equal(uth.view(s).returned?.trips, 255);
+    assert.equal(uth.summary(s).tripsHand, "royal_flush");
+    assert.equal(uth.summary(s).jackpotEligible, true);
+    assert.equal(uth.summary(play(stack("As Ks", "4c 4d", "Qs Js Ts 2d 3c"), "bet4")).jackpotEligible, false, "only with a Trips bet");
+  });
+
+  it("has its own limits, 5 to 500", () => {
+    assert.equal(uth.validateBets({ ante: 10, trips: 500 }, UTH_LIMITS, null), null);
+    assert.match(uth.validateBets({ ante: 10, trips: 505 }, UTH_LIMITS, null)!, /maximum Trips bet is 500/);
+  });
+
+  it("returns 96.50% per chip (a 3.50% edge), exactly from the seven-card hand counts", () => {
+    // Seven-card hands out of C(52, 7) = 133,784,560, by best five.
+    const counts = { royal_flush: 4324, straight_flush: 37260, quads: 224848, full_house: 3473184, flush: 4047644, straight: 6180020, trips: 6461620 };
+    let rtp = 0;
+    for (const [cat, n] of Object.entries(counts)) rtp += (n / 133_784_560) * (TRIPS_PAYS[cat as keyof typeof counts]! + 1);
+    assert.ok(Math.abs(rtp - TRIPS_RTP) < 1e-12, `rtp ${rtp}`);
+  });
+
+  it("and the evaluator agrees: random seven-card hands return about that", () => {
+    const rng = seededRng(46);
+    const deck = freshDeck();
+    const n = 200_000;
+    let back = 0;
+    let sq = 0;
+    for (let i = 0; i < n; i++) {
+      const pays = TRIPS_PAYS[categoryOf(handScore(sample(deck, 7, rng)))];
+      const r = pays === undefined ? 0 : pays + 1;
+      back += r;
+      sq += r * r;
+    }
+    const mean = back / n;
+    const se = Math.sqrt((sq / n - mean * mean) / n);
+    assert.ok(Math.abs(mean - TRIPS_RTP) < 4 * se, `rtp ${mean} ± ${se}`);
   });
 });
 

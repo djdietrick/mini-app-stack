@@ -84,7 +84,7 @@ export class Cards {
   async show(s: CardSprite, code: Card | null) {
     if (s.code === code) return;
     s.code = code;
-    await this.ctx.anim.flip(s, this.texture(code, s.w));
+    await this.ctx.anim.flip(s, () => this.texture(code, s.w));
   }
 
   /** Changes a card's size; its texture is re-taken at the new width. */

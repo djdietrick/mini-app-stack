@@ -19,6 +19,8 @@ export interface UthSceneView {
   hand: UthView | null;
   /** The ante while betting; the Blind matches it. */
   ante: number;
+  /** The Trips side bet while betting. */
+  trips: number;
 }
 
 // Below the frame's top bar (back, title, info), which sits over the canvas.
@@ -32,12 +34,14 @@ const DEALER_W = 58;
 const BOARD_W = 58;
 const PLAYER_W = 66;
 const SPOTS = { ante: { x: 90, y: SPOT_Y }, blind: { x: 195, y: SPOT_Y }, play: { x: 300, y: SPOT_Y } } as const;
+/** Trips sits apart, left of your cards: it pays on your hand alone. */
+const TRIPS_AT: Point = { x: 52, y: 414 };
 
 const dealerPos = (j: number): Point => ({ x: DESIGN.width / 2 + (j - 0.5) * (DEALER_W + 8), y: DEALER_Y });
 const boardPos = (k: number): Point => ({ x: DESIGN.width / 2 + (k - 2) * (BOARD_W + 8), y: BOARD_Y });
 const playerPos = (j: number): Point => ({ x: DESIGN.width / 2 + (j - 0.5) * (PLAYER_W + 10), y: PLAYER_Y });
 
-export function createUthScene(opts: { onAnteTap: () => void }): Scene<UthSceneView> {
+export function createUthScene(opts: { onSpotTap: (spot: "ante" | "trips") => void }): Scene<UthSceneView> {
   let ctx: SceneContext;
   let cards: Cards;
   let labels: Labels;
@@ -48,7 +52,7 @@ export function createUthScene(opts: { onAnteTap: () => void }): Scene<UthSceneV
   let dealer: CardSprite[] = [];
   let board: CardSprite[] = [];
   let player: CardSprite[] = [];
-  let stacks: Record<"ante" | "blind" | "play", ChipStack>;
+  let stacks: Record<"ante" | "blind" | "play" | "trips", ChipStack>;
   let youLabel: Text;
   let dealerLabel: Text;
   let badge: Text;
@@ -118,7 +122,12 @@ export function createUthScene(opts: { onAnteTap: () => void }): Scene<UthSceneV
     await ctx.anim.tween(badge, { alpha: 1 }, { duration: 160 });
     await ctx.anim.wait(250);
     const sweepTo = { x: DESIGN.width / 2, y: 20 };
-    await Promise.all([stacks.ante.settle(r.ante, sweepTo), stacks.blind.settle(r.blind, sweepTo), stacks.play.amount ? stacks.play.settle(r.play, sweepTo) : undefined]);
+    await Promise.all([
+      stacks.ante.settle(r.ante, sweepTo),
+      stacks.blind.settle(r.blind, sweepTo),
+      stacks.play.amount ? stacks.play.settle(r.play, sweepTo) : undefined,
+      stacks.trips.amount ? stacks.trips.settle(r.trips ?? 0, sweepTo) : undefined,
+    ]);
   }
 
   return {
@@ -147,10 +156,15 @@ export function createUthScene(opts: { onAnteTap: () => void }): Scene<UthSceneV
       layer.addChild(labels.make("BLIND PAYS ON A STRAIGHT OR BETTER", 10, { x: DESIGN.width / 2, y: 316 }, { alpha: 0.35, letterSpacing: 1.5 }));
 
       for (const [name, at] of Object.entries(SPOTS)) {
-        layer.addChild(betCircle(at, 28, name === "ante" ? opts.onAnteTap : undefined, name === "play" ? 0.35 : 0.6));
+        layer.addChild(betCircle(at, 28, name === "ante" ? () => opts.onSpotTap("ante") : undefined, name === "play" ? 0.35 : 0.6));
         layer.addChild(labels.make(name.toUpperCase(), 10.5, { x: at.x, y: at.y + 42 }, { alpha: 0.55, letterSpacing: 2 }));
       }
       layer.addChild(labels.make("=", 18, { x: (SPOTS.ante.x + SPOTS.blind.x) / 2, y: SPOT_Y }, { alpha: 0.4 }));
+      layer.addChild(
+        betCircle(TRIPS_AT, 22, () => opts.onSpotTap("trips"), 0.45),
+        labels.make("TRIPS", 9.5, TRIPS_AT, { alpha: 0.5, letterSpacing: 1 }),
+        labels.make("5 – 500", 9, { x: TRIPS_AT.x, y: TRIPS_AT.y + 33 }, { alpha: 0.4 }),
+      );
 
       youLabel = labels.make("", 14, { x: DESIGN.width / 2, y: PLAYER_Y + 62 });
       dealerLabel = labels.make("", 13, { x: DESIGN.width / 2, y: DEALER_Y + 56 }, { alpha: 0.9 });
@@ -163,6 +177,7 @@ export function createUthScene(opts: { onAnteTap: () => void }): Scene<UthSceneV
         ante: new ChipStack(ctx, layer, SPOTS.ante, 38),
         blind: new ChipStack(ctx, layer, SPOTS.blind, 38),
         play: new ChipStack(ctx, layer, SPOTS.play, 38),
+        trips: new ChipStack(ctx, layer, TRIPS_AT, 30, 2.5),
       };
     },
 
@@ -171,7 +186,7 @@ export function createUthScene(opts: { onAnteTap: () => void }): Scene<UthSceneV
       if (!h) {
         if (shownId) await sweep();
         shownId = "";
-        await Promise.all([stacks.ante.set(next.ante), stacks.blind.set(next.ante)]);
+        await Promise.all([stacks.ante.set(next.ante), stacks.blind.set(next.ante), stacks.trips.set(next.trips)]);
         return;
       }
       if (next.id !== shownId) {
@@ -179,7 +194,7 @@ export function createUthScene(opts: { onAnteTap: () => void }): Scene<UthSceneV
         shownId = next.id;
       }
       const before = prev && prev.id === next.id ? prev.hand : null;
-      await Promise.all([stacks.ante.set(h.ante), stacks.blind.set(h.blind), stacks.play.set(h.play)]);
+      await Promise.all([stacks.ante.set(h.ante), stacks.blind.set(h.blind), stacks.play.set(h.play), stacks.trips.set(h.trips ?? 0)]);
       await syncCards(h);
       relabel(h);
       if (h.street === "done" && before?.street !== "done") await settle(h);

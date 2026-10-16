@@ -83,7 +83,7 @@ export function createDemoScene(opts: { onSpotTap: (spot: string) => void; onZon
       moves.push(ctx.anim.slide(s, slot(i, want.length, y), { duration: 200 }));
       if (s.code === null && want[i]) {
         s.code = want[i];
-        moves.push(ctx.anim.flip(s, face(want[i])));
+        moves.push(ctx.anim.flip(s, () => face(want[i])));
       }
     });
     // New cards come off the shoe one after another, then turn face up.
@@ -92,7 +92,7 @@ export function createDemoScene(opts: { onSpotTap: (spot: string) => void; onZon
       cards.push(s);
       moves.push(
         ctx.anim.deal(s, SHOE, slot(i, want.length, y), { delay: (i - cards.length + 1) * 140, rotation: (Math.random() - 0.5) * 0.06 }).then(() =>
-          want[i] ? ctx.anim.flip(s, face(want[i])) : undefined,
+          want[i] ? ctx.anim.flip(s, () => face(want[i])) : undefined,
         ),
       );
     }

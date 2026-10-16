@@ -1,5 +1,5 @@
 import { type Card, freshDeck } from "../cards.js";
-import { type BetResult, type GameEngine, type TableLimits, checkStake, outcomeOf } from "../engine.js";
+import { type BetResult, type GameEngine, type TableLimits, checkSideStake, checkStake, outcomeOf } from "../engine.js";
 import { type HandCategory, type HandRank, categoryOf, describeHand, evaluate, floorOf, handScore } from "../poker/eval.js";
 import { sample } from "../rng.js";
 
@@ -8,6 +8,7 @@ import { sample } from "../rng.js";
  * share a five-card board.
  *
  * - Ante and Blind are equal and both required (the bets carry only `ante`).
+ * - Trips, optional, pays on your best five by its own table (TRIPS_PAYS).
  * - One Play bet per hand: 3× or 4× the ante before the flop, 2× after it,
  *   1× after the river, where you may fold instead. Checking moves to the
  *   next street; a Play bet goes straight to the showdown.
@@ -20,7 +21,7 @@ import { sample } from "../rng.js";
  * The view shows the board street by street and the dealer's cards only
  * once the hand is over.
  */
-export const UTH_LIMITS: TableLimits = { min: 10, max: 1_000, step: 5 };
+export const UTH_LIMITS: TableLimits = { min: 10, max: 1_000, step: 5, side: { min: 5, max: 500 } };
 
 const FULL_DECK: readonly Card[] = freshDeck();
 
@@ -36,7 +37,25 @@ export const BLIND_PAYS: Partial<Record<HandCategory, number>> = {
 
 export interface UthBets {
   ante: number;
+  /** The Trips side bet (#46), optional. */
+  trips?: number;
 }
+
+/**
+ * Trips pays on your best five cards whatever the dealer holds, even after a
+ * fold. A royal flush is the jackpot's (#57) trigger. Return per chip, exact
+ * from the seven-card hand frequencies: 3.50% edge (uth.test.ts derives it).
+ */
+export const TRIPS_PAYS: Partial<Record<HandCategory, number>> = {
+  royal_flush: 50,
+  straight_flush: 40,
+  quads: 30,
+  full_house: 8,
+  flush: 7,
+  straight: 4,
+  trips: 3,
+};
+export const TRIPS_RTP = 0.9650206271934519;
 
 export type Street = "preflop" | "flop" | "river" | "done";
 
@@ -53,6 +72,8 @@ export interface UthState {
   dealer: Card[];
   /** Private beyond what the street shows. */
   board: Card[];
+  /** The Trips stake; absent on hands dealt before side bets existed. */
+  trips?: number;
 }
 
 export const ACTIONS = ["check", "bet4", "bet3", "bet2", "bet1", "fold"] as const;
@@ -71,6 +92,8 @@ export interface UthView {
   ante: number;
   blind: number;
   play: number;
+  /** The Trips stake, 0 for none. */
+  trips: number;
   playStreet: Exclude<Street, "done"> | null;
   folded: boolean;
   player: Card[];
@@ -79,8 +102,8 @@ export interface UthView {
   /** The cards turned so far: 0, 3 or 5. */
   board: Card[];
   showdown: Showdown | null;
-  /** Per spot once settled: ante, blind, play. */
-  returned: { ante: number; blind: number; play: number } | null;
+  /** Per spot once settled: ante, blind, play, trips. */
+  returned: Returns | null;
 }
 
 const BET_STREET = { bet4: "preflop", bet3: "preflop", bet2: "flop", bet1: "river" } as const;
@@ -135,18 +158,28 @@ function showdown(s: UthState): Showdown {
   };
 }
 
+export interface Returns {
+  ante: number;
+  blind: number;
+  play: number;
+  trips: number;
+}
+
 /** Chips back on each spot, stakes included. */
-function returns(s: UthState): { ante: number; blind: number; play: number } {
+function returns(s: UthState): Returns {
   const c = contest(s);
   const a = s.ante;
-  if (c.winner === null) return { ante: 0, blind: 0, play: 0 };
-  if (c.winner === "tie") return { ante: a, blind: a, play: s.play };
-  if (c.winner === "dealer") return { ante: c.dealerQualifies ? 0 : a, blind: 0, play: 0 };
+  const tripsPays = TRIPS_PAYS[categoryOf(c.player)];
+  const trips = s.trips && tripsPays !== undefined ? s.trips * (tripsPays + 1) : 0;
+  if (c.winner === null) return { ante: 0, blind: 0, play: 0, trips };
+  if (c.winner === "tie") return { ante: a, blind: a, play: s.play, trips };
+  if (c.winner === "dealer") return { ante: c.dealerQualifies ? 0 : a, blind: 0, play: 0, trips };
   const pays = BLIND_PAYS[categoryOf(c.player)];
   return {
     ante: c.dealerQualifies ? 2 * a : a,
     blind: pays === undefined ? a : a + Math.floor(a * pays),
     play: 2 * s.play,
+    trips,
   };
 }
 
@@ -170,12 +203,13 @@ export function dealFrom(cards: Card[], bets: UthBets): UthState {
     player: cards.slice(0, 2),
     dealer: cards.slice(2, 4),
     board: cards.slice(4, 9),
+    trips: bets.trips ?? 0,
   };
 }
 
 export const uth: GameEngine<UthBets, UthState, UthAction, UthView> = {
   validateBets(bets, limits) {
-    return checkStake(bets.ante, limits);
+    return checkStake(bets.ante, limits) ?? checkSideStake("Trips", bets.trips, limits);
   },
 
   deal(bets, rng) {
@@ -185,7 +219,11 @@ export const uth: GameEngine<UthBets, UthState, UthAction, UthView> = {
   legalActions: legal,
   act,
   isFinished: (s) => s.street === "done",
-  staked: (s) => 2 * s.ante + s.play,
+  staked: (s) => 2 * s.ante + s.play + (s.trips ?? 0),
+
+  expectedReturn(s) {
+    return (2 * s.ante + s.play) * uth.theoreticalRtp(null) + (s.trips ?? 0) * TRIPS_RTP;
+  },
 
   settle(s) {
     const r = returns(s);
@@ -197,7 +235,8 @@ export const uth: GameEngine<UthBets, UthState, UthAction, UthView> = {
     });
     const results = [spot("ante", s.ante, r.ante), spot("blind", s.ante, r.blind)];
     if (s.play > 0) results.push(spot("play", s.play, r.play));
-    return { returned: r.ante + r.blind + r.play, results };
+    if (s.trips) results.push(spot("trips", s.trips, r.trips));
+    return { returned: r.ante + r.blind + r.play + r.trips, results };
   },
 
   view(s) {
@@ -207,6 +246,7 @@ export const uth: GameEngine<UthBets, UthState, UthAction, UthView> = {
       ante: s.ante,
       blind: s.ante,
       play: s.play,
+      trips: s.trips ?? 0,
       playStreet: s.playStreet,
       folded: s.folded,
       player: s.player,
@@ -225,6 +265,8 @@ export const uth: GameEngine<UthBets, UthState, UthAction, UthView> = {
       dealerQualified: c.dealerQualifies,
       folded: s.folded,
       won: c.winner === "player",
+      tripsHand: s.trips && TRIPS_PAYS[categoryOf(c.player)] !== undefined ? categoryOf(c.player) : "none",
+      jackpotEligible: !!s.trips && categoryOf(c.player) === "royal_flush",
     };
   },
 

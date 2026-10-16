@@ -1,4 +1,4 @@
-import { CanvasSource, Texture } from "pixi.js";
+import { CanvasSource, type Container, Sprite, Texture } from "pixi.js";
 import { type Card, type Suit, parseCard } from "../../../src/games/index.js";
 import { type CardBackStyle, type ChipSet, type FeltStyle, chipColors } from "./cosmetics";
 
@@ -12,7 +12,11 @@ import { type CardBackStyle, type ChipSet, type FeltStyle, chipColors } from "./
  * scale), so a sprite showing one of these textures at its natural size is
  * pixel-exact on screen and needs no scaling. When the layout's scale changes
  * (a resize, a rotation), `setDensity` starts a fresh cache; the scene re-takes
- * its textures in `resize`, and `flushStale` then frees the old ones.
+ * its textures in `resize`, and `flushStale` then frees the old ones that
+ * nothing on stage still shows. A chip flying to the balance or a card being
+ * swept has left the scene's bookkeeping, so `resize` can't re-take its
+ * texture; freeing that texture under it crashes the renderer. Such a
+ * texture stays stale until a later flush, or the kit's destroy.
  *
  * One kit per TableCanvas: its textures live on that canvas's renderer and
  * are destroyed with it.
@@ -21,8 +25,8 @@ export interface TextureKit {
   readonly density: number;
   /** Returns true when the density changed and textures must be re-taken. */
   setDensity(density: number): boolean;
-  /** Frees textures from before the last density change. */
-  flushStale(): void;
+  /** Frees textures from before the last density change that no sprite under `stage` still uses. */
+  flushStale(stage: Container): void;
   /** A face-up card `w` wide (and 1.4 × w tall). */
   card(code: Card, w: number): Texture;
   back(style: CardBackStyle, w: number): Texture;
@@ -83,9 +87,19 @@ export function createTextureKit(initialDensity: number): TextureKit {
       return true;
     },
 
-    flushStale() {
-      for (const t of stale) t.destroy(true);
-      stale = [];
+    flushStale(stage) {
+      const inUse = new Set<Texture>();
+      const walk = (c: Container) => {
+        if (c instanceof Sprite) inUse.add(c.texture);
+        for (const k of c.children) walk(k);
+      };
+      walk(stage);
+      const keep: Texture[] = [];
+      for (const t of stale) {
+        if (inUse.has(t)) keep.push(t);
+        else t.destroy(true);
+      }
+      stale = keep;
     },
 
     card(code, w) {

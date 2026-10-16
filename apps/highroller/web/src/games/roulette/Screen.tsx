@@ -119,7 +119,7 @@ export default function RouletteScreen({ variant: requested }: { variant: string
 
 function rouletteResult(h: HandRow) {
   const v = h.view as RouletteView;
-  const r = resultText(h);
+  const r = resultText(h)!;
   return { ...r, text: `${pocketLabel(v.pocket)} ${pocketColor(v.pocket)}. ${r.text}` };
 }
 

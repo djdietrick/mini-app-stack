@@ -12,16 +12,26 @@ import { buzz } from "../settings";
  * The balance moves in two steps so the pill never gives a result away: a
  * stake leaves it as soon as the server takes it, and a payout lands only
  * when the screen calls `shown(hand)` from TableCanvas's `onShown`, after
- * the cards have turned or the ball has dropped.
+ * the cards have turned or the ball has dropped. That holds for payouts made
+ * mid-hand too (blackjack's side bets, paid on the deal): `paidSoFar` reads
+ * them from a live hand's view.
  */
-export function useHand(game: string) {
+export type Announcement = { text: string; tone: "win" | "loss" | "info" } | null;
+
+export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number } = {}) {
+  const paidSoFar = opts.paidSoFar;
   const { setBalance } = usePlayer();
   const toast = useToast();
   const [hand, setHand] = useState<HandRow | null>(null);
   const [resuming, setResuming] = useState(true);
   const [busy, setBusy] = useState(false);
-  const payout = useRef<{ id: string; balance: number; xp: number } | null>(null);
-  const announced = useRef<string | null>(null);
+  /** The balance to show once the table has shown hand `id`, which by then has paid back `back`. */
+  const payout = useRef<{ id: string; balance: number; xp: number; back: number } | null>(null);
+  /** What the pill already includes from hand `id`'s payouts. */
+  const seen = useRef<{ id: string; back: number } | null>(null);
+  /** Hands played here (not resumed), and what has been announced for them. */
+  const fresh = useRef(new Set<string>());
+  const announced = useRef(new Set<string>());
 
   useEffect(() => {
     let live = true;
@@ -37,15 +47,19 @@ export function useHand(game: string) {
 
   const receive = useCallback(
     (res: HandResponse) => {
-      setHand(res.hand);
-      if (res.hand.status === "settled" && res.hand.returned > 0) {
-        setBalance(res.balance - res.hand.returned, res.xp);
-        payout.current = { id: res.hand.id, balance: res.balance, xp: res.xp };
+      const h = res.hand;
+      setHand(h);
+      fresh.current.add(h.id);
+      const back = h.status === "settled" ? h.returned : (paidSoFar?.(h) ?? 0);
+      const unseen = back - (seen.current?.id === h.id ? seen.current.back : 0);
+      if (unseen > 0) {
+        setBalance(res.balance - unseen, res.xp);
+        payout.current = { id: h.id, balance: res.balance, xp: res.xp, back };
       } else {
         setBalance(res.balance, res.xp);
       }
     },
-    [setBalance],
+    [setBalance, paidSoFar],
   );
 
   const fail = useCallback(
@@ -112,19 +126,24 @@ export function useHand(game: string) {
   );
 
   /**
-   * The table has finished showing `h`. Once per settled hand: land its
-   * payout on the balance and announce the result (`describe` words it).
+   * The table has finished showing `h`: land what it has paid on the balance,
+   * and announce it once (`describe` words it; null says nothing). A live
+   * hand is announced only for an early payout, a settled one always.
    */
   const shown = useCallback(
-    (h: HandRow | null, describe: (h: HandRow) => { text: string; tone: "win" | "loss" | "info" } = resultText) => {
-      if (!h || h.status !== "settled" || announced.current === h.id) return;
-      announced.current = h.id;
+    (h: HandRow | null, describe: (h: HandRow) => Announcement = resultText) => {
+      if (!h) return;
       const p = payout.current;
       if (p?.id === h.id) {
         payout.current = null;
+        seen.current = { id: h.id, back: p.back };
         setBalance(p.balance, p.xp);
       }
+      const key = `${h.id}:${h.status}`;
+      if (!fresh.current.has(h.id) || announced.current.has(key)) return;
       const r = describe(h);
+      if (!r) return;
+      announced.current.add(key);
       toast(r.text, r.tone);
       if (r.tone === "win") buzz([10, 40, 10]);
     },
@@ -135,7 +154,8 @@ export function useHand(game: string) {
 }
 
 /** "Win +150", "Push", "Lose −100". */
-export function resultText(h: HandRow): { text: string; tone: "win" | "loss" | "info" } {
+export function resultText(h: HandRow): Announcement {
+  if (h.status !== "settled") return null;
   const net = h.returned - h.wagered;
   if (net > 0) return { text: `Win +${chips(net)}`, tone: "win" };
   if (net < 0) return { text: `Lose −${chips(-net)}`, tone: "loss" };

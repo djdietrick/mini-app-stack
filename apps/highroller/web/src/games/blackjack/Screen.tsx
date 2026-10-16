@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { BLACKJACK_LIMITS, type BlackjackView } from "../../../../src/games/blackjack/engine.js";
-import { checkStake } from "../../../../src/games/engine.js";
+import { PAIR_NAMES, type PairHand, THREE_CARD_NAMES, type ThreeCardHand } from "../../../../src/games/blackjack/sidebets.js";
+import { checkSideStake, checkStake } from "../../../../src/games/engine.js";
 import type { HandRow } from "../../api";
 import { ActionBar } from "../../components/ActionBar";
 import { BetBar } from "../../components/BetBar";
@@ -12,7 +13,7 @@ import { TableCanvas } from "../../table/TableCanvas";
 import { useBetting } from "../../table/betting";
 import { Paytable, TableFrame } from "../TableFrame";
 import { resultText, useHand } from "../useHand";
-import { type BlackjackSceneView, createBlackjackScene } from "./Scene";
+import { type BlackjackSceneView, SIDE_SPOTS, type Spot, createBlackjackScene } from "./Scene";
 
 const ACTIONS = [
   { type: "even_money", label: "Even money" },
@@ -29,18 +30,18 @@ export default function BlackjackScreen() {
   const { player } = usePlayer();
   const toast = useToast();
   const balance = player?.balance ?? 0;
-  const table = useHand("blackjack");
-  const betting = useBetting(balance, { max: BLACKJACK_LIMITS.max, chip: 25 });
-  const placeRef = useRef(() => undefined as void);
-  const [scene] = useState(() => createBlackjackScene({ onSpotTap: () => placeRef.current() }));
+  const table = useHand("blackjack", { paidSoFar: sidesReturned });
+  const betting = useBetting(balance, { max: (spot) => (spot === "main" ? BLACKJACK_LIMITS.max : BLACKJACK_LIMITS.side!.max), chip: 25 });
+  const placeRef = useRef((_spot: Spot) => undefined as void);
+  const [scene] = useState(() => createBlackjackScene({ onSpotTap: (spot) => placeRef.current(spot) }));
 
   const hand = table.hand;
   const v = hand?.view as BlackjackView | undefined;
   const betweenHands = !table.live;
 
-  placeRef.current = () => {
+  placeRef.current = (spot) => {
     if (!betweenHands || table.busy) return;
-    betting.place("main");
+    betting.place(spot);
     buzz(8);
   };
 
@@ -48,15 +49,20 @@ export default function BlackjackScreen() {
   const view = useMemo<BlackjackSceneView>(
     () =>
       betweenHands && (betting.total > 0 || !hand)
-        ? { id: "", hand: null, bet: betting.total }
-        : { id: hand!.id, hand: hand!.view as BlackjackView, bet: 0 },
-    [betweenHands, betting.total, hand],
+        ? { id: "", hand: null, bets: betting.bets }
+        : { id: hand!.id, hand: hand!.view as BlackjackView, bets: {} },
+    [betweenHands, betting.total, betting.bets, hand],
   );
 
   async function deal() {
-    const reason = checkStake(betting.total, BLACKJACK_LIMITS);
+    const { main = 0, perfectPairs, twentyOnePlusThree } = betting.bets;
+    if (!main) return toast("Put a bet on the main circle too", "loss");
+    const reason =
+      checkStake(main, BLACKJACK_LIMITS) ??
+      checkSideStake("Perfect Pairs", perfectPairs, BLACKJACK_LIMITS) ??
+      checkSideStake("21+3", twentyOnePlusThree, BLACKJACK_LIMITS);
     if (reason) return toast(reason[0].toUpperCase() + reason.slice(1), "loss");
-    const started = await table.start({ main: betting.total });
+    const started = await table.start({ main, ...(perfectPairs ? { perfectPairs } : {}), ...(twentyOnePlusThree ? { twentyOnePlusThree } : {}) });
     if (started) {
       betting.commit();
       buzz(12);
@@ -114,8 +120,24 @@ export default function BlackjackScreen() {
   );
 }
 
+/** Chips the side bets paid on the deal, for the balance pill to hold until they're shown. */
+function sidesReturned(h: HandRow): number {
+  const side = (h.view as BlackjackView).side;
+  return (side?.perfectPairs?.returned ?? 0) + (side?.twentyOnePlusThree?.returned ?? 0);
+}
+
 function blackjackResult(h: HandRow) {
   const v = h.view as BlackjackView;
+  if (h.status !== "settled") {
+    // Mid-hand, only a side bet that won is news.
+    const wins = SIDE_SPOTS.flatMap((k) => {
+      const r = v.side?.[k];
+      if (!r?.hand) return [];
+      const name = k === "perfectPairs" ? PAIR_NAMES[r.hand as PairHand] : THREE_CARD_NAMES[r.hand as ThreeCardHand];
+      return [`${k === "perfectPairs" ? name : `21+3 ${name.toLowerCase()}`} +${chips(r.returned - r.stake)}`];
+    });
+    return wins.length ? { text: wins.join(" · "), tone: "win" as const } : null;
+  }
   if (v.hands.length === 1 && v.hands[0].result?.outcome === "blackjack") {
     return { text: `Blackjack! +${chips(h.returned - h.wagered)}`, tone: "win" as const };
   }
@@ -145,6 +167,28 @@ function Rules() {
         <li>Surrender your first two cards for half your bet back.</li>
         <li>Bets 10 to 5,000. Payouts round down to whole chips.</li>
       </ul>
+      <p>
+        Side bets, 5 to 500 each, are settled and paid as soon as the first cards are down, whatever happens to the hand. Perfect Pairs is on your
+        first two cards; 21+3 is your first two cards with the dealer's up card, as a three-card poker hand.
+      </p>
+      <Paytable
+        caption="Perfect Pairs"
+        rows={[
+          ["Perfect pair (same suit)", "25 to 1"],
+          ["Coloured pair (same colour)", "12 to 1"],
+          ["Mixed pair", "6 to 1"],
+        ]}
+      />
+      <Paytable
+        caption="21+3"
+        rows={[
+          ["Suited three of a kind", "100 to 1"],
+          ["Straight flush", "40 to 1"],
+          ["Three of a kind", "30 to 1"],
+          ["Straight", "10 to 1"],
+          ["Flush", "5 to 1"],
+        ]}
+      />
     </>
   );
 }

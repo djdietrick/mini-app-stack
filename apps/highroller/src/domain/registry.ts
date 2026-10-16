@@ -38,21 +38,21 @@ const chips = z.number().int();
  * UTH (#44) and roulette (#45); wave 2 adds its engines here. Tests pass
  * their own registry to `highrollerRoutes`.
  *
- * Bet schemas are strict, so a side bet sent before its game takes one (#46)
- * is refused rather than ignored.
+ * Bet schemas are strict, so an unknown spot is refused rather than ignored.
+ * Side bets (#46) have their own range, `limits.side`.
  */
 export const GAMES: GameRegistry = {
   blackjack: defineGame({
     name: "Blackjack",
     engine: blackjack,
-    bets: z.object({ main: chips }).strict(),
+    bets: z.object({ main: chips, perfectPairs: chips.optional(), twentyOnePlusThree: chips.optional() }).strict(),
     action: z.object({ type: z.enum(BLACKJACK_ACTIONS) }).strict(),
     limits: BLACKJACK_LIMITS,
   }),
   uth: defineGame({
     name: "Ultimate Texas Hold'em",
     engine: uth,
-    bets: z.object({ ante: chips }).strict(),
+    bets: z.object({ ante: chips, trips: chips.optional() }).strict(),
     action: z.object({ type: z.enum(UTH_ACTIONS) }).strict(),
     limits: UTH_LIMITS,
   }),

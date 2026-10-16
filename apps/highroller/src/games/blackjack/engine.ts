@@ -1,6 +1,13 @@
 import { type Card, shoe } from "../cards.js";
-import { type BetResult, type GameEngine, type TableLimits, checkStake, outcomeOf } from "../engine.js";
+import { type BetResult, type GameEngine, type TableLimits, checkSideStake, checkStake, outcomeOf } from "../engine.js";
 import { sample } from "../rng.js";
+import {
+  PERFECT_PAIRS_RTP,
+  type SideBets,
+  type SideResult,
+  TWENTY_ONE_PLUS_THREE_RTP,
+  sideResults,
+} from "./sidebets.js";
 
 /**
  * Blackjack (#43). The rules are the constants below, so a later change is
@@ -12,6 +19,8 @@ import { sample } from "../rng.js";
  * - Split pairs of equal value up to four hands. Split aces get one card each
  *   and can't be split again.
  * - Late surrender on the first two cards of an unsplit hand.
+ * - Side bets (sidebets.ts): Perfect Pairs and 21+3, settled and paid on the
+ *   deal, whatever happens to the hand.
  * - Insurance (2:1, half the bet rounded down) when the dealer shows an ace,
  *   or even money on a player blackjack. The dealer then peeks on an ace or a
  *   ten, so a dealer blackjack ends the hand before any extra wager.
@@ -30,13 +39,16 @@ import { sample } from "../rng.js";
 export const DECKS = 6;
 export const MAX_HANDS = 4;
 export const CARDS_DRAWN = 80;
-export const BLACKJACK_LIMITS: TableLimits = { min: 10, max: 5_000, step: 5 };
+export const BLACKJACK_LIMITS: TableLimits = { min: 10, max: 5_000, step: 5, side: { min: 5, max: 500 } };
 
 /** Every card of the shoe in a fixed order; `deal` samples from it. */
 const FULL_SHOE: readonly Card[] = shoe(DECKS);
 
 export interface BlackjackBets {
   main: number;
+  /** Side bets (#46), optional. */
+  perfectPairs?: number;
+  twentyOnePlusThree?: number;
 }
 
 export interface PlayerHand {
@@ -69,6 +81,8 @@ export interface BlackjackState {
   /** The insurance stake, 0 when declined or never offered. */
   insurance: number;
   evenMoney: boolean;
+  /** Side bet stakes; absent on hands dealt before side bets existed. */
+  side?: SideBets;
 }
 
 export const ACTIONS = ["insurance", "no_insurance", "even_money", "hit", "stand", "double", "split", "surrender"] as const;
@@ -97,6 +111,8 @@ export interface BlackjackView {
   evenMoney: boolean;
   /** What insurance came back with, once settled. */
   insuranceReturned: number | null;
+  /** Side bets, settled on the deal: known (and paid) from the first view. Null where none was placed. */
+  side: { perfectPairs: SideResult | null; twentyOnePlusThree: SideResult | null };
 }
 
 // ---------- hand values ----------
@@ -236,6 +252,7 @@ function act(s: BlackjackState, action: BlackjackAction): BlackjackState | null 
 // ---------- settlement ----------
 
 const stakeOf = (h: PlayerHand) => h.bet * (h.doubled ? 2 : 1);
+const sideStaked = (s: BlackjackState) => (s.side?.perfectPairs ?? 0) + (s.side?.twentyOnePlusThree ?? 0);
 const spotName = (s: BlackjackState, i: number) => (s.hands.length === 1 ? "main" : `hand${i + 1}`);
 
 function handResult(s: BlackjackState, h: PlayerHand): { outcome: HandOutcome; returned: number } {
@@ -254,6 +271,16 @@ function handResult(s: BlackjackState, h: PlayerHand): { outcome: HandOutcome; r
 
 const insuranceReturned = (s: BlackjackState) => (s.insurance > 0 && dealerNatural(s) ? s.insurance * 3 : 0);
 
+const NO_SIDE: SideBets = { perfectPairs: 0, twentyOnePlusThree: 0 };
+
+/** The side bets' results, from the opening cards (the shoe's first, third and second). */
+const sides = (s: BlackjackState) => sideResults(s.side ?? NO_SIDE, [s.shoe[0], s.shoe[2]], s.dealer[0]);
+
+function sidePaid(s: BlackjackState): number {
+  const r = sides(s);
+  return (r.perfectPairs?.returned ?? 0) + (r.twentyOnePlusThree?.returned ?? 0);
+}
+
 function settle(s: BlackjackState) {
   const results: BetResult[] = s.hands.map((h, i) => {
     const r = handResult(s, h);
@@ -262,6 +289,10 @@ function settle(s: BlackjackState) {
   if (s.insurance > 0) {
     const returned = insuranceReturned(s);
     results.push({ spot: "insurance", stake: s.insurance, returned, outcome: outcomeOf(s.insurance, returned) });
+  }
+  const side = sides(s);
+  for (const [spot, r] of [["perfect_pairs", side.perfectPairs], ["21+3", side.twentyOnePlusThree]] as const) {
+    if (r) results.push({ spot, stake: r.stake, returned: r.returned, outcome: outcomeOf(r.stake, r.returned) });
   }
   return { returned: results.reduce((n, r) => n + r.returned, 0), results };
 }
@@ -301,13 +332,18 @@ export function dealFrom(cards: Card[], bets: BlackjackBets): BlackjackState {
     phase: "insurance",
     insurance: 0,
     evenMoney: false,
+    side: { perfectPairs: bets.perfectPairs ?? 0, twentyOnePlusThree: bets.twentyOnePlusThree ?? 0 },
   };
   return s.dealer[0][0] === "A" ? s : peek(s);
 }
 
 export const blackjack: GameEngine<BlackjackBets, BlackjackState, BlackjackAction, BlackjackView> = {
   validateBets(bets, limits) {
-    return checkStake(bets.main, limits);
+    return (
+      checkStake(bets.main, limits) ??
+      checkSideStake("Perfect Pairs", bets.perfectPairs, limits) ??
+      checkSideStake("21+3", bets.twentyOnePlusThree, limits)
+    );
   },
 
   deal(bets, rng) {
@@ -317,8 +353,15 @@ export const blackjack: GameEngine<BlackjackBets, BlackjackState, BlackjackActio
   legalActions: legal,
   act,
   isFinished: (s) => s.phase === "done",
-  staked: (s) => s.hands.reduce((n, h) => n + stakeOf(h), 0) + s.insurance,
+  staked: (s) => s.hands.reduce((n, h) => n + stakeOf(h), 0) + s.insurance + sideStaked(s),
   settle,
+  paidEarly: sidePaid,
+
+  expectedReturn(s) {
+    const side = s.side ?? NO_SIDE;
+    const main = s.hands.reduce((n, h) => n + stakeOf(h), 0) + s.insurance;
+    return main * blackjack.theoreticalRtp(null) + side.perfectPairs * PERFECT_PAIRS_RTP + side.twentyOnePlusThree * TWENTY_ONE_PLUS_THREE_RTP;
+  },
 
   view(s) {
     const done = s.phase === "done";
@@ -337,11 +380,13 @@ export const blackjack: GameEngine<BlackjackBets, BlackjackState, BlackjackActio
       insurance: s.insurance,
       evenMoney: s.evenMoney,
       insuranceReturned: done && s.insurance > 0 ? insuranceReturned(s) : null,
+      side: sides(s),
     };
   },
 
   summary(s) {
     const results = s.hands.map((h) => handResult(s, h));
+    const side = sides(s);
     const won = (o: HandOutcome) => o === "win" || o === "blackjack";
     return {
       blackjack: isNatural(s.hands[0]),
@@ -353,6 +398,9 @@ export const blackjack: GameEngine<BlackjackBets, BlackjackState, BlackjackActio
       surrendered: s.hands.some((h) => h.surrendered),
       insurance: s.insurance > 0,
       evenMoney: s.evenMoney,
+      perfectPair: side.perfectPairs?.hand === "perfect",
+      suitedTrips: side.twentyOnePlusThree?.hand === "suited_trips",
+      jackpotEligible: side.twentyOnePlusThree?.hand === "suited_trips",
     };
   },
 
