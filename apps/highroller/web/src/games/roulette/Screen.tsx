@@ -3,11 +3,13 @@ import {
   ROULETTE_LIMITS,
   type RouletteView,
   type Variant,
+  DOUBLE_ZERO,
   betFromKey,
   pocketColor,
   pocketLabel,
 } from "../../../../src/games/roulette/engine.js";
 import { type HandRow, api } from "../../api";
+import { WIDE_TABLE, matches } from "../../breakpoints";
 import { BetBar } from "../../components/BetBar";
 import { useToast } from "../../components/Toast";
 import { chips } from "../../format";
@@ -16,6 +18,7 @@ import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
 import { useBetting } from "../../table/betting";
 import { Paytable, TableFrame } from "../TableFrame";
+import { ROULETTE_OUTSIDE, betsWords, describeRoulette, rouletteSpotName } from "../describe";
 import { resultText, useHand } from "../useHand";
 import { type RouletteSceneView, createRouletteScene } from "./Scene";
 
@@ -32,6 +35,8 @@ export default function RouletteScreen({ variant: requested }: { variant: string
   const [zoomed, setZoomed] = useState(false);
   const [spinning, setSpinning] = useState<HandRow | null>(null);
   const [history, setHistory] = useState<number[]>([]);
+  /** The keyboard's straight-up pick. */
+  const [pick, setPick] = useState(17);
   const placeRef = useRef((_key: string) => undefined as void);
   const [scene] = useState(() =>
     createRouletteScene({ variant, onBet: (key) => placeRef.current(key), onZoom: setZoomed }),
@@ -89,6 +94,11 @@ export default function RouletteScreen({ variant: requested }: { variant: string
     <TableFrame
       title={variant === "american" ? "American roulette" : "European roulette"}
       info={<Rules variant={variant} />}
+      description={
+        betting.total > 0 || !table.shownHand
+          ? betsWords(betting.bets, rouletteSpotName, "Space to spin")
+          : describeRoulette(table.shownHand)
+      }
       canvas={<TableCanvas scene={scene} equipped={equipped} view={view} onShown={shown} onError={(e) => toast(`Table error: ${String(e)}`, "loss")} />}
       overlay={
         zoomed && !spinning ? (
@@ -112,6 +122,30 @@ export default function RouletteScreen({ variant: requested }: { variant: string
           onDeal={spin}
           dealLabel="Spin"
           busy={table.busy || !!spinning}
+          spots={ROULETTE_OUTSIDE}
+          bets={betting.bets}
+          onSpot={(key) => placeRef.current(key)}
+          extra={
+            <span className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-[14px]">
+                Straight up
+                <select
+                  className="focus-ring min-h-[44px] rounded-xl border border-line bg-raised px-2 font-mono"
+                  value={pick}
+                  onChange={(e) => setPick(Number(e.target.value))}
+                >
+                  {[0, ...(variant === "american" ? [DOUBLE_ZERO] : []), ...Array.from({ length: 36 }, (_, i) => i + 1)].map((n) => (
+                    <option key={n} value={n}>
+                      {pocketLabel(n)} {pocketColor(n)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="btn min-h-[44px] px-3 text-[14px]" disabled={!!spinning} onClick={() => placeRef.current(`straight:${pocketLabel(pick)}`)}>
+                Place
+              </button>
+            </span>
+          }
         />
       }
     />
@@ -125,7 +159,9 @@ function rouletteResult(h: HandRow) {
 }
 
 function History({ pockets }: { pockets: number[] }) {
-  if (!pockets.length) return <span className="text-muted">Tap the felt to bet. Tap the numbers to zoom in.</span>;
+  if (!pockets.length) {
+    return <span className="text-muted">Tap the felt to bet.{matches(WIDE_TABLE) ? "" : " Tap the numbers to zoom in."}</span>;
+  }
   return (
     <ol aria-label="Last results, newest first" className="flex items-center justify-center gap-1 overflow-hidden">
       {pockets.map((p, i) => {
@@ -157,8 +193,11 @@ function Rules({ variant }: { variant: Variant }) {
         Bet on as many spots as you like, then spin.
       </p>
       <p>
-        Tap a column or an outside bet to place a chip. Tap the numbers to zoom in, then tap a number for a straight bet, a line between two for a
-        split, a corner for four, the left edge of a row for a street (or between rows for six).
+        Tap a column or an outside bet to place a chip. Tap the numbers to zoom in (on a wide screen there's no need), then tap a number for a
+        straight bet, a line between two for a split, a corner for four, the left edge of a row for a street (or between rows for six).
+      </p>
+      <p>
+        With a keyboard: Tab to the bet spots for the outside bets and a straight-up number, 1 to 6 pick a chip, and Space spins.
       </p>
       <Paytable
         caption="Pays"

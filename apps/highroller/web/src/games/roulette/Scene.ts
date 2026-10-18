@@ -22,6 +22,9 @@ import {
   pocketLabel,
   spotKey,
 } from "../../../../src/games/roulette/engine.js";
+import { wheel as wheelSound } from "../../audio/sfx";
+import { WIDE_TABLE, matches } from "../../breakpoints";
+import { motionScale } from "../../settings";
 import { type Point, ease } from "../../table/anim";
 import { ChipStack, GOLD, INK, Labels, placeFelt } from "../../table/kit";
 import { PanZoom } from "../../table/panZoom";
@@ -32,6 +35,8 @@ import { DESIGN, type Layout, type Scene, type SceneContext } from "../../table/
  * a phone (src/games/roulette/felt.ts). At full view, outside bets take a
  * chip with one tap; a tap on the numbers zooms in there, and at 2× every
  * cell, line and corner is big enough for a thumb. Pinch and drag work too.
+ * On the wide layout (WIDE_TABLE) the whole felt is drawn large enough to
+ * bet on directly, so a tap on the numbers bets instead of zooming.
  *
  * A spin brings the wheel up over the felt. The wheel and the ball are
  * animated backwards from the server's number: the final angles are picked
@@ -111,8 +116,9 @@ export function createRouletteScene(opts: {
       const x = GRID_X + c * COL_W;
       const y = GRID_Y + r * ROW_H;
       cell(g, x, y, COL_W, ROW_H, null);
-      const color = pocketColor(n) === "red" ? COLORS.red : COLORS.black;
-      g.circle(x + COL_W / 2, y + ROW_H / 2, 13).fill({ color, alpha: 0.95 });
+      // Colour is never the only signal: red numbers sit on a disc, black ones on a square.
+      if (pocketColor(n) === "red") g.circle(x + COL_W / 2, y + ROW_H / 2, 13).fill({ color: COLORS.red, alpha: 0.95 });
+      else g.roundRect(x + COL_W / 2 - 11.5, y + ROW_H / 2 - 11.5, 23, 23, 3).fill({ color: COLORS.black, alpha: 0.95 });
       t(String(n), 13, x + COL_W / 2, y + ROW_H / 2);
     }
     // Dozens and even-money bets, lettering turned to fit the narrow columns.
@@ -124,10 +130,13 @@ export function createRouletteScene(opts: {
       const y = GRID_Y + i * 2 * ROW_H;
       cell(g, 0, y, 46, 2 * ROW_H, null);
       if (e.kind === "red" || e.kind === "black") {
+        // The diamond, and its name under it, so the spot doesn't rely on colour.
         const cx = 23;
-        const cy = y + ROW_H;
-        g.poly([cx, cy - 18, cx + 11, cy, cx, cy + 18, cx - 11, cy]).fill({ color: e.kind === "red" ? COLORS.red : COLORS.black });
-        g.poly([cx, cy - 18, cx + 11, cy, cx, cy + 18, cx - 11, cy]).stroke({ color: INK, alpha: 0.6, width: 1 });
+        const cy = y + ROW_H - 7;
+        const diamond = [cx, cy - 15, cx + 9, cy, cx, cy + 15, cx - 9, cy];
+        g.poly(diamond).fill({ color: e.kind === "red" ? COLORS.red : COLORS.black });
+        g.poly(diamond).stroke({ color: INK, alpha: 0.6, width: 1 });
+        t(e.label, 9, cx, cy + 25);
       } else {
         t(e.label, 12, 23, y + ROW_H, true);
       }
@@ -240,8 +249,10 @@ export function createRouletteScene(opts: {
     place(0);
     root.alpha = 0;
     await ctx.anim.tween(root, { alpha: 1 }, { duration: 200 });
+    wheelSound(4200 * motionScale());
     await ctx.anim.tween(driver, { t: 1 }, { duration: 4200, ease: ease.linear });
-    result.text = pocketLabel(pocket);
+    // The colour in words too, never colour alone.
+    result.text = `${pocketLabel(pocket)} ${pocketColor(pocket).toUpperCase()}`;
     result.style.fill = pocketColor(pocket) === "red" ? 0xf87171 : pocketColor(pocket) === "green" ? 0x6ee7a8 : INK;
     await ctx.anim.wait(900);
     await ctx.anim.tween(root, { alpha: 0 }, { duration: 260 });
@@ -276,7 +287,7 @@ export function createRouletteScene(opts: {
     const p = content.toLocal(global);
     const zoomed = panZoom.scale > 1.05;
     const onNumbers = p.x >= GRID_X - BAND && p.y < GRID_BOTTOM;
-    if (!zoomed && onNumbers) {
+    if (!zoomed && onNumbers && !matches(WIDE_TABLE)) {
       // Zoom in 2× around the tap: about a third of the numbers, every line and corner thumb-sized.
       const w = FELT.width / ZOOM;
       const h = FELT.height / ZOOM;

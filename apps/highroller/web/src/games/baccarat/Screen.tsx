@@ -9,6 +9,7 @@ import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
 import { useBetting } from "../../table/betting";
 import { Paytable, TableFrame } from "../TableFrame";
+import { betsWords, describeBaccarat } from "../describe";
 import { resultText, useHand } from "../useHand";
 import { type BaccaratSceneView, coupText, createBaccaratScene } from "./Scene";
 
@@ -82,6 +83,11 @@ export default function BaccaratScreen() {
     <TableFrame
       title="Baccarat"
       info={<Rules />}
+      description={
+        betting.total > 0 || !table.shownHand
+          ? betsWords(betting.bets, { player: "Player", banker: "Banker", tie: "Tie" })
+          : describeBaccarat(table.shownHand)
+      }
       canvas={<TableCanvas scene={scene} equipped={equipped} view={view} onShown={shown} onError={(e) => toast(`Table error: ${String(e)}`, "loss")} />}
       above={<BeadPlate beads={beads} />}
       bar={
@@ -97,6 +103,9 @@ export default function BaccaratScreen() {
           onDouble={betting.double}
           onDeal={deal}
           busy={table.busy || showing}
+          spots={SPOTS.map((s) => ({ id: s, label: cap(s), key: s[0] }))}
+          bets={betting.bets}
+          onSpot={(s) => placeRef.current(s as Spot)}
         />
       }
     />

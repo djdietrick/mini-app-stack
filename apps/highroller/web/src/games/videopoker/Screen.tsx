@@ -7,7 +7,10 @@ import { chips } from "../../format";
 import { useEquipped, usePlayer } from "../../player";
 import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
+import { Kbd } from "../../components/ActionBar";
+import { useKeys } from "../../keys";
 import { Paytable, TableFrame } from "../TableFrame";
+import { cardWords, describeVideoPoker } from "../describe";
 import { resultText, useHand } from "../useHand";
 import { type VideoPokerSceneView, createVideoPokerScene } from "./Scene";
 
@@ -63,10 +66,29 @@ export default function VideoPokerScreen() {
   const stake = coins * coinValue;
   const busy = table.busy || table.resuming;
 
+  // 1–5 hold, Space deals or draws, H hints.
+  useKeys(
+    live
+      ? {
+          ...Object.fromEntries([0, 1, 2, 3, 4].map((i) => [String(i + 1), () => toggleRef.current(i)])),
+          " ": () => void draw(),
+          h: () => setHeld(simpleHold(v!.dealt)),
+        }
+      : { " ": stake <= balance && (() => void deal()) },
+    !busy,
+  );
+
   return (
     <TableFrame
       title="Jacks or Better"
       info={<Rules />}
+      description={
+        live && v
+          ? describeVideoPoker({ ...hand!, view: { ...v, held } })
+          : table.shownHand
+            ? describeVideoPoker(table.shownHand)
+            : `Bet ${coins} coins at ${coinValue}: ${chips(stake)}. Space to deal.`
+      }
       canvas={
         <TableCanvas
           scene={scene}
@@ -90,6 +112,16 @@ export default function VideoPokerScreen() {
       }
       bar={
         <div className="flex flex-col gap-2 border-t border-line bg-surface/95 px-3 pb-3 pt-2 backdrop-blur">
+          {live && v && (
+            <div role="group" aria-label="Hold cards" className="sr-only focus-within:not-sr-only focus-within:grid focus-within:grid-cols-5 focus-within:gap-1.5">
+              {v.cards.map((c, i) => (
+                <button key={i} type="button" className="btn min-h-[44px] px-0 text-[12px]" aria-pressed={held[i]} aria-keyshortcuts={String(i + 1)} onClick={() => toggleRef.current(i)}>
+                  {held[i] ? "Held: " : "Hold "}
+                  {cardWords(c)}
+                </button>
+              ))}
+            </div>
+          )}
           {live ? (
             <div className="flex items-center gap-2">
               <button type="button" className="btn px-4" disabled={busy} onClick={() => setHeld(simpleHold(v!.dealt))}>
@@ -100,6 +132,7 @@ export default function VideoPokerScreen() {
               </button>
               <button type="button" className="btn-primary min-h-[52px] flex-1" disabled={busy} onClick={() => void draw()}>
                 Draw
+                <Kbd k=" " />
               </button>
             </div>
           ) : (
@@ -128,6 +161,7 @@ export default function VideoPokerScreen() {
                 </button>
                 <button type="button" className="btn-primary min-h-[52px] flex-1" disabled={busy || stake > balance} onClick={() => void deal()}>
                   Deal <span className="font-mono tabular">{chips(stake)}</span>
+                  <Kbd k=" " />
                 </button>
               </div>
             </>

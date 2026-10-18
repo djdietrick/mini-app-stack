@@ -12,19 +12,27 @@ import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
 import { useBetting } from "../../table/betting";
 import { Paytable, TableFrame } from "../TableFrame";
+import { betsWords, describeBlackjack } from "../describe";
 import { resultText, useHand } from "../useHand";
 import { type BlackjackSceneView, SIDE_SPOTS, type Spot, createBlackjackScene } from "./Scene";
 
 const ACTIONS = [
-  { type: "even_money", label: "Even money" },
-  { type: "insurance", label: "Insurance" },
-  { type: "no_insurance", label: "No insurance", primary: true },
-  { type: "surrender", label: "Surrender" },
-  { type: "split", label: "Split" },
-  { type: "double", label: "Double" },
-  { type: "hit", label: "Hit" },
-  { type: "stand", label: "Stand", primary: true },
+  { type: "even_money", label: "Even money", key: "e" },
+  { type: "insurance", label: "Insurance", key: "i" },
+  { type: "no_insurance", label: "No insurance", primary: true, key: "n" },
+  { type: "surrender", label: "Surrender", key: "r" },
+  { type: "split", label: "Split", key: "p" },
+  { type: "double", label: "Double", key: "d" },
+  { type: "hit", label: "Hit", key: "h" },
+  { type: "stand", label: "Stand", primary: true, key: "s" },
 ];
+
+const SPOTS = [
+  { id: "main", label: "Main bet", key: "m" },
+  { id: "perfectPairs", label: "Perfect Pairs", key: "p" },
+  { id: "twentyOnePlusThree", label: "21+3", key: "t" },
+];
+const SPOT_NAMES = Object.fromEntries(SPOTS.map((s) => [s.id, s.label]));
 
 export default function BlackjackScreen() {
   const { player } = usePlayer();
@@ -89,6 +97,14 @@ export default function BlackjackScreen() {
     <TableFrame
       title="Blackjack"
       info={<Rules />}
+      jackpot
+      description={
+        betweenHands && (betting.total > 0 || !table.shownHand)
+          ? betsWords(betting.bets, SPOT_NAMES)
+          : table.shownHand
+            ? describeBlackjack(table.shownHand)
+            : undefined
+      }
       canvas={
         <TableCanvas
           scene={scene}
@@ -113,6 +129,9 @@ export default function BlackjackScreen() {
             onDouble={betting.double}
             onDeal={deal}
             busy={table.busy || table.resuming}
+            spots={SPOTS}
+            bets={betting.bets}
+            onSpot={(s) => placeRef.current(s as Spot)}
           />
         ) : (
           <ActionBar actions={ACTIONS} legal={legal} onAction={(t) => void table.act(t)} busy={table.busy} />

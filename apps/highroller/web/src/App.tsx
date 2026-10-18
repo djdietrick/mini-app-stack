@@ -1,5 +1,6 @@
 import { type ComponentType, lazy, Suspense } from "react";
 import { AppShell } from "./components/AppShell";
+import { JackpotCelebration } from "./components/Jackpot";
 import { useRoute } from "./router";
 import { Leaderboards } from "./screens/Leaderboards";
 import { Ledger } from "./screens/Ledger";
@@ -53,6 +54,7 @@ export function App() {
           <TableDemo />
         </Suspense>
       )}
+      <JackpotCelebration />
     </AppShell>
   );
 }

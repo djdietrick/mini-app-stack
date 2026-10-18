@@ -1,4 +1,5 @@
 import type { Container, Texture, Ticker } from "pixi.js";
+import { play } from "../audio/sfx";
 import { motionScale } from "../settings";
 
 /**
@@ -10,6 +11,9 @@ import { motionScale } from "../settings";
  * setting, 0 with reduced motion (the setting or prefers-reduced-motion), in
  * which case a tween sets its end values at once and resolves. Tweens run on
  * the ticker, so they pause with it while the tab is hidden.
+ *
+ * The stock moves make their sounds (audio/sfx.ts) as they start, scheduled
+ * on the audio clock by the same scaled delay; with Sound off that is nothing.
  */
 export type Ease = (t: number) => number;
 
@@ -133,6 +137,7 @@ export class Animator {
     card.position.set(from.x, from.y);
     card.rotation = -0.5;
     card.alpha = 1;
+    play("card", (opts.delay ?? 0) * motionScale());
     await this.tween(card, { x: to.x, y: to.y, rotation: opts.rotation ?? 0 }, { duration: 320, delay: opts.delay, ease: ease.out });
   }
 
@@ -143,6 +148,7 @@ export class Animator {
    */
   async flip(card: Container & { texture: Texture }, face: Texture | (() => Texture)) {
     const sx = Math.abs(card.scale.x) || 1;
+    play("flip");
     await this.tween(card, { "scale.x": 0 }, { duration: 110, ease: ease.in });
     card.texture = typeof face === "function" ? face() : face;
     await this.tween(card, { "scale.x": sx }, { duration: 130, ease: ease.out });
@@ -154,6 +160,7 @@ export class Animator {
 
   /** Sweeps things to one point and fades them, e.g. the dealer collecting cards. */
   async collect(objs: Container[], to: Point) {
+    if (objs.length) play("card");
     await Promise.all(
       objs.map((o, i) =>
         this.tween(o, { x: to.x, y: to.y, alpha: 0, rotation: 0.3 }, { duration: 360, delay: i * 40, ease: ease.in }),
@@ -163,6 +170,8 @@ export class Animator {
 
   /** Chips slide one after another onto a stack at `to`, each a little higher. */
   async pushStack(chips: Container[], to: Point, lift = 3) {
+    const scale = motionScale();
+    chips.slice(0, 6).forEach((_, i) => play("chip", (i * 45 + 200) * scale));
     await Promise.all(
       chips.map((c, i) => this.tween(c, { x: to.x, y: to.y - i * lift }, { duration: 240, delay: i * 45, ease: ease.back })),
     );
@@ -170,6 +179,8 @@ export class Animator {
 
   /** Chips fly to the balance pill (or `to`) and fade as they arrive. */
   async payout(chips: Container[], to: Point) {
+    const scale = motionScale();
+    chips.slice(0, 6).forEach((_, i) => play("chip", (i * 55 + 480) * scale));
     await Promise.all(
       chips.map((c, i) =>
         this.tween(c, { x: to.x, y: to.y, alpha: 0.2, "scale.x": 0.6, "scale.y": 0.6 }, { duration: 520, delay: i * 55, ease: ease.inOut }),

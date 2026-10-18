@@ -356,6 +356,8 @@ export const blackjack: GameEngine<BlackjackBets, BlackjackState, BlackjackActio
   staked: (s) => s.hands.reduce((n, h) => n + stakeOf(h), 0) + s.insurance + sideStaked(s),
   settle,
   paidEarly: sidePaid,
+  /** Both side bets feed the jackpot; the main game doesn't. */
+  jackpotStake: sideStaked,
 
   expectedReturn(s) {
     const side = s.side ?? NO_SIDE;

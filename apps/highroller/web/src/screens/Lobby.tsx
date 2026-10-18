@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ApiError, api } from "../api";
+import { JackpotCard } from "../components/Jackpot";
 import { FeedTicker, GiftBanner } from "../components/Social";
 import { useToast } from "../components/Toast";
 import { ErrorNote } from "../components/ui";
@@ -20,6 +21,7 @@ export function Lobby() {
 
   return (
     <div className="flex flex-col gap-5">
+      <h1 className="sr-only">Lobby</h1>
       {error && !player && <ErrorNote error={error} onRetry={reload} />}
       {player && (
         <div className="grid gap-3 md:grid-cols-2">
@@ -28,6 +30,8 @@ export function Lobby() {
           {player.bailout.available && <BailoutCard />}
         </div>
       )}
+
+      <JackpotCard />
 
       <FeedTicker />
 

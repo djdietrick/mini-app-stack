@@ -24,6 +24,8 @@ import type {
   HandPage,
   HandResponse,
   HandRow,
+  JackpotHitRow,
+  JackpotResponse,
   LeaderboardResponse,
   LedgerKind,
   LedgerPage,
@@ -61,6 +63,8 @@ export type {
   HandPage,
   HandResponse,
   HandRow,
+  JackpotHitRow,
+  JackpotResponse,
   LeaderboardResponse,
   LedgerKind,
   LedgerPage,
@@ -160,4 +164,5 @@ export const api = {
   giftsReceived: (since?: string) =>
     call<GiftsReceived>("GET", `/gifts/received${since ? `?since=${encodeURIComponent(since)}` : ""}`),
   feed: () => call<FeedResponse>("GET", "/feed?limit=20"),
+  jackpot: () => call<JackpotResponse>("GET", "/jackpot"),
 };

@@ -11,8 +11,15 @@ import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
 import { useBetting } from "../../table/betting";
 import { Paytable, TableFrame } from "../TableFrame";
+import { betsWords, describeThreeCard } from "../describe";
 import { resultText, useHand } from "../useHand";
 import { type ThreeCardSceneView, createThreeCardScene } from "./Scene";
+
+const SPOTS = [
+  { id: "ante", label: "Ante", key: "a" },
+  { id: "pairPlus", label: "Pair Plus", key: "p" },
+];
+const SPOT_NAMES = Object.fromEntries(SPOTS.map((s) => [s.id, s.label]));
 
 export default function ThreeCardScreen() {
   const { player } = usePlayer();
@@ -60,14 +67,21 @@ export default function ThreeCardScreen() {
   // Play costs another ante; fold is always there.
   const legal = (hand?.legal_actions ?? []).filter((a) => a !== "play" || balance >= ante);
   const actions = [
-    { type: "fold", label: "Fold" },
-    { type: "play", label: `Play · ${chipsShort(ante)}`, primary: true },
+    { type: "fold", label: "Fold", key: "f" },
+    { type: "play", label: `Play · ${chipsShort(ante)}`, primary: true, key: "p" },
   ];
 
   return (
     <TableFrame
       title="Three Card Poker"
       info={<Rules />}
+      description={
+        betweenHands && (betting.total > 0 || !table.shownHand)
+          ? betsWords(betting.bets, SPOT_NAMES)
+          : table.shownHand
+            ? describeThreeCard(table.shownHand)
+            : undefined
+      }
       canvas={
         <TableCanvas
           scene={scene}
@@ -98,6 +112,9 @@ export default function ThreeCardScreen() {
             onDouble={betting.double}
             onDeal={deal}
             busy={table.busy || table.resuming}
+            spots={SPOTS}
+            bets={betting.bets}
+            onSpot={(s) => placeRef.current(s as "ante" | "pairPlus")}
           />
         ) : (
           <ActionBar actions={actions} legal={legal} onAction={(t) => void table.act(t)} busy={table.busy} />

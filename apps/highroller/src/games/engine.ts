@@ -59,6 +59,13 @@ export interface GameEngine<Bets, State, Action extends { type: string }, View> 
    */
   expectedReturn?(state: State): number;
 
+  /**
+   * Chips on the hand that feed the progressive jackpot: a slot spin's whole
+   * stake, a side bet's. Omit for a game that doesn't feed it. A hand wins
+   * the jackpot when `summary` sets `jackpotEligible: true`.
+   */
+  jackpotStake?(state: State): number;
+
   /** What the client may see. Never the undealt cards or a hidden hole card. */
   view(state: State): View;
 

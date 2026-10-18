@@ -8,15 +8,30 @@ import { useSyncExternalStore } from "react";
 export interface Settings {
   /** Off by default: a phone at a table is often somewhere quiet. */
   sound: boolean;
+  /** 0 to 1, for every sound effect. */
+  volume: number;
   /** A short buzz on wins and on your turn, where the device can. */
   haptics: boolean;
   /** "fast" halves every deal and payout animation. */
   speed: "normal" | "fast";
   /** "system" follows prefers-reduced-motion; "on" always snaps animations. */
   reducedMotion: "system" | "on" | "off";
+  /**
+   * For low-end phones and long sessions: tables render at one device pixel
+   * per CSS pixel, at most 30 frames a second, without antialiasing, and
+   * celebrations drop their particles.
+   */
+  batterySaver: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { sound: false, haptics: true, speed: "normal", reducedMotion: "system" };
+export const DEFAULT_SETTINGS: Settings = {
+  sound: false,
+  volume: 0.6,
+  haptics: true,
+  speed: "normal",
+  reducedMotion: "system",
+  batterySaver: false,
+};
 
 const KEY = "highroller:settings";
 const listeners = new Set<() => void>();
@@ -29,9 +44,12 @@ function load(): Settings {
     const parsed = JSON.parse(raw) as Partial<Settings>;
     return {
       sound: typeof parsed.sound === "boolean" ? parsed.sound : DEFAULT_SETTINGS.sound,
+      volume:
+        typeof parsed.volume === "number" && parsed.volume >= 0 && parsed.volume <= 1 ? parsed.volume : DEFAULT_SETTINGS.volume,
       haptics: typeof parsed.haptics === "boolean" ? parsed.haptics : DEFAULT_SETTINGS.haptics,
       speed: parsed.speed === "fast" ? "fast" : "normal",
       reducedMotion: parsed.reducedMotion === "on" || parsed.reducedMotion === "off" ? parsed.reducedMotion : "system",
+      batterySaver: parsed.batterySaver === true,
     };
   } catch {
     return DEFAULT_SETTINGS;

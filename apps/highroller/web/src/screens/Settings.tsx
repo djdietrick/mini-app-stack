@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { play, unlockAudio } from "../audio/sfx";
 import { useToast } from "../components/Toast";
 import { PageTitle, Segmented, Toggle } from "../components/ui";
 import { usePlayer } from "../player";
@@ -15,7 +16,36 @@ export function Settings() {
       <AccountSettings />
       <h2 className="label-caps mb-2 mt-6">On this device</h2>
       <div className="card divide-y divide-line">
-        <Toggle label="Sound" hint="Off by default." checked={s.sound} onChange={(v) => updateSettings({ sound: v })} />
+        <Toggle
+          label="Sound"
+          hint="Cards, chips, the wheel and the reels. Off by default."
+          checked={s.sound}
+          onChange={(v) => {
+            updateSettings({ sound: v });
+            // This tap is the gesture browsers want before any sound can play.
+            if (v) {
+              unlockAudio();
+              play("chip", 60);
+            }
+          }}
+        />
+        {s.sound && (
+          <label className="flex min-h-[56px] items-center justify-between gap-4 px-4 py-3">
+            <span className="text-[15px] font-medium">Volume</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(s.volume * 100)}
+              aria-valuetext={`${Math.round(s.volume * 100)}%`}
+              onChange={(e) => updateSettings({ volume: Number(e.target.value) / 100 })}
+              onPointerUp={() => play("chip")}
+              onKeyUp={() => play("chip")}
+              className="focus-ring h-11 w-40 cursor-pointer accent-gold"
+            />
+          </label>
+        )}
         <Toggle
           label="Haptics"
           hint={canVibrate ? "A short buzz on wins and on your turn." : "This device or browser can't vibrate."}
@@ -43,6 +73,12 @@ export function Settings() {
             { value: "off", label: "Off" },
           ]}
           onChange={(v) => updateSettings({ reducedMotion: v })}
+        />
+        <Toggle
+          label="Battery saver"
+          hint="Tables draw at a lower resolution and at most 30 frames a second, and the jackpot skips its coins. For older phones and long sessions."
+          checked={s.batterySaver}
+          onChange={(v) => updateSettings({ batterySaver: v })}
         />
       </div>
     </div>

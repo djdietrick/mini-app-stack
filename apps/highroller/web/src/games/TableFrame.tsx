@@ -1,10 +1,19 @@
 import { type ReactNode, useEffect, useState } from "react";
+import { JackpotMeter } from "../components/Jackpot";
 
 /**
  * The frame every table screen shares: the canvas filling the space under
  * the header, a slim bar over its top edge (back to the lobby, the game's
  * name, an info button), and the bet or action bar pinned at thumb height
- * above the tab bar.
+ * above the tab bar. From `lg` (WIDE_TABLE) it turns landscape: the table on
+ * the left and the bars in a column beside it.
+ *
+ * `description` is the table in words, for screen readers (games/describe.ts):
+ * an `aria-live` region the canvas can't be. Games that feed the jackpot pass
+ * `jackpot` for a meter under the top bar.
+ *
+ * While a table is open the page doesn't rubber-band (iOS standalone), so a
+ * drag on the felt never moves the whole app.
  */
 export function TableFrame({
   title,
@@ -13,6 +22,8 @@ export function TableFrame({
   overlay,
   bar,
   above,
+  description,
+  jackpot = false,
 }: {
   title: string;
   /** The game's rules and paytables, in a sheet. */
@@ -24,18 +35,29 @@ export function TableFrame({
   bar: ReactNode;
   /** A line above the bar: a prompt, a made hand. */
   above?: ReactNode;
+  /** The table in words, read out as it changes. */
+  description?: string;
+  /** Show the progressive jackpot over the table. */
+  jackpot?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
+  useEffect(() => {
+    document.documentElement.classList.add("at-table");
+    return () => document.documentElement.classList.remove("at-table");
+  }, []);
+
   return (
-    <div className="table-screen flex min-h-0 flex-1 flex-col">
-      <div className="relative min-h-[360px] flex-1 bg-felt-dark">
-        <div className="absolute inset-0">{canvas}</div>
+    <div className="table-screen flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className="relative min-h-[360px] flex-1 bg-felt-dark lg:min-h-0">
+        <div className="absolute inset-0" aria-hidden="true">
+          {canvas}
+        </div>
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 p-2">
           <a href="#/" className="btn pointer-events-auto min-h-[40px] bg-raised/80 px-3 text-[14px] backdrop-blur" aria-label="Back to the lobby">
             ‹ Lobby
           </a>
-          <span className="truncate rounded-full bg-black/30 px-3 py-1 font-display text-[15px] font-bold text-ink/90">{title}</span>
+          <h1 className="truncate rounded-full bg-black/30 px-3 py-1 font-display text-[15px] font-bold text-ink/90">{title}</h1>
           {info ? (
             <button
               type="button"
@@ -49,10 +71,29 @@ export function TableFrame({
             <span className="w-[40px]" />
           )}
         </div>
+        {jackpot && (
+          <div className="pointer-events-none absolute inset-x-0 top-14 z-10 flex justify-center">
+            <JackpotMeter compact />
+          </div>
+        )}
         {overlay}
       </div>
-      <div className="pb-safe sticky bottom-[calc(56px+env(safe-area-inset-bottom))] z-20 lg:bottom-0">
-        {above && <div className="border-t border-line bg-surface/95 px-4 py-2 text-center text-[14px] text-ink/90 backdrop-blur">{above}</div>}
+      <div className="pb-safe sticky bottom-[calc(56px+env(safe-area-inset-bottom))] z-20 lg:static lg:flex lg:w-[380px] lg:shrink-0 lg:flex-col lg:border-l lg:border-line lg:bg-surface lg:pb-4 xl:w-[420px]">
+        <p className="sr-only" aria-live="polite" aria-atomic="true">
+          {description}
+        </p>
+        {/* The wide layout has room to show the same words: a running account of the hand, with its keys. */}
+        {description && (
+          <p aria-hidden="true" className="hidden px-5 pb-2 pt-5 text-[15px] leading-relaxed text-muted lg:block">
+            {description}
+          </p>
+        )}
+        <div className="hidden flex-1 lg:block" />
+        {above && (
+          <div className="border-t border-line bg-surface/95 px-4 py-2 text-center text-[14px] text-ink/90 backdrop-blur lg:border-t-0 lg:py-4">
+            {above}
+          </div>
+        )}
         {bar}
       </div>
       {open && info && <Sheet title={`${title}: rules`} onClose={() => setOpen(false)}>{info}</Sheet>}

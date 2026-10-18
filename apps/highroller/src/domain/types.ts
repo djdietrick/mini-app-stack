@@ -177,6 +177,20 @@ export interface FeedEventRecord {
   expiresAt: string;
 }
 
+/** One jackpot win (#57), kept for `GET /jackpot`'s last hit. At most one per hand. */
+export interface JackpotHitRecord {
+  handId: string;
+  userId: string;
+  /** The public name when it was won; shown as "A player" for hidden players, decided on read. */
+  displayName: string;
+  game: string;
+  variant: string | null;
+  /** Whole chips paid. */
+  amount: number;
+  handLabel: string;
+  createdAt: string;
+}
+
 /** One place on a leaderboard, as the repo reads it. */
 export interface BoardEntry {
   userId: string;
@@ -284,6 +298,8 @@ export interface HandResponse extends LevelRow {
   xp: number;
   /** What settling this hand completed; empty until it settles. */
   completed: CompletionRow[];
+  /** The progressive jackpot this hand won, paid on top of `hand.returned` and already in `balance`. */
+  jackpot: { amount: number } | null;
 }
 
 export interface HandPage {
@@ -467,6 +483,27 @@ export interface FeedEventRow {
 export interface FeedResponse {
   /** Newest first. */
   events: FeedEventRow[];
+}
+
+export interface JackpotHitRow {
+  /** "A player" when they are hidden from the leaderboards. */
+  display_name: string;
+  game: string;
+  game_name: string;
+  amount: number;
+  hand_label: string;
+  created_at: string;
+}
+
+/** `GET /jackpot`. */
+export interface JackpotResponse {
+  /** Whole chips a hit would pay now. */
+  amount: number;
+  /** Where the jackpot starts again after a hit. */
+  seed: number;
+  /** The share of each qualifying wager it is fed, 0.02. */
+  rate: number;
+  last_hit: JackpotHitRow | null;
 }
 
 export interface SocialSettings {

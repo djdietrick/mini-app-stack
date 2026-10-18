@@ -11,9 +11,14 @@
  * - `xl` (1280): desktop. The rail shows its labels.
  * - `fine`: a mouse or trackpad, whatever the width.
  *
- * Wider table layouts for tablet and desktop are #58.
+ * From `lg`, tables are landscape (TableFrame): the table on the left, the
+ * bet and action bars in a column beside it, and roulette's whole felt big
+ * enough to bet on without zooming.
  */
 export const BREAKPOINTS = { sm: 640, md: 768, lg: 1024, xl: 1280 } as const;
+
+/** The landscape table layout, `lg` up. */
+export const WIDE_TABLE = `(min-width: ${BREAKPOINTS.lg}px)`;
 
 /** A precise pointer that can hover: a mouse or a trackpad, not a finger. */
 export const FINE_POINTER = "(hover: hover) and (pointer: fine)";

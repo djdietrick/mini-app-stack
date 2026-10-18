@@ -17,6 +17,7 @@ import { createPostgresHighrollerRepo, purgeFeedEvents, purgeSettledHands } from
 import type { HighrollerRepo } from "../repo/types.js";
 import { CATALOG, DEFAULT_EQUIPPED } from "./catalog.js";
 import { STARTING_BALANCE, dayIn } from "./economy.js";
+import { JACKPOT_SEED, JACKPOT_SEED_HUNDREDTHS } from "./jackpot.js";
 import { isoWeek, levelFor, levelProgress, shiftWeek, xpForHand } from "./progress.js";
 import { ACHIEVEMENTS, type QuestPool, isoWeekOfDay } from "./quests.js";
 import { defineGame } from "./registry.js";
@@ -103,7 +104,7 @@ const games = {
   coinflip: defineGame({
     name: "Coin flip",
     engine: coinflip,
-    bets: z.object({ main: z.number() }),
+    bets: z.object({ main: z.number(), hit: z.boolean().optional() }),
     action: z.object({ type: z.enum(["double", "heads", "tails"]) }),
     limits: { min: 10, max: 6000, step: 10 },
   }),
@@ -222,7 +223,7 @@ for (const [backendName, backend] of Object.entries(backends)) {
           now: clock.now,
           // Small boards, so "outside the top" needs four players; no caching, so reads see writes.
           boardSize: 3,
-          cacheMs: { boards: 0, feed: 0 },
+          cacheMs: { boards: 0, feed: 0, jackpot: 0 },
         });
 
         if (adapter === "fastify") {
@@ -1116,6 +1117,109 @@ for (const [backendName, backend] of Object.entries(backends)) {
           clock.shift = 0;
         }
         assert.equal((await as(oz)("GET", "/feed?limit=0")).status, 400);
+      });
+
+      // ---------- jackpot ----------
+      //
+      // One pot per backend: on Postgres it outlives the run (and is shared by
+      // the two adapters' suites), so every check works from the pot as read.
+      // Coin flips here land tails, so only the jackpot ever pays.
+
+      const pot = async () => (await b.repo.getJackpot()).pot;
+      const jackpotHand = async (user: SessionUser, main: number, hit = false) => {
+        const res = await play(as(user), { variant: "jackpot", bets: { main, hit } });
+        assert.equal(res.status, 200, JSON.stringify(res.body));
+        return res.body;
+      };
+      const players = (n: number, name: string) => Promise.all(Array.from({ length: n }, (_, i) => newUser(`${name}${i}`)));
+
+      it("adds exactly 2% of every qualifying wager, however many hands settle at once", async () => {
+        rigged.side = 0;
+        const crowd = await players(16, "Feeder");
+        const before = await pot();
+        // Odd stakes too: 2% of 10 is a fifth of a chip, kept exactly.
+        const stakes = crowd.map((_, i) => 10 * (i + 1));
+        const [fed, plain] = await Promise.all([
+          Promise.all(crowd.map((u, i) => jackpotHand(u, stakes[i]))),
+          Promise.all(crowd.slice(0, 4).map((u) => play(as(u), { variant: "instant", bets: { main: 500 } }))),
+        ]);
+        assert.ok([...fed, ...plain.map((r) => r.body)].every((h) => h.jackpot === null));
+        const added = stakes.reduce((n, s) => n + 2 * s, 0);
+        assert.equal((await pot()) - before, added, "only the jackpot hands feed it, each exactly 2%");
+        const res = await as(crowd[0])("GET", "/jackpot");
+        assert.equal(res.status, 200);
+        assert.equal(res.body.amount, Math.floor((before + added) / 100));
+        assert.equal(res.body.seed, JACKPOT_SEED);
+        assert.equal(res.body.rate, 0.02);
+      });
+
+      it("pays a forced hit on top of the hand, resets to the seed, and tells everyone", async () => {
+        rigged.side = 0;
+        const [win, other] = await Promise.all([newUser("Jax"), newUser("Kit")]);
+        const before = await pot();
+        const hand = await jackpotHand(win, 100, true);
+        const amount = Math.floor((before + 200) / 100);
+        assert.deepEqual(hand.jackpot, { amount });
+        assert.equal(hand.hand.returned, 0, "the flip itself lost");
+        assert.equal(hand.balance, STARTING_BALANCE - 100 + amount);
+        assert.equal(await pot(), JACKPOT_SEED_HUNDREDTHS);
+
+        const ledger = await fullLedger(as(win));
+        assert.deepEqual(
+          ledger.filter((e) => e.hand_id === hand.hand.id).map((e) => [e.kind, e.amount]),
+          [["jackpot", amount], ["bet", -100]],
+        );
+        const jp = (await as(other)("GET", "/jackpot")).body;
+        assert.equal(jp.amount, JACKPOT_SEED);
+        assert.deepEqual(jp.last_hit, {
+          display_name: "Jax",
+          game: "coinflip",
+          game_name: "Coin flip",
+          amount,
+          hand_label: "Coin flip",
+          created_at: jp.last_hit.created_at,
+        });
+        const feed = (await as(other)("GET", "/feed?limit=50")).body.events;
+        const event = feed.find((e: any) => e.id === `${hand.hand.id}:jackpot`);
+        assert.equal(event?.kind, "jackpot");
+        assert.equal(event?.amount, amount);
+
+        await as(win)("PUT", "/settings", { leaderboardListed: false });
+        assert.equal((await as(other)("GET", "/jackpot")).body.last_hit.display_name, "A player");
+        await as(win)("PUT", "/settings", { leaderboardListed: true });
+      });
+
+      it("never pays a contribution twice or loses one when hits race contributions", async () => {
+        rigged.side = 0;
+        // Start from the seed, so every amount below is whole chips.
+        await jackpotHand(await newUser("Reset"), 50, true);
+        const before = await pot();
+        assert.equal(before, JACKPOT_SEED_HUNDREDTHS);
+
+        const crowd = await players(12, "Racer");
+        const winners = await players(2, "Hitter");
+        // Multiples of 50, so each adds whole chips and a double payment couldn't hide in rounding.
+        const stakes = crowd.map((_, i) => 50 * (i + 1));
+        const [hits, fed] = await Promise.all([
+          Promise.all(winners.map((u) => jackpotHand(u, 100, true))),
+          Promise.all(crowd.map((u, i) => jackpotHand(u, stakes[i]))),
+        ]);
+        const paid = hits.map((h) => h.jackpot.amount as number);
+        assert.ok(fed.every((h) => h.jackpot === null));
+        assert.ok(paid.every((a) => a >= JACKPOT_SEED));
+
+        const contributed = stakes.reduce((n, s) => n + 2 * s, 0) + hits.length * 200;
+        const after = await pot();
+        assert.ok(after >= JACKPOT_SEED_HUNDREDTHS, "never below the seed");
+        // Every chip that went in is either paid out or still in the pot; the
+        // second hit starts again from the seed.
+        assert.equal(
+          paid.reduce((n, a) => n + a * 100, 0) + (after - JACKPOT_SEED_HUNDREDTHS),
+          before + contributed + (hits.length - 1) * JACKPOT_SEED_HUNDREDTHS,
+        );
+        for (const [i, u] of winners.entries()) {
+          assert.equal((await as(u)("GET", "/me")).body.balance, STARTING_BALANCE - 100 + paid[i]);
+        }
       });
 
       if (backend.skip === false && backendName === "postgres") {

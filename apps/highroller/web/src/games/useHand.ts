@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type CompletionRow, type HandResponse, type HandRow, type LevelRow, api } from "../api";
+import { play } from "../audio/sfx";
+import { celebrateJackpot } from "../components/Jackpot";
 import { useToast } from "../components/Toast";
 import { chips } from "../format";
 import { usePlayer } from "../player";
@@ -16,7 +18,12 @@ import { uuid } from "../uuid";
  * the cards have turned or the ball has dropped. That holds for payouts made
  * mid-hand too (blackjack's side bets, paid on the deal): `paidSoFar` reads
  * them from a live hand's view. XP, a level gained and quests completed are
- * held with the payout, so the badge and the toasts follow the cards too.
+ * held with the payout, so the badge and the toasts follow the cards too, and
+ * so is a progressive jackpot, which lands with its celebration.
+ *
+ * `shownHand` is the hand as the table last finished showing it: what a
+ * screen describes to screen readers, so the words never get ahead of the
+ * cards.
  */
 export type Announcement = { text: string; tone: "win" | "loss" | "info" } | null;
 
@@ -27,6 +34,7 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
   const [hand, setHand] = useState<HandRow | null>(null);
   const [resuming, setResuming] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [shownHand, setShownHand] = useState<HandRow | null>(null);
   /**
    * What to show once the table has shown hand `id`: the balance (by then it
    * has paid back `back`), the XP and level, and the quests it completed.
@@ -37,6 +45,7 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
     progress: Progress;
     back: number;
     completed: CompletionRow[];
+    jackpot: number;
   } | null>(null);
   /** What the pill already includes from hand `id`'s payouts. */
   const seen = useRef<{ id: string; back: number } | null>(null);
@@ -48,7 +57,12 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
     let live = true;
     api
       .activeHands()
-      .then((r) => live && setHand(r.hands.find((h) => h.game === game) ?? null))
+      .then((r) => {
+        if (!live) return;
+        const h = r.hands.find((x) => x.game === game) ?? null;
+        setHand(h);
+        setShownHand(h);
+      })
       .catch(() => undefined)
       .finally(() => live && setResuming(false));
     return () => {
@@ -61,12 +75,13 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
       const h = res.hand;
       setHand(h);
       fresh.current.add(h.id);
-      const back = h.status === "settled" ? h.returned : (paidSoFar?.(h) ?? 0);
+      const jackpot = res.jackpot?.amount ?? 0;
+      const back = (h.status === "settled" ? h.returned : (paidSoFar?.(h) ?? 0)) + jackpot;
       const unseen = back - (seen.current?.id === h.id ? seen.current.back : 0);
       const progress = progressOf(res);
       if (unseen > 0 || h.status === "settled") {
         setBalance(res.balance - Math.max(0, unseen));
-        payout.current = { id: h.id, balance: res.balance, progress, back, completed: res.completed };
+        payout.current = { id: h.id, balance: res.balance, progress, back, completed: res.completed, jackpot };
       } else {
         setBalance(res.balance, progress);
       }
@@ -146,6 +161,7 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
   const shown = useCallback(
     (h: HandRow | null, describe: (h: HandRow) => Announcement = resultText) => {
       if (!h) return;
+      setShownHand(h);
       const p = payout.current;
       if (p?.id === h.id) {
         payout.current = null;
@@ -158,9 +174,13 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
         if (r) {
           announced.current.add(key);
           toast(r.text, r.tone);
-          if (r.tone === "win") buzz([10, 40, 10]);
+          if (r.tone === "win") {
+            buzz([10, 40, 10]);
+            play(h.returned >= 10 * h.wagered ? "bigWin" : "win");
+          }
         }
       }
+      if (p?.id === h.id && p.jackpot > 0) celebrateJackpot(p.jackpot);
       if (p?.id === h.id && p.completed.length) {
         for (const c of p.completed) toast(`${c.kind === "achievement" ? "Achievement" : "Quest"} done: ${c.text}`, "win");
         setClaimable((n) => n + p.completed.length);
@@ -169,7 +189,7 @@ export function useHand(game: string, opts: { paidSoFar?: (h: HandRow) => number
     [setBalance, setClaimable, toast],
   );
 
-  return { hand, resuming, busy, start, act, shown, live: hand?.status === "active" };
+  return { hand, shownHand, resuming, busy, start, act, shown, live: hand?.status === "active" };
 }
 
 type Progress = Pick<HandResponse, "xp"> & LevelRow;

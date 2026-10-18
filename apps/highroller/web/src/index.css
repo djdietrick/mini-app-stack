@@ -64,6 +64,26 @@ body {
 }
 .pill-pop { animation: pill-pop 0.35s ease-out; }
 
+/* The jackpot celebration: coins rain, the card pops. */
+@keyframes coin-fall {
+  from { transform: translateY(0) rotateY(0deg); }
+  to { transform: translateY(110vh) rotateY(720deg); }
+}
+.coin-fall { animation: coin-fall 2.6s linear infinite; }
+@keyframes jackpot-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.jackpot-pop { animation: jackpot-pop 0.45s ease-out; }
+
 @media (prefers-reduced-motion: reduce) {
-  .toast-in, .pill-pop { animation: none; }
+  .toast-in, .pill-pop, .coin-fall, .jackpot-pop { animation: none; }
+}
+
+/* An open table never rubber-bands the page (iOS standalone above all): a
+   drag on the felt pans the felt, not the app. */
+html.at-table,
+html.at-table body {
+  overscroll-behavior: none;
 }
