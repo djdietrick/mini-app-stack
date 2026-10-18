@@ -2,6 +2,7 @@ import type { PostgresClient, PostgresTx } from "@stack/db-clients";
 import { equippedOf } from "../domain/catalog.js";
 import { applyCreditTo, displayNameOf, newPlayer } from "../domain/economy.js";
 import { type HandTxRead, type HandTxWrites, type QuestKey, SETTLED_HAND_RETENTION_DAYS } from "../domain/hands.js";
+import { JACKPOT_SEED_HUNDREDTHS, payJackpot } from "../domain/jackpot.js";
 import type {
   Board,
   BoardEntry,
@@ -9,6 +10,7 @@ import type {
   GameStatsRecord,
   GiftRecord,
   HandRecord,
+  JackpotHitRecord,
   LedgerEntry,
   LedgerKind,
   PlayerRecord,
@@ -30,6 +32,11 @@ import type { HighrollerRepo } from "./types.js";
  * the player row, so one player's transactions run one after another. The
  * partial unique index on hands is a second guard for "one active hand per
  * game".
+ *
+ * The jackpot row is the one row every player's hands touch. It is always
+ * locked after the player (never before), and as late as the transaction
+ * allows: a contribution is the last statement, so the row is held only
+ * until the commit that follows.
  */
 export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo {
   const { sql } = pg;
@@ -224,6 +231,30 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     handLabel: r.hand_label,
     createdAt: iso(r.created_at),
     expiresAt: iso(r.expires_at),
+    listed: r.listed,
+  });
+
+  interface JackpotHitDbRow {
+    hand_id: string;
+    user_id: string;
+    display_name: string;
+    game: string;
+    variant: string | null;
+    amount: string;
+    hand_label: string;
+    created_at: string;
+    listed: boolean;
+  }
+
+  const toJackpotHit = (r: JackpotHitDbRow): JackpotHitRecord & { listed: boolean } => ({
+    handId: r.hand_id,
+    userId: r.user_id,
+    displayName: r.display_name,
+    game: r.game,
+    variant: r.variant,
+    amount: Number(r.amount),
+    handLabel: r.hand_label,
+    createdAt: iso(r.created_at),
     listed: r.listed,
   });
 
@@ -494,8 +525,24 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
           };
         }
 
-        const outcome = step(read);
+        let outcome = step(read);
+        const jackpot = outcome.writes?.jackpot;
+        if (jackpot?.hit) {
+          const [row] = await tx<{ amount: string }[]>`SELECT amount FROM jackpot WHERE id = 1 FOR UPDATE`;
+          outcome = payJackpot(outcome, Number(row.amount), outcome.hand.settledAt ?? new Date().toISOString());
+        }
         if (outcome.writes) await applyHandWrites(tx, outcome.writes);
+        const hit = outcome.writes?.jackpotHit;
+        if (hit) {
+          await tx`UPDATE jackpot SET amount = ${JACKPOT_SEED_HUNDREDTHS}, updated_at = ${hit.createdAt}::timestamptz WHERE id = 1`;
+          await tx`
+            INSERT INTO jackpot_hits (hand_id, user_id, display_name, game, variant, amount, hand_label, created_at)
+            VALUES (${hit.handId}, ${hit.userId}, ${hit.displayName}, ${hit.game}, ${hit.variant}, ${hit.amount},
+                    ${hit.handLabel}, ${hit.createdAt}::timestamptz)
+          `;
+        } else if (jackpot && jackpot.contribution > 0) {
+          await tx`UPDATE jackpot SET amount = amount + ${jackpot.contribution}, updated_at = now() WHERE id = 1`;
+        }
         return outcome;
       });
     },
@@ -682,6 +729,21 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
         LIMIT ${limit}
       `;
       return rows.map(toFeed);
+    },
+
+    // ---------- jackpot ----------
+
+    async getJackpot() {
+      const [[pot], [hit]] = await Promise.all([
+        sql<{ amount: string }[]>`SELECT amount FROM jackpot WHERE id = 1`,
+        sql<JackpotHitDbRow[]>`
+          SELECT h.*, p.leaderboard_listed AS listed
+          FROM jackpot_hits h JOIN players p USING (user_id)
+          ORDER BY h.created_at DESC, h.hand_id DESC
+          LIMIT 1
+        `,
+      ]);
+      return { pot: Number(pot.amount), lastHit: hit ? toJackpotHit(hit) : null };
     },
 
     async close() {

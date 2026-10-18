@@ -1,8 +1,9 @@
-import { FieldPath, Timestamp } from "@google-cloud/firestore";
+import { FieldPath, FieldValue, Timestamp } from "@google-cloud/firestore";
 import type { Firestore, Transaction } from "@google-cloud/firestore";
 import { equippedOf } from "../domain/catalog.js";
 import { applyCreditTo, displayNameOf, newPlayer } from "../domain/economy.js";
 import { type HandTxRead, type HandTxWrites, type QuestKey, SETTLED_HAND_RETENTION_DAYS } from "../domain/hands.js";
+import { JACKPOT_SEED_HUNDREDTHS, payJackpot } from "../domain/jackpot.js";
 import { FEED_RETENTION_DAYS } from "../domain/social.js";
 import type {
   Board,
@@ -11,6 +12,7 @@ import type {
   GameStatsRecord,
   GiftRecord,
   HandRecord,
+  JackpotHitRecord,
   LedgerEntry,
   LedgerKind,
   PlayerRecord,
@@ -50,6 +52,13 @@ import type { HighrollerRepo } from "./types.js";
  *   highroller_feed_events/{handId}_{kind}   big wins, at most one per hand and kind.
  *                                        `expiresAt` carries the TTL policy (and has no
  *                                        index), so reads filter on `createdAt`.
+ *   highroller_jackpot_shards/{0..9}     `amount`: hundredths of a chip added since the
+ *                                        last hit. The pot is the seed plus their sum.
+ *                                        A contribution increments one shard, picked from
+ *                                        the hand id so a retry lands on the same one, and
+ *                                        never reads it; only a hit reads all ten (inside
+ *                                        its transaction, before any write) and zeroes them.
+ *   highroller_jackpot_hits/{handId}     each jackpot win
  *
  * Weekly stats carry the player's `listed` flag, copied on every write and by
  * setListed, so the boards are single indexed queries; names come from a
@@ -68,6 +77,11 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
   const questProgress = db.collection(`${prefix}quest_progress`);
   const gifts = db.collection(`${prefix}gifts`);
   const feedEvents = db.collection(`${prefix}feed_events`);
+  const jackpotShards = db.collection(`${prefix}jackpot_shards`);
+  const jackpotHits = db.collection(`${prefix}jackpot_hits`);
+  const shardRefs = Array.from({ length: JACKPOT_SHARDS }, (_, i) => jackpotShards.doc(String(i)));
+  const potOf = (shards: { data(): unknown }[]) =>
+    shards.reduce((n, s) => n + ((s.data() as { amount?: number } | undefined)?.amount ?? 0), JACKPOT_SEED_HUNDREDTHS);
 
   interface PlayerDoc {
     userId: string;
@@ -285,6 +299,13 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
     expiresAt: d.expiresAt.toDate().toISOString(),
   });
 
+  interface JackpotHitDoc extends Omit<JackpotHitRecord, "createdAt"> {
+    createdAt: Timestamp;
+  }
+
+  const toJackpotHitDoc = (h: JackpotHitRecord): JackpotHitDoc => ({ ...h, createdAt: Timestamp.fromDate(new Date(h.createdAt)) });
+  const toJackpotHit = (d: JackpotHitDoc): JackpotHitRecord => ({ ...d, createdAt: d.createdAt.toDate().toISOString() });
+
   /** Players by id, for names and flags; missing ones are left out. */
   async function playersById(ids: string[]): Promise<Map<string, PlayerDoc>> {
     const unique = [...new Set(ids)];
@@ -402,8 +423,21 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
           };
         }
 
-        const outcome = step(read);
+        let outcome = step(read);
+        const jackpot = outcome.writes?.jackpot;
+        if (jackpot?.hit) {
+          // Still before any write: the ten shards join this transaction's read set.
+          const shards = await tx.getAll(...shardRefs);
+          outcome = payJackpot(outcome, potOf(shards), outcome.hand.settledAt ?? new Date().toISOString());
+        }
         if (outcome.writes) applyHandWrites(tx, outcome.writes, p.activeHands ?? {});
+        const hit = outcome.writes?.jackpotHit;
+        if (hit) {
+          for (const ref of shardRefs) tx.set(ref, { amount: 0 });
+          tx.create(jackpotHits.doc(hit.handId), toJackpotHitDoc(hit));
+        } else if (jackpot && jackpot.contribution > 0) {
+          tx.set(shardRefs[shardFor(key.handId)], { amount: FieldValue.increment(jackpot.contribution) }, { merge: true });
+        }
         return outcome;
       });
     },
@@ -589,8 +623,33 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
       return events.map((e) => ({ ...e, listed: byId.get(e.userId)?.listed ?? true }));
     },
 
+    // ---------- jackpot ----------
+
+    async getJackpot() {
+      const [shards, hits] = await Promise.all([
+        db.getAll(...shardRefs),
+        jackpotHits.orderBy("createdAt", "desc").limit(1).get(),
+      ]);
+      const last = hits.empty ? null : toJackpotHit(hits.docs[0].data() as JackpotHitDoc);
+      const listed = last ? ((await playersById([last.userId])).get(last.userId)?.listed ?? true) : true;
+      return { pot: potOf(shards), lastHit: last && { ...last, listed } };
+    },
+
     async close() {
       await db.terminate();
     },
   };
+}
+
+/** How many documents the jackpot is spread over. */
+export const JACKPOT_SHARDS = 10;
+
+/** The shard a hand's contribution goes to: FNV-1a of its id, so a retried transaction picks the same one. */
+export function shardFor(handId: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < handId.length; i++) {
+    h ^= handId.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h % JACKPOT_SHARDS;
 }

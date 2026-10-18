@@ -1,6 +1,7 @@
 import { Container, Graphics, Sprite, type Text, type Ticker } from "pixi.js";
 import { type SpinResult, machineOf, symbolOf } from "../../../../src/games/slots/evaluate.js";
 import type { Machine } from "../../../../src/games/slots/machines.js";
+import { play as sound } from "../../audio/sfx";
 import { motionScale } from "../../settings";
 import { chipBreakdown } from "../../table/cosmetics";
 import { GOLD, Labels, placeFelt } from "../../table/kit";
@@ -160,6 +161,7 @@ export function createSlotsScene(): SlotsScene {
         if (t >= 1) {
           p.done = true;
           reels[i].pos = p.to;
+          sound("reel");
         }
         render(i, !p.done && t < SPLIT * 0.7);
         all &&= p.done;

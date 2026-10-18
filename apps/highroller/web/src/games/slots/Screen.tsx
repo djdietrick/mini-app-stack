@@ -4,12 +4,15 @@ import { machineOf } from "../../../../src/games/slots/evaluate.js";
 import { LINE_BETS, type Machine } from "../../../../src/games/slots/machines.js";
 import { exactRtp } from "../../../../src/games/slots/rtp.js";
 import { type HandRow, api } from "../../api";
+import { Kbd } from "../../components/ActionBar";
 import { useToast } from "../../components/Toast";
 import { chips, chipsShort } from "../../format";
 import { useEquipped, usePlayer } from "../../player";
 import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
+import { useKeys } from "../../keys";
 import { Sheet, TableFrame } from "../TableFrame";
+import { describeSlots } from "../describe";
 import { useHand } from "../useHand";
 import { type SlotsSceneView, createSlotsScene } from "./Scene";
 import { drawSymbol } from "./symbols";
@@ -125,11 +128,30 @@ export default function SlotsScreen({ variant }: { variant: string | null }) {
 
   const busy = table.busy || table.resuming;
   const maxLines = machine.lines.length;
+  const betting = !busy && !spinning && !auto;
+
+  // Space spins (or slams the reels), 1–4 pick the line bet, the arrows or +/− the lines.
+  const fewer = betting && lines > 1 && (() => setLines((n) => n - 1));
+  const more = betting && lines < maxLines && (() => setLines((n) => n + 1));
+  useKeys({
+    " ": !busy && (!!spinning || stake <= balance) && (() => void spin()),
+    ...Object.fromEntries(LINE_BETS.map((b, i) => [String(i + 1), betting && (() => setLineBet(b))])),
+    arrowdown: fewer,
+    "-": fewer,
+    arrowup: more,
+    "+": more,
+  });
 
   return (
     <TableFrame
       title={machine.name}
       info={<Rules machine={machine} />}
+      jackpot
+      description={
+        !spinning && table.shownHand
+          ? describeSlots(table.shownHand)
+          : `${lines} lines at ${lineBet} a line: ${chips(stake)} a spin. Space to spin.`
+      }
       canvas={<TableCanvas scene={scene} equipped={equipped} view={view} onShown={shown} onError={(e) => toast(`Table error: ${String(e)}`, "loss")} />}
       above={
         auto ? (
@@ -186,6 +208,7 @@ export default function SlotsScreen({ variant }: { variant: string | null }) {
             )}
             <button type="button" className="btn-primary min-h-[52px] flex-1" disabled={busy || (!spinning && stake > balance)} onClick={() => void spin()}>
               {spinning ? "Stop" : <>Spin <span className="font-mono tabular">{chipsShort(stake)}</span></>}
+              <Kbd k=" " />
             </button>
           </div>
         </div>

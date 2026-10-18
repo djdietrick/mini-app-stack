@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { AuthGate } from "@stack/auth-ui";
 import { StackAuthProvider } from "./authProvider";
 import { App } from "./App";
+import { installAudioUnlock } from "./audio/sfx";
 import { ToastProvider } from "./components/Toast";
 import { PlayerProvider } from "./player";
 import "./index.css";
@@ -20,6 +21,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     </StackAuthProvider>
   </React.StrictMode>,
 );
+
+installAudioUnlock();
 
 // Installable app (public/sw.js). Production builds only: in dev the worker
 // would cache Vite's modules and fight hot reload.

@@ -1,5 +1,6 @@
 import { badRequest, conflict, notFound } from "@stack/service-kit";
 import { applyCreditTo } from "./economy.js";
+import type { JackpotWrite } from "./jackpot.js";
 import type { ActiveQuest, Completion } from "./quests.js";
 import { type GameRegistry, type RegisteredGame, handLabel } from "./registry.js";
 import { settleHand } from "./settle.js";
@@ -8,6 +9,7 @@ import type {
   GameStatsRecord,
   HandRecord,
   HandRow,
+  JackpotHitRecord,
   LedgerEntry,
   PlayerRecord,
   QuestProgressRecord,
@@ -29,6 +31,10 @@ import type {
  * Everything random was drawn by `engine.deal` before the transaction began,
  * and the step uses nothing else, so a Firestore retry recomputes exactly the
  * same writes. Each step also takes `now` and `week` from outside.
+ *
+ * A settling hand that feeds or wins the jackpot says so in `writes.jackpot`.
+ * On a hit the repo then reads the pot, still inside the transaction, and
+ * runs a second pure step, jackpot.ts `payJackpot`, before writing anything.
  */
 
 /** How long a settled hand's full state is kept for replay. */
@@ -56,8 +62,15 @@ export interface HandTxWrites {
   weeklyStats: WeeklyStatsRecord | null;
   /** Quest progress rows that changed, upserted by (questId, period). */
   quests: QuestProgressRecord[];
-  /** Feed events to create (a big win). Keyed by (hand, kind), so at most one each. */
+  /** Feed events to create (a big win, a jackpot). Keyed by (hand, kind), so at most one each. */
   feed: FeedEventRecord[];
+  /**
+   * What the settling hand adds to the jackpot, and whether it wins it. The
+   * repo adds the contribution, or on a hit runs `payJackpot` and resets the pot.
+   */
+  jackpot: JackpotWrite | null;
+  /** Set by `payJackpot` on a hit: the record to store. */
+  jackpotHit: JackpotHitRecord | null;
 }
 
 export interface HandTxOutcome {
@@ -67,6 +80,8 @@ export interface HandTxOutcome {
   player: PlayerRecord;
   /** Quests and achievement tiers this hand completed. */
   completed: Completion[];
+  /** Chips the jackpot paid this hand, once `payJackpot` has run; null otherwise. */
+  jackpot: number | null;
 }
 
 /** A quest progress row's key. */
@@ -106,7 +121,7 @@ export function planStart(read: HandTxRead, plan: StartPlan): HandTxOutcome {
   if (read.hand) {
     // The same id again (a retry, a double tap): the hand as it is, no debit.
     if (read.hand.userId !== plan.userId || read.hand.game !== plan.gameId) throw conflict("HAND_ID_TAKEN");
-    return { writes: null, hand: read.hand, player, completed: [] };
+    return { writes: null, hand: read.hand, player, completed: [], jackpot: null };
   }
   if (read.activeHandId) {
     throw conflict("HAND_IN_PROGRESS", { code: "HAND_IN_PROGRESS", hand_id: read.activeHandId });
@@ -212,10 +227,11 @@ function finish(
   const { engine } = game;
   if (!engine.isFinished(hand.state)) {
     return {
-      writes: { player, ledger, hand, gameStats: null, weeklyStats: null, quests: [], feed: [] },
+      writes: { player, ledger, hand, gameStats: null, weeklyStats: null, quests: [], feed: [], jackpot: null, jackpotHit: null },
       hand,
       player,
       completed: [],
+      jackpot: null,
     };
   }
   const facts = engine.summary(hand.state);
@@ -230,6 +246,7 @@ function finish(
     paidEarly: engine.paidEarly?.(hand.state) ?? 0,
     quests: { active: quests, rows: read.quests ?? [] },
     label: handLabel(game, facts),
+    jackpotStake: engine.jackpotStake?.(hand.state) ?? 0,
     now,
     week,
   });
@@ -242,10 +259,13 @@ function finish(
       weeklyStats: settled.weeklyStats,
       quests: settled.quests,
       feed: settled.feed,
+      jackpot: settled.jackpot,
+      jackpotHit: null,
     },
     hand: settled.hand,
     player: settled.player,
     completed: settled.completed,
+    jackpot: null,
   };
 }
 

@@ -220,6 +220,8 @@ export const uth: GameEngine<UthBets, UthState, UthAction, UthView> = {
   act,
   isFinished: (s) => s.street === "done",
   staked: (s) => 2 * s.ante + s.play + (s.trips ?? 0),
+  /** Trips feeds the jackpot; the main game doesn't. */
+  jackpotStake: (s) => s.trips ?? 0,
 
   expectedReturn(s) {
     return (2 * s.ante + s.play) * uth.theoreticalRtp(null) + (s.trips ?? 0) * TRIPS_RTP;

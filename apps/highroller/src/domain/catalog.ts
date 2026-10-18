@@ -173,7 +173,8 @@ export const CATALOG: readonly ShopItem[] = [
       [INK, "#d4af37", CREAM],
       ["#6a1b9a", CREAM, CREAM],
       ["#f9a825", INK, INK],
-      ["#e65100", CREAM, CREAM],
+      // Deep enough for cream lettering to pass WCAG AA (4.5:1).
+      ["#bf360c", CREAM, CREAM],
     ]),
   },
   {

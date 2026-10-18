@@ -11,6 +11,7 @@ import type {
   GameStatsRecord,
   GiftRecord,
   HandRecord,
+  JackpotHitRecord,
   LedgerEntry,
   PlayerRecord,
   QuestProgressRecord,
@@ -52,6 +53,13 @@ export interface HighrollerRepo extends Closable {
    * One hand transaction (see domain/hands.ts): reads the HandTxRead set for
    * `key`, runs `step`, and applies its writes. On Postgres the player row is
    * locked first, which serialises every hand transaction for that player.
+   *
+   * When the writes carry a jackpot hit, the repo reads the pot inside the
+   * same transaction (Postgres: the row FOR UPDATE; Firestore: every shard),
+   * runs domain/jackpot.ts `payJackpot` on the outcome, writes the hit and
+   * resets the pot to the seed. A plain contribution is added without reading
+   * the pot: `amount = amount + c` on Postgres, an increment of one shard
+   * picked from the hand id (so a retry hits the same one) on Firestore.
    */
   handTransaction(userId: string, key: HandTxKey, step: (read: HandTxRead) => HandTxOutcome): Promise<HandTxOutcome>;
 
@@ -121,4 +129,12 @@ export interface HighrollerRepo extends Closable {
    * player is listed now (a hidden player shows as "A player").
    */
   listFeed(now: string, limit: number): Promise<(FeedEventRecord & { listed: boolean })[]>;
+
+  // ---------- jackpot ----------
+
+  /**
+   * The pot in hundredths of a chip (never below the seed), and the latest
+   * hit with whether its player is listed now.
+   */
+  getJackpot(): Promise<{ pot: number; lastHit: (JackpotHitRecord & { listed: boolean }) | null }>;
 }

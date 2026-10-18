@@ -11,10 +11,17 @@ import { buzz } from "../../settings";
 import { TableCanvas } from "../../table/TableCanvas";
 import { useBetting } from "../../table/betting";
 import { Paytable, TableFrame } from "../TableFrame";
+import { betsWords, describeUth } from "../describe";
 import { resultText, useHand } from "../useHand";
 import { type UthSceneView, createUthScene } from "./Scene";
 
 const MULTIPLE: Record<string, number> = { bet4: 4, bet3: 3, bet2: 2, bet1: 1 };
+
+const SPOTS = [
+  { id: "ante", label: "Ante (and Blind)", key: "a" },
+  { id: "trips", label: "Trips", key: "t" },
+];
+const SPOT_NAMES = { ante: "Ante and Blind each", trips: "Trips" };
 
 export default function UthScreen() {
   const { player } = usePlayer();
@@ -63,12 +70,12 @@ export default function UthScreen() {
   const ante = v?.ante ?? 0;
   const legal = (hand?.legal_actions ?? []).filter((a) => !(a in MULTIPLE) || balance >= MULTIPLE[a] * ante);
   const actions = [
-    { type: "fold", label: "Fold" },
-    { type: "check", label: "Check" },
-    { type: "bet3", label: `3× · ${chipsShort(3 * ante)}` },
-    { type: "bet4", label: `4× · ${chipsShort(4 * ante)}`, primary: true },
-    { type: "bet2", label: `Bet 2× · ${chipsShort(2 * ante)}`, primary: true },
-    { type: "bet1", label: `Bet 1× · ${chipsShort(ante)}`, primary: true },
+    { type: "fold", label: "Fold", key: "f" },
+    { type: "check", label: "Check", key: "c" },
+    { type: "bet3", label: `3× · ${chipsShort(3 * ante)}`, key: "3" },
+    { type: "bet4", label: `4× · ${chipsShort(4 * ante)}`, primary: true, key: "4" },
+    { type: "bet2", label: `Bet 2× · ${chipsShort(2 * ante)}`, primary: true, key: "2" },
+    { type: "bet1", label: `Bet 1× · ${chipsShort(ante)}`, primary: true, key: "1" },
   ];
   const short = (hand?.legal_actions ?? []).length > legal.length;
   const prompt = !betweenHands
@@ -85,6 +92,14 @@ export default function UthScreen() {
     <TableFrame
       title="Ultimate Texas Hold'em"
       info={<Rules />}
+      jackpot
+      description={
+        betweenHands && (betting.total > 0 || !table.shownHand)
+          ? betsWords(betting.bets, SPOT_NAMES)
+          : table.shownHand
+            ? describeUth(table.shownHand)
+            : undefined
+      }
       canvas={
         <TableCanvas
           scene={scene}
@@ -109,6 +124,9 @@ export default function UthScreen() {
             onDouble={betting.double}
             onDeal={deal}
             busy={table.busy || table.resuming}
+            spots={SPOTS}
+            bets={betting.bets}
+            onSpot={(s) => placeRef.current(s as "ante" | "trips")}
           />
         ) : (
           <ActionBar actions={actions} legal={legal} onAction={(t) => void table.act(t)} busy={table.busy} />

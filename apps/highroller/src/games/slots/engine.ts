@@ -76,6 +76,8 @@ export const slots: GameEngine<SlotsBets, SlotsState, { type: string }, SlotsVie
   act: () => null,
   isFinished: () => true,
   staked: (s) => s.lineBet * s.lines,
+  /** Every spin feeds the jackpot; free spins cost nothing, so add nothing. */
+  jackpotStake: (s) => s.lineBet * s.lines,
 
   expectedReturn(s) {
     return s.lineBet * s.lines * exactRtp(machineOf(s.machine), s.lines).rtp;

@@ -1,5 +1,6 @@
 import { type Facts, type HandSummary, type Settlement, outcomeOf } from "../games/engine.js";
 import { applyCreditTo } from "./economy.js";
+import { type JackpotWrite, jackpotOf } from "./jackpot.js";
 import { xpForHand } from "./progress.js";
 import { type ActiveQuest, type Completion, foldQuests } from "./quests.js";
 import { bigWinEvent } from "./social.js";
@@ -18,10 +19,12 @@ import type {
  * what the transaction read. Pure, so a retried Firestore transaction gets
  * the same answer and both repos apply exactly the same rule.
  *
- * Quest and achievement progress (quests.ts) is folded here, and a big win
- * (social.ts `isBigWin`) writes its feed event. The jackpot (#57) hooks in
- * here too; until it lands its output is empty, and its hits will add a
- * `jackpot` feed event.
+ * Quest and achievement progress (quests.ts) is folded here, a big win
+ * (social.ts `isBigWin`) writes its feed event, and the hand's jackpot
+ * contribution or hit is worked out (jackpot.ts `jackpotOf`). Paying a hit
+ * needs the pot, which only the repo reads; `payJackpot` does that after this
+ * step. The jackpot is paid on top of the hand: `returned`, the stats and the
+ * boards count the hand's own return only.
  */
 export interface SettleInput {
   /** The hand with its final state, wagered already totalled. */
@@ -40,6 +43,8 @@ export interface SettleInput {
   quests?: { active: readonly ActiveQuest[]; rows: readonly QuestProgressRecord[] };
   /** What the feed calls this hand (registry.ts `handLabel`). Defaults to the game id. */
   label?: string;
+  /** Chips on the hand that feed the jackpot (engine.jackpotStake). 0 when absent. */
+  jackpotStake?: number;
   now: string;
   week: string;
 }
@@ -58,8 +63,8 @@ export interface SettleOutput {
   completed: Completion[];
   /** A big-win event, when the hand made one. */
   feed: FeedEventRecord[];
-  /** Filled by #57: a jackpot contribution or hit. */
-  jackpot: null;
+  /** The hand's jackpot contribution, and whether it wins the pot. */
+  jackpot: JackpotWrite | null;
 }
 
 export function settleHand(input: SettleInput): SettleOutput {
@@ -117,7 +122,7 @@ export function settleHand(input: SettleInput): SettleOutput {
     quests: quests.rows,
     completed: quests.completed,
     feed: bigWin ? [bigWin] : [],
-    jackpot: null,
+    jackpot: jackpotOf(input.jackpotStake ?? 0, input.facts, input.label ?? hand.game),
   };
 }
 

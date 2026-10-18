@@ -6,7 +6,7 @@ Work is tracked in GitHub: **#38** is the tracking issue, with one sub-issue per
 
 ## Decisions (locked in)
 
-- **Phone first.** The target is a phone in portrait. Each game has a portrait layout: the table on top, the bet and action bar at thumb height, and tap targets of 44 px or more. Tablet and desktop get wider layouts later (#58), at breakpoints kept in `web/src/breakpoints.ts` as in fretwork.
+- **Phone first.** The target is a phone in portrait. Each game has a portrait layout: the table on top, the bet and action bar at thumb height, and tap targets of 44 px or more. Tablets in landscape and desktops get a landscape table (#58), at breakpoints kept in `web/src/breakpoints.ts` as in fretwork.
 - **PixiJS 2D canvas.** Tables, cards, chips, the wheel and the reels are drawn with PixiJS (v8, WebGL with a canvas fallback). React draws everything outside the table: balance, bet bar, sheets and screens.
 - **The server decides every outcome.** The server shuffles, deals, spins and settles. The browser only sends bets and decisions, and animates what comes back. Your balance can't be edited from the client, which is what makes leaderboards and gifting mean anything.
 - **Solo play plus async social features.** You always play against the house. There are leaderboards, chip gifting and a big-win feed. There are no real-time shared tables, because Cloud Functions can't hold websockets and the browser never reads Firestore directly.
@@ -49,7 +49,8 @@ apps/highroller/
                    quests.ts (achievement and quest definitions + the pure evaluator),
                    catalog.ts (shop items with fixed UUIDs, pure, imported by the SPA too),
                    shop.ts (the purchase step), stats.ts (dashboard figures, chart days),
-                   registry.ts (game id → engine + limits)
+                   registry.ts (game id → engine + limits), jackpot.ts (contribution, the pure
+                   hit payment, the wire form)
   src/repo/        types.ts (the port), postgres.ts, firestore.ts
   migrations/      Postgres schema `highroller`
   web/src/
@@ -60,9 +61,16 @@ apps/highroller/
                    (catalog params → styles), anim.ts (deal, flip, slide, stack, payout tweens),
                    kit.ts (felt, lettering, cards and chip stacks the scenes share)
     games/         one folder per game: Scene.ts (Pixi) + Screen.tsx (React chrome + bet bar),
-                   plus useHand.ts (resume, start, act, refusals → toasts) and TableFrame.tsx
+                   plus useHand.ts (resume, start, act, refusals → toasts), TableFrame.tsx and
+                   describe.ts (each table in words, for screen readers)
     screens/       Lobby, Shop, Stats, Quests, Leaderboards, Settings
-    settings.ts    per-device settings in localStorage: sound, haptics, reduced motion, speed
+    components/    Jackpot.tsx (the shared poll, meter, lobby card and celebration), BetBar,
+                   ActionBar, …
+    audio/sfx.ts   synthesised WebAudio sound effects
+    keys.ts        useKeys, the table shortcuts
+    settings.ts    per-device settings in localStorage: sound and volume, haptics, reduced
+                   motion, speed, battery saver
+  web/budget.mjs   the lobby's JS budget, checked after every build:web
   web/public/      sw.js, manifest.webmanifest, icons/
 ```
 
@@ -125,6 +133,7 @@ That is about 10 writes, far under Firestore's 500.
    - `view(state)`
    - `summary(state)`: the facts quests read, such as `blackjack: true`, `handRank: "flush"` or `straightUp: true`
    - `theoreticalRtp(variant)`
+   - optionally `paidEarly`, `expectedReturn`, and `jackpotStake(state)` for chips that feed the jackpot
 2. Add node tests: rules, payouts, and a Monte Carlo house-edge check within tolerance.
 3. Register it in `src/domain/registry.ts` with its zod bet and action schemas and its table limits.
 4. Add `web/src/games/<game>/Scene.ts` and `Screen.tsx`, and a lobby tile.
@@ -137,7 +146,12 @@ No route, repo or migration changes. That is the test of the core design.
 - **`<TableCanvas>`** owns one Pixi `Application` per screen. It sizes to its container with a ResizeObserver, caps the resolution at a device pixel ratio of 2, stops the ticker while the tab is hidden, and is destroyed on unmount. Scenes receive the public view and **animate the difference from the previous view**. They never decide anything.
 - **No binary art.** Cards, card backs, felts and chips are drawn in code (`textures.ts`) and rasterised once per size and pixel ratio. They stay sharp on any screen and the bundle stays small. A cosmetic is a parameter set (colours, pattern, edge style), so adding one is data, not art.
 - **Phone layout:** every scene lays out in a 390 × 560 portrait design space (`web/src/table/scene.ts`) and scales to fit; the felt fills any letterbox. The top ~56 units sit under the frame's bar (back, title, rules), so nothing tappable goes there. The roulette felt runs top to bottom and pans and zooms: outside bets take a chip at full view, a tap on the numbers zooms 2× around it, where every line and corner is a thumb wide (`felt.test.ts` checks a 14-unit square around each bet). Bet chips are placed by tapping, never by dragging.
-- **Results land after the animation.** `TableCanvas` calls `onShown(view)` when a view's animation finishes; `useHand` takes a stake off the balance at once but holds a payout and the result toast until then, so the pill never gives the result away.
+- **Results land after the animation.** `TableCanvas` calls `onShown(view)` when a view's animation finishes; `useHand` takes a stake off the balance at once but holds a payout, a jackpot and the result toast until then, so the pill never gives the result away.
+- **Wide screens (#58):** from `lg` (`WIDE_TABLE`), `TableFrame` puts the table on the left and the bars in a column beside it, with the hand in words above them. Scenes keep their portrait design space, larger. Roulette shows the whole felt big enough to bet on, so a tap on the numbers bets rather than zooms.
+- **Sound:** `audio/sfx.ts` synthesises a card slide, a flick, a chip clack, the ball on the wheel, a reel stop, wins and the jackpot fanfare with WebAudio: no files. One AudioContext, created or resumed from a tap or key press. Off by default; Settings has the toggle and a volume. The Animator's stock moves, the roulette wheel and the reels make their own sounds; `useHand` plays the win.
+- **Accessibility:** each table passes `TableFrame` a `description` (`games/describe.ts`), read from an `aria-live` region, of the hand as last shown (`useHand().shownHand`): "Dealer shows 9 of spades. You have jack of diamonds, 5 of clubs: 15. Hit (H), stand (S) …". Everything is playable by keyboard (`keys.ts`): actions have keys (H/S/D/P/R/I/N/E at blackjack, C/F/1–4 at UTH, P/F at Three Card), bet spots too (M/P/T at blackjack), 1–6 pick a chip, Space deals or spins, Backspace undoes; the canvas's bet spots are repeated as buttons that appear when Tab reaches them (roulette adds a straight-up picker), and video poker's cards as hold toggles (also 1–5). Colour is never the only signal: suits keep their shapes, roulette's black numbers sit on squares and red ones on discs, the RED and BLACK spots are lettered, and the result names its colour. Lighthouse accessibility scored 100 on the lobby, blackjack, roulette and video poker when #58 landed.
+- **Low-end phones:** the battery saver setting renders tables at a pixel ratio of 1, without antialiasing, at most 30 frames a second, and drops the celebration's coins. Every table is lazy-loaded; `build:web` fails when the lobby's entry JS passes 85 kB gzipped (it is about 71) or carries Pixi.
+- **Home Screen:** safe areas pad the header, bars and tab bar; tables turn off overscroll (no rubber band in standalone mode), and `touch-action: manipulation` stops double-tap zoom on bet spots without turning off pinch zoom for the page.
 - **Feel:** a short vibration (`navigator.vibrate` where available) on wins and on your turn. Sound is off by default. Reduced motion shortens or skips tweens, and a "fast deal" setting speeds them up.
 - **Latency:** after a tap, the scene starts the action's animation at once (cards slide off the shoe) and lands the result when the response arrives. On an error it rolls back.
 
@@ -156,19 +170,23 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 | `inventory` (user_id, item_id) PK | `inventory/{userId}_{itemId}` | Defaults are never stored. The deterministic id makes a second purchase a conflict the purchase transaction reads. |
 | `gifts` (id PK, from/to user and name, amount, message, created_at) | `gifts/{id}` | The client's id, so a retried gift finds itself in its transaction. Index (to_user_id, created_at desc). |
 | `feed_events` ((hand_id, kind) PK) | `feed_events/{handId}_{kind}` | Read newest first; a 7-day TTL (Firestore TTL policy on `expiresAt`, which has no index, so reads filter on `createdAt`; plus a check on read). Postgres purges on boot and hourly. |
-| `jackpot` (one row) + `jackpot_hits` | `jackpot_shards/{0..9}` + `jackpot_hits` | See below. |
+| `jackpot` (one row, hundredths of a chip) + `jackpot_hits` (hand_id PK) | `jackpot_shards/{0..9}` + `jackpot_hits/{handId}` | See below. The last hit is read newest first by `created_at` (an index on Postgres; Firestore's own single-field index). |
 
 ## Jackpot
 
-- Starts at 250,000 and resets to that after a hit.
-- **Fed by** 2% of every slot spin and every side bet. The house funds it, so payouts are unaffected.
+- Starts at 250,000 and resets to that after a hit. It is kept in **hundredths of a chip**, so 2% of a 5-chip side bet (a tenth of a chip) adds exactly; a hit pays whole chips, rounding down.
+- **Fed by** 2% of every slot spin and every Perfect Pairs, 21+3 and Trips wager (`engine.jackpotStake`). The house funds it, so payouts are unaffected. Pair Plus doesn't feed it.
 - **Won by:**
   - the jackpot line on a max-line slot spin
   - a suited three of a kind on 21+3
   - a royal flush on UTH Trips
-- A hit pays the whole jackpot, writes a `jackpot` ledger row and a feed event, and resets the jackpot, all in the settlement transaction.
-- **The hot row:** every user's play touches it. Postgres uses one row and `UPDATE … SET amount = amount + $1`. Firestore spreads contributions over 10 shard docs (a random shard per contribution) and sums them on read. A hit reads all the shards in its transaction and resets them.
-- The lobby polls `GET /jackpot` (cached 5 s) and shows the amount ticking up.
+  All from the engine's summary fact `jackpotEligible`.
+- A hit pays the whole jackpot (the hand's own contribution included) on top of the hand's paytable win, writes a `jackpot` ledger row, a `jackpot_hits` row and a `jackpot` feed event, and resets the jackpot, all in the settlement transaction. The hand's `returned`, stats and boards don't include it.
+- **The hot row:** every user's play touches it, so it is read only on a hit. Settlement returns `writes.jackpot` (the contribution, and whether it hits); on a hit the repo reads the pot inside the same transaction, after the step and before any write, and runs `payJackpot` (pure) on the outcome.
+  - Postgres: one row, `UPDATE jackpot SET amount = amount + $1` as the transaction's last statement, so its lock is held only until the commit. A hit reads it `FOR UPDATE`. The row is always locked after the player, never before. A `CHECK` keeps it at or above the seed.
+  - Firestore: 10 shard docs holding what was added since the last hit; the pot is the seed plus their sum. A contribution is `FieldValue.increment` on the shard picked by hashing the hand id, so a retry hits the same one, and it never reads it. A hit reads all ten and sets them to 0.
+- The contract test races many contributions and two hits on both backends and checks every hundredth is either paid once or still in the pot.
+- The lobby has a jackpot card ("Last won by …", and how it's won); blackjack, UTH and the slots show a meter. One shared poll of `GET /jackpot` (cached 5 s) every 10 s while visible; the meter ticks up to each reading over the interval, never past it. A win lands with the payout animation as a full-screen celebration: coins (none with reduced motion or the battery saver), haptics, and the fanfare when sound is on.
 
 ## Progress
 
@@ -199,7 +217,7 @@ The rules are pure, in `src/domain/social.ts` (public names, the big-win thresho
   - each board is cached 30 s in process; your own row is always fresh
   - you can hide yourself in Settings (`PUT /settings { leaderboardListed }`), which also rewrites `listed` on all your weekly rows
 - **Gifting** (`POST /gifts { id, to: { email } | { userId }, amount, message?, timeZone }`): to a player by email (any case) or from a leaderboard row. One transaction reads both players (locked in id order on Postgres) and any gift with that id, then writes the debit, the credit, both ledger rows (each naming the other player in `ref`) and both day counters. Errors: 404 `NO_SUCH_PLAYER` (the same for an unknown email and a hidden player, so it can't find out who plays), 409 `SELF_GIFT`, `OVER_SEND_CAP`, `OVER_RECEIVE_CAP`, `BELOW_FLOOR`. Whole chips, at least 100; a message of up to 140 characters, shown as plain text. `GET /gifts/received?since=` drives the lobby's "a gift for you" banner; the SPA remembers the last one dismissed in localStorage.
-- **Big-win feed** (`GET /feed?limit=20`, cached 10 s): settlement writes an event when a hand returns at least 20× its stake and at least 5,000 chips (`isBigWin`); #57's jackpot hits will write `jackpot` events. The label comes from the registry's `label(facts)` per game ("Straight up 17", "Royal flush on Trips"), else the game's name. Hidden players show as "A player", decided on read from their current flag. The lobby strip scrolls itself, stops while touched, stays still with reduced motion, and polls every 15 s only while the page is visible.
+- **Big-win feed** (`GET /feed?limit=20`, cached 10 s): settlement writes an event when a hand returns at least 20× its stake and at least 5,000 chips (`isBigWin`); jackpot hits write `jackpot` events. The label comes from the registry's `label(facts)` per game ("Straight up 17", "Royal flush on Trips"), else the game's name. Hidden players show as "A player", decided on read from their current flag. The lobby strip scrolls itself, stops while touched, stays still with reduced motion, and polls every 15 s only while the page is visible.
 
 ## Cloud specifics
 
@@ -245,9 +263,9 @@ The rules are pure, in `src/domain/social.ts` (public names, the big-win thresho
 - ✅ #54 Three Card Poker
 - ✅ #55 Video Poker (Jacks or Better)
 - ✅ #56 Slots (flags `jackpotEligible`; #57 pays it)
-- #57 Shared progressive jackpot
+- ✅ #57 Shared progressive jackpot
 
 **6 · Polish**
-- #58 Larger-screen layouts, sound, accessibility and low-end phone performance
+- ✅ #58 Larger-screen layouts, sound, accessibility and low-end phone performance
 
 **Suggested order:** #39 → #40, then #41 and #42 in parallel → #43 → #45 → #44 → #47 → #48 → #46 → #49 → #50 → #51 → #52 → #56 → #57 → #53 / #54 / #55 (any order) → #58.

@@ -1,5 +1,6 @@
 import { Application, Container } from "pixi.js";
 import { useEffect, useRef } from "react";
+import { useSettings } from "../settings";
 import { Animator } from "./anim";
 import { DEFAULT_EQUIPPED, type Equipped } from "./cosmetics";
 import { type Layout, type Scene, type SceneContext, fit } from "./scene";
@@ -7,13 +8,17 @@ import { createTextureKit } from "./textures";
 
 /** Renders at most 2 device pixels per CSS pixel: past that, the fill cost buys nothing visible. */
 const MAX_RESOLUTION = 2;
+/** The battery saver's frame cap. Tweens run on elapsed time, so they only get choppier, never slower. */
+const SAVER_FPS = 30;
 
 /**
  * One Pixi Application per table screen, in a container that sizes it.
  *
  * - Resizes with the container (ResizeObserver), so rotating the phone or
  *   resizing the window re-lays out without a reload.
- * - Caps the resolution at a device pixel ratio of 2.
+ * - Caps the resolution at a device pixel ratio of 2; with the battery saver
+ *   setting, renders at 1, without antialiasing, at most 30 frames a second
+ *   (changing it remounts the canvas).
  * - Stops the ticker while the tab is hidden.
  * - Prefers WebGL and falls back to the canvas renderer.
  * - Destroys everything on unmount — scene, textures, renderer — and loses
@@ -48,6 +53,7 @@ export function TableCanvas<View>({
   latest.current = view;
   const shown = useRef(onShown);
   shown.current = onShown;
+  const saver = useSettings().batterySaver;
 
   const enqueue = (next: View) => {
     queue.current = queue.current
@@ -67,12 +73,12 @@ export function TableCanvas<View>({
     let teardown = () => {};
 
     (async () => {
-      const resolution = Math.min(window.devicePixelRatio || 1, MAX_RESOLUTION);
+      const resolution = saver ? 1 : Math.min(window.devicePixelRatio || 1, MAX_RESOLUTION);
       const app = new Application();
       await app.init({
         preference: ["webgl", "canvas"],
         backgroundAlpha: 0,
-        antialias: true,
+        antialias: !saver,
         resolution,
         autoDensity: true,
         width: Math.max(1, el.clientWidth),
@@ -86,6 +92,7 @@ export function TableCanvas<View>({
         return;
       }
 
+      if (saver) app.ticker.maxFPS = SAVER_FPS;
       app.canvas.classList.add("table-canvas");
       app.canvas.style.display = "block";
       el.appendChild(app.canvas);
@@ -156,9 +163,9 @@ export function TableCanvas<View>({
       disposed = true;
       teardown();
     };
-    // The scene is fixed for the canvas's life; equipped changes remount it.
+    // The scene is fixed for the canvas's life; equipped and the battery saver remount it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, equipped]);
+  }, [scene, equipped, saver]);
 
   useEffect(() => {
     if (view !== null) enqueue(view);

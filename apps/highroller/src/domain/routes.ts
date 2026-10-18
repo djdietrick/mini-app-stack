@@ -26,6 +26,7 @@ import {
 } from "./economy.js";
 import { CATALOG, shopItem } from "./catalog.js";
 import { decodeHandCursor, encodeHandCursor, planAction, planStart, type QuestKey, toHandRow } from "./hands.js";
+import { JACKPOT_CACHE_MS, toJackpotResponse } from "./jackpot.js";
 import { levelFor, levelProgress, isoWeek, shiftWeek } from "./progress.js";
 import {
   type ActiveQuest,
@@ -64,6 +65,7 @@ import {
   type HandPage,
   type HandResponse,
   type HandRow,
+  type JackpotResponse,
   type LeaderboardResponse,
   type LedgerPage,
   type LevelRow,
@@ -121,8 +123,8 @@ export interface HighrollerRouteDeps {
   now?: () => Date;
   /** Rows per leaderboard (social.ts BOARD_SIZE); tests pass a few. */
   boardSize?: number;
-  /** In-process cache lifetimes for the boards and the feed; 0 turns caching off (tests). */
-  cacheMs?: { boards: number; feed: number };
+  /** In-process cache lifetimes for the boards, the feed and the jackpot; 0 turns caching off (tests). */
+  cacheMs?: { boards: number; feed: number; jackpot?: number };
 }
 
 export const resolveHighrollerScope = (user: SessionUser, repo: HighrollerRepo) => repo.ensurePlayer(user);
@@ -217,6 +219,7 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
   const clockMs = () => now().getTime();
   const boards = new TtlCache<BoardRow[]>(deps.cacheMs?.boards ?? BOARD_CACHE_MS, clockMs);
   const feed = new TtlCache<FeedResponse>(deps.cacheMs?.feed ?? FEED_CACHE_MS, clockMs);
+  const jackpot = new TtlCache<JackpotResponse>(deps.cacheMs?.jackpot ?? JACKPOT_CACHE_MS, clockMs);
 
   /** The player's quests on their calendar day in `timeZone`, and the rows to read for them. */
   const questsFor = (userId: string, at: Date, timeZone: string) => {
@@ -248,12 +251,14 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
     hand: Parameters<typeof toHandRow>[0];
     player: PlayerRecord;
     completed: Completion[];
+    jackpot: number | null;
   }): HandResponse => ({
     hand: toHandRow(out.hand, games),
     balance: out.player.balance,
     xp: out.player.xp,
     ...toLevelRow(out.player.xp),
     completed: out.completed.map(toCompletionRow),
+    jackpot: out.jackpot === null ? null : { amount: out.jackpot },
   });
 
   return [
@@ -638,6 +643,19 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
         return feed.get(String(query.limit), async () => {
           const events = await ctx.repo.listFeed(now().toISOString(), query.limit);
           return { events: events.map((e) => toFeedEventRow(e, games[e.game]?.name ?? e.game)) };
+        });
+      },
+    }),
+
+    // ---------- jackpot ----------
+
+    route({
+      method: "GET",
+      path: "/jackpot",
+      async handler(ctx): Promise<JackpotResponse> {
+        return jackpot.get("", async () => {
+          const { pot, lastHit } = await ctx.repo.getJackpot();
+          return toJackpotResponse(pot, lastHit, (g) => games[g]?.name ?? g);
         });
       },
     }),
