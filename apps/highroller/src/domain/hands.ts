@@ -1,9 +1,10 @@
 import { badRequest, conflict, notFound } from "@stack/service-kit";
 import { applyCreditTo } from "./economy.js";
 import type { ActiveQuest, Completion } from "./quests.js";
-import type { GameRegistry, RegisteredGame } from "./registry.js";
+import { type GameRegistry, type RegisteredGame, handLabel } from "./registry.js";
 import { settleHand } from "./settle.js";
 import type {
+  FeedEventRecord,
   GameStatsRecord,
   HandRecord,
   HandRow,
@@ -55,6 +56,8 @@ export interface HandTxWrites {
   weeklyStats: WeeklyStatsRecord | null;
   /** Quest progress rows that changed, upserted by (questId, period). */
   quests: QuestProgressRecord[];
+  /** Feed events to create (a big win). Keyed by (hand, kind), so at most one each. */
+  feed: FeedEventRecord[];
 }
 
 export interface HandTxOutcome {
@@ -208,18 +211,25 @@ function finish(
 ): HandTxOutcome {
   const { engine } = game;
   if (!engine.isFinished(hand.state)) {
-    return { writes: { player, ledger, hand, gameStats: null, weeklyStats: null, quests: [] }, hand, player, completed: [] };
+    return {
+      writes: { player, ledger, hand, gameStats: null, weeklyStats: null, quests: [], feed: [] },
+      hand,
+      player,
+      completed: [],
+    };
   }
+  const facts = engine.summary(hand.state);
   const settled = settleHand({
     hand,
     player,
     gameStats: read.gameStats,
     weeklyStats: read.weeklyStats,
     settlement: engine.settle(hand.state),
-    facts: engine.summary(hand.state),
+    facts,
     expectedReturn: engine.expectedReturn?.(hand.state) ?? engine.theoreticalRtp(hand.variant) * hand.wagered,
     paidEarly: engine.paidEarly?.(hand.state) ?? 0,
     quests: { active: quests, rows: read.quests ?? [] },
+    label: handLabel(game, facts),
     now,
     week,
   });
@@ -231,6 +241,7 @@ function finish(
       gameStats: settled.gameStats,
       weeklyStats: settled.weeklyStats,
       quests: settled.quests,
+      feed: settled.feed,
     },
     hand: settled.hand,
     player: settled.player,

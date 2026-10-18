@@ -1,5 +1,6 @@
+import { conflict } from "@stack/service-kit";
 import { DEFAULT_EQUIPPED } from "./catalog.js";
-import type { LedgerEntry, LedgerKind, PlayerRecord } from "./types.js";
+import type { GiftRecord, LedgerEntry, LedgerKind, PlayerRecord } from "./types.js";
 
 /**
  * The chip economy's rules, pure. Tunable here and nowhere else.
@@ -16,6 +17,10 @@ export const DAILY_STREAK_CAP = 7;
 export const BAILOUT_FLOOR = 500;
 /** …and tops the balance up to this. */
 export const BAILOUT_TOP_UP = 2_000;
+/** Gifting: per day, sent (the sender's day) and received (the UTC day). */
+export const GIFT_SEND_LIMIT = 5_000;
+export const GIFT_RECEIVE_LIMIT = 10_000;
+export const GIFT_MIN = 100;
 
 /** "YYYY-MM-DD" for `now` in `timeZone`. */
 export function dayIn(now: Date, timeZone: string): string {
@@ -113,6 +118,11 @@ export function newPlayer(
     lastBailoutOn: null,
     ledgerSeq: 0,
     equipped: { ...DEFAULT_EQUIPPED },
+    leaderboardListed: true,
+    giftsSentToday: 0,
+    giftsSentOn: null,
+    giftsReceivedToday: 0,
+    giftsReceivedOn: null,
     createdAt: now,
   };
   return applyCreditTo(blank, { kind: "initial_grant", amount: STARTING_BALANCE }, now)!;
@@ -122,4 +132,83 @@ export function newPlayer(
 export function displayNameOf(user: { email: string; displayName: string | null }): string {
   const name = user.displayName?.trim();
   return (name || user.email.split("@")[0] || "Player").slice(0, 80);
+}
+
+// ---------- gifting ----------
+
+/** Chips the player has gifted on `today` (their day). */
+export const sentOn = (p: PlayerRecord, today: string) => (p.giftsSentOn === today ? p.giftsSentToday : 0);
+/** Chips the player has received on `utcDay`. */
+export const receivedOn = (p: PlayerRecord, utcDay: string) => (p.giftsReceivedOn === utcDay ? p.giftsReceivedToday : 0);
+
+/** What one gift transaction reads: both players, and a gift already stored under this id. */
+export interface GiftRead {
+  from: PlayerRecord;
+  /** Null when the recipient has no player row. */
+  to: PlayerRecord | null;
+  existing: GiftRecord | null;
+}
+
+export interface GiftPlan {
+  id: string;
+  amount: number;
+  message: string | null;
+  /** The sender's calendar day and the UTC day, for the two caps. */
+  senderDay: string;
+  utcDay: string;
+  /** Public names, for the gift record. */
+  fromName: string;
+  toName: string;
+  now: string;
+}
+
+export interface GiftOutcome {
+  /** Null when the gift was already made (a retry): nothing to write. */
+  writes: { from: PlayerRecord; to: PlayerRecord; ledger: LedgerEntry[]; gift: GiftRecord } | null;
+  gift: GiftRecord;
+  from: PlayerRecord;
+}
+
+/**
+ * One gift, pure: the debit, the credit, both ledger rows (each naming the
+ * other player in `ref`) and both day counters, or an AppError. Both repos run
+ * it inside one transaction on what they read, so a Firestore retry
+ * recomputes the same writes.
+ *
+ * The sender can't go below the bailout floor, so a second account can't
+ * farm bailouts by passing chips back.
+ */
+export function planGift(read: GiftRead, plan: GiftPlan): GiftOutcome {
+  const { from, to, existing } = read;
+  if (existing) {
+    if (existing.fromUserId !== from.userId) throw conflict("GIFT_ID_TAKEN");
+    return { writes: null, gift: existing, from };
+  }
+  if (!to) throw new Error("planGift without a recipient");
+  if (to.userId === from.userId) throw conflict("SELF_GIFT");
+  if (sentOn(from, plan.senderDay) + plan.amount > GIFT_SEND_LIMIT) throw conflict("OVER_SEND_CAP");
+  if (receivedOn(to, plan.utcDay) + plan.amount > GIFT_RECEIVE_LIMIT) throw conflict("OVER_RECEIVE_CAP");
+  if (from.balance - plan.amount < BAILOUT_FLOOR) throw conflict("BELOW_FLOOR");
+
+  const out = applyCreditTo(
+    { ...from, giftsSentToday: sentOn(from, plan.senderDay) + plan.amount, giftsSentOn: plan.senderDay },
+    { kind: "gift_out", amount: -plan.amount, ref: to.userId },
+    plan.now,
+  )!;
+  const into = applyCreditTo(
+    { ...to, giftsReceivedToday: receivedOn(to, plan.utcDay) + plan.amount, giftsReceivedOn: plan.utcDay },
+    { kind: "gift_in", amount: plan.amount, ref: from.userId },
+    plan.now,
+  )!;
+  const gift: GiftRecord = {
+    id: plan.id,
+    fromUserId: from.userId,
+    fromName: plan.fromName,
+    toUserId: to.userId,
+    toName: plan.toName,
+    amount: plan.amount,
+    message: plan.message,
+    createdAt: plan.now,
+  };
+  return { writes: { from: out.player, to: into.player, ledger: [out.entry, into.entry], gift }, gift, from: out.player };
 }

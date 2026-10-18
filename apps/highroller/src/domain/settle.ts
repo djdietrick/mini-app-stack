@@ -2,7 +2,9 @@ import { type Facts, type HandSummary, type Settlement, outcomeOf } from "../gam
 import { applyCreditTo } from "./economy.js";
 import { xpForHand } from "./progress.js";
 import { type ActiveQuest, type Completion, foldQuests } from "./quests.js";
+import { bigWinEvent } from "./social.js";
 import type {
+  FeedEventRecord,
   GameStatsRecord,
   HandRecord,
   LedgerEntry,
@@ -16,9 +18,10 @@ import type {
  * what the transaction read. Pure, so a retried Firestore transaction gets
  * the same answer and both repos apply exactly the same rule.
  *
- * Quest and achievement progress (quests.ts) is folded here. The big-win
- * feed (#52) and the jackpot (#57) hook in here too; until they land their
- * outputs are empty.
+ * Quest and achievement progress (quests.ts) is folded here, and a big win
+ * (social.ts `isBigWin`) writes its feed event. The jackpot (#57) hooks in
+ * here too; until it lands its output is empty, and its hits will add a
+ * `jackpot` feed event.
  */
 export interface SettleInput {
   /** The hand with its final state, wagered already totalled. */
@@ -35,6 +38,8 @@ export interface SettleInput {
   paidEarly: number;
   /** The player's active quests and the progress rows the transaction read for them. */
   quests?: { active: readonly ActiveQuest[]; rows: readonly QuestProgressRecord[] };
+  /** What the feed calls this hand (registry.ts `handLabel`). Defaults to the game id. */
+  label?: string;
   now: string;
   week: string;
 }
@@ -51,8 +56,8 @@ export interface SettleOutput {
   quests: QuestProgressRecord[];
   /** What this hand completed. */
   completed: Completion[];
-  /** Filled by #52: a big-win event. */
-  feed: never[];
+  /** A big-win event, when the hand made one. */
+  feed: FeedEventRecord[];
   /** Filled by #57: a jackpot contribution or hit. */
   jackpot: null;
 }
@@ -93,12 +98,14 @@ export function settleHand(input: SettleInput): SettleOutput {
     wagered: w.wagered + wagered,
     net: w.net + net,
     biggestWin: Math.max(w.biggestWin, net),
+    listed: player.leaderboardListed,
   };
 
   const summary: HandSummary = { game: hand.game, variant: hand.variant, wagered, returned, net, outcome, facts: input.facts };
   const quests = input.quests
     ? foldQuests(input.quests.active, input.quests.rows, { hand: summary }, hand.userId, now)
     : { rows: [], completed: [] };
+  const bigWin = bigWinEvent(player, hand, summary, input.label ?? hand.game, now);
 
   return {
     hand: { ...hand, status: "settled", returned, results: settlement.results, settledAt: now },
@@ -109,7 +116,7 @@ export function settleHand(input: SettleInput): SettleOutput {
     summary,
     quests: quests.rows,
     completed: quests.completed,
-    feed: [],
+    feed: bigWin ? [bigWin] : [],
     jackpot: null,
   };
 }
@@ -119,5 +126,5 @@ export function emptyGameStats(userId: string, game: string): GameStatsRecord {
 }
 
 export function emptyWeeklyStats(week: string, userId: string): WeeklyStatsRecord {
-  return { week, userId, hands: 0, wagered: 0, net: 0, biggestWin: 0 };
+  return { week, userId, hands: 0, wagered: 0, net: 0, biggestWin: 0, listed: true };
 }

@@ -45,6 +45,7 @@ apps/highroller/
   src/domain/      types.ts (zod wire types), routes.ts, hands.ts (the hand lifecycle),
                    settle.ts (one settlement → ledger, stats, XP, quests, feed, jackpot),
                    economy.ts (daily bonus, bailout, gifting rules), progress.ts (XP and level curve),
+                   social.ts (public names, the big-win rule, board ranks, the in-process cache),
                    quests.ts (achievement and quest definitions + the pure evaluator),
                    catalog.ts (shop items with fixed UUIDs, pure, imported by the SPA too),
                    shop.ts (the purchase step), stats.ts (dashboard figures, chart days),
@@ -146,14 +147,15 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 
 | Postgres | Firestore | Notes |
 |---|---|---|
-| `players` (user_id PK, display_name, email, balance, xp, daily_streak, last_daily_on, last_bailout_on, gifts_sent_today/received_today + day, leaderboard_listed, equipped jsonb, created_at) | `players/{userId}` | Created on first request from the session. The name and email are refreshed from the session, so gifting and leaderboards need no `shared.users` (which has no cloud twin). |
+| `players` (user_id PK, display_name, email, balance, xp, daily_streak, last_daily_on, last_bailout_on, gifts_sent_today/received_today + day, leaderboard_listed, equipped jsonb, created_at) | `players/{userId}` | Created on first request from the session. The name and email are refreshed from the session, so gifting and leaderboards need no `shared.users` (which has no cloud twin). Firestore stores the flag as `listed` and a lowercased `emailKey` for gifting's lookup. |
 | `ledger` ((user_id, seq) PK) | `ledger/{userId}_{seq}` | `seq` counts up per player (the player row keeps the last one) and orders the ledger, so a bet and its payout written in one transaction keep their order. The deterministic id makes a retried write land on the same document. |
 | `hands` (id PK, user_id, game, variant, status, version, state jsonb, view jsonb, wagered, returned, results jsonb, created_at, settled_at) | `hands/{id}` | Partial unique index on (user_id, game) where status = 'active'. Firestore stores `state`, `view` and `results` as JSON strings: engine state can hold nested arrays (split hands), which Firestore can't. |
 | `game_stats` (user_id, game) PK | `game_stats/{userId}_{game}` | |
-| `weekly_stats` (week, user_id) PK, index (week, net desc) | `weekly_stats/{week}_{userId}` | Composite index on (week, listed, net desc). |
+| `weekly_stats` (week, user_id) PK, `listed`; partial indexes (week, net desc) and (week, biggest_win desc) where listed | `weekly_stats/{week}_{userId}` | `listed` is copied from the player on every write and by `PUT /settings`. Composite indexes on (week, listed, net desc) and (week, listed, biggestWin desc). |
 | `quest_progress` (user_id, quest_id, period) PK: progress, run, marks jsonb, claimed, updated_at, claimed_at | `quest_progress/{userId}_{questId}_{period}` | Period is `d:2026-10-15`, `w:2026-W42` or `ever`. One row per achievement (not per tier); `claimed` counts tiers paid. |
 | `inventory` (user_id, item_id) PK | `inventory/{userId}_{itemId}` | Defaults are never stored. The deterministic id makes a second purchase a conflict the purchase transaction reads. |
-| `feed_events` | `feed_events/{uuid}` | Read newest first; a 7-day TTL (Firestore TTL policy, plus a check on read). |
+| `gifts` (id PK, from/to user and name, amount, message, created_at) | `gifts/{id}` | The client's id, so a retried gift finds itself in its transaction. Index (to_user_id, created_at desc). |
+| `feed_events` ((hand_id, kind) PK) | `feed_events/{handId}_{kind}` | Read newest first; a 7-day TTL (Firestore TTL policy on `expiresAt`, which has no index, so reads filter on `createdAt`; plus a check on read). Postgres purges on boot and hourly. |
 | `jackpot` (one row) + `jackpot_hits` | `jackpot_shards/{0..9}` + `jackpot_hits` | See below. |
 
 ## Jackpot
@@ -187,13 +189,17 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 
 ## Social
 
-- **Leaderboards** (`#/leaderboards`):
-  - this week's net winnings, this week's biggest single win, and all-time level
-  - the top 50 plus your own rank
-  - weeks are ISO weeks in UTC
-  - you can hide yourself in Settings (`leaderboard_listed`)
-- **Gifting:** send chips to a player by their email address (they must have played Highroller) or from a leaderboard row. Debit, credit and both ledger rows are one transaction. The daily caps are under "Chips and the economy". The receiver sees it on their next load.
-- **Big-win feed:** a lobby strip of recent big wins and jackpot hits from across the stack, showing display names. Hidden players show as "A player".
+The rules are pure, in `src/domain/social.ts` (public names, the big-win threshold, ranks, the in-process cache) and `economy.ts` (`planGift`).
+
+- **Names:** other players only ever see `publicName`: the display name, or "Player" plus four hex digits of a hash of the user id when the name was taken from the email (`displayNameOf`'s fallback). Never an email.
+- **Leaderboards** (`#/leaderboards`, `GET /leaderboards/:board?week=` → `{ rows, me }`):
+  - `net` and `biggest_win` (wins only) for an ISO week in UTC, and all-time `level` (XP)
+  - the top 50, plus your own row and rank however far down or hidden you are; your rank is 1 + the listed players strictly above you (one `count(*)` on Postgres, a `count()` aggregation on Firestore), so ties share a rank
+  - `previous_week` comes with each weekly board, so last week is one tap away
+  - each board is cached 30 s in process; your own row is always fresh
+  - you can hide yourself in Settings (`PUT /settings { leaderboardListed }`), which also rewrites `listed` on all your weekly rows
+- **Gifting** (`POST /gifts { id, to: { email } | { userId }, amount, message?, timeZone }`): to a player by email (any case) or from a leaderboard row. One transaction reads both players (locked in id order on Postgres) and any gift with that id, then writes the debit, the credit, both ledger rows (each naming the other player in `ref`) and both day counters. Errors: 404 `NO_SUCH_PLAYER` (the same for an unknown email and a hidden player, so it can't find out who plays), 409 `SELF_GIFT`, `OVER_SEND_CAP`, `OVER_RECEIVE_CAP`, `BELOW_FLOOR`. Whole chips, at least 100; a message of up to 140 characters, shown as plain text. `GET /gifts/received?since=` drives the lobby's "a gift for you" banner; the SPA remembers the last one dismissed in localStorage.
+- **Big-win feed** (`GET /feed?limit=20`, cached 10 s): settlement writes an event when a hand returns at least 20× its stake and at least 5,000 chips (`isBigWin`); #57's jackpot hits will write `jackpot` events. The label comes from the registry's `label(facts)` per game ("Straight up 17", "Royal flush on Trips"), else the game's name. Hidden players show as "A player", decided on read from their current flag. The lobby strip scrolls itself, stops while touched, stays still with reduced motion, and polls every 15 s only while the page is visible.
 
 ## Cloud specifics
 
@@ -205,8 +211,9 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
   - hands (userId, createdAt desc) and (userId, game, createdAt desc)
   - weekly_stats (week, listed, net desc) and (week, listed, biggestWin desc)
   - players (listed, xp desc)
-  - feed_events (createdAt desc)
-- **TTL policy** on `highroller_feed_events.expiresAt` and on settled hands' `purgeAt` (90 days). Postgres deletes settled hands on boot.
+  - gifts (toUserId, createdAt desc)
+  - feed_events by createdAt: a single-field index, which Firestore makes on its own
+- **TTL policy** on `highroller_feed_events.expiresAt` and on settled hands' `purgeAt` (90 days). Postgres deletes settled hands on boot, and expired feed events on boot and hourly.
 - No secrets.
 
 ## Milestones
@@ -229,9 +236,9 @@ Postgres schema `highroller`. Each table has a Firestore twin, `highroller_<name
 - ✅ #49 Achievements and daily/weekly quests
 
 **4 · Social**
-- #50 Leaderboards
-- #51 Chip gifting
-- #52 Big-win feed
+- ✅ #50 Leaderboards
+- ✅ #51 Chip gifting
+- ✅ #52 Big-win feed
 
 **5 · Wave 2 games**
 - ✅ #53 Baccarat

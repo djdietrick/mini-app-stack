@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ApiError, api } from "../api";
+import { FeedTicker, GiftBanner } from "../components/Social";
 import { useToast } from "../components/Toast";
 import { ErrorNote } from "../components/ui";
 import { chips } from "../format";
@@ -22,10 +23,13 @@ export function Lobby() {
       {error && !player && <ErrorNote error={error} onRetry={reload} />}
       {player && (
         <div className="grid gap-3 md:grid-cols-2">
+          <GiftBanner />
           <DailyBonusCard />
           {player.bailout.available && <BailoutCard />}
         </div>
       )}
+
+      <FeedTicker />
 
       <section aria-labelledby="games">
         <h2 id="games" className="label-caps mb-3">
@@ -39,6 +43,16 @@ export function Lobby() {
           ))}
         </ul>
       </section>
+
+      <a href={href({ name: "leaderboards" })} className="card focus-ring flex min-h-[56px] items-center justify-between px-4 py-3">
+        <span>
+          <span className="block text-[15px] font-medium">Leaderboards</span>
+          <span className="block text-[13px] text-muted">This week's winners, and where you stand</span>
+        </span>
+        <span aria-hidden="true" className="text-muted">
+          ›
+        </span>
+      </a>
 
       <p className="text-center text-[13px] text-faint">Chips are for fun only. They can't be bought, cashed out or exchanged.</p>
     </div>

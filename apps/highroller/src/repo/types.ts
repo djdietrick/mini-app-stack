@@ -1,11 +1,15 @@
 import type { Closable, SessionUser } from "@stack/service-kit";
 import type { Equipped } from "../domain/catalog.js";
-import type { Credit } from "../domain/economy.js";
+import type { Credit, GiftOutcome, GiftRead } from "../domain/economy.js";
 import type { HandTxKey, HandTxOutcome, HandTxRead, QuestKey } from "../domain/hands.js";
 import type { ClaimOutcome, ClaimRead } from "../domain/quests.js";
 import type { PurchaseKey, PurchaseOutcome, PurchaseRead } from "../domain/shop.js";
 import type {
+  Board,
+  BoardEntry,
+  FeedEventRecord,
   GameStatsRecord,
+  GiftRecord,
   HandRecord,
   LedgerEntry,
   PlayerRecord,
@@ -85,4 +89,36 @@ export interface HighrollerRepo extends Closable {
   getQuestProgress(userId: string, keys: QuestKey[]): Promise<QuestProgressRecord[]>;
   /** One claim transaction (domain/quests.ts `planClaim`): player, progress row, ledger row. */
   claimQuest(userId: string, key: QuestKey, step: (read: ClaimRead) => ClaimOutcome): Promise<ClaimOutcome>;
+
+  // ---------- social ----------
+
+  /** The player with this email, ignoring case. */
+  findPlayerByEmail(email: string): Promise<PlayerRecord | null>;
+  /**
+   * One gift transaction (domain/economy.ts `planGift`): reads both players
+   * (locked on Postgres, in id order) and any gift stored under `giftId`,
+   * runs `step`, and writes both players, both ledger rows and the gift.
+   */
+  gift(
+    key: { giftId: string; fromUserId: string; toUserId: string },
+    step: (read: GiftRead) => GiftOutcome,
+  ): Promise<GiftOutcome>;
+  /** Gifts to the player, newest first, created strictly after `since` when given. */
+  listGiftsReceived(userId: string, opts: { since?: string; limit: number }): Promise<GiftRecord[]>;
+
+  /** Sets the player's leaderboard flag, and copies it onto every weekly_stats row of theirs. */
+  setListed(userId: string, listed: boolean): Promise<void>;
+  /**
+   * The best `limit` listed players on a board, best first: this `week`'s net
+   * or biggest win (above 0), or all-time XP for `level` (`week` unused).
+   */
+  leaderboard(board: Board, week: string, limit: number): Promise<BoardEntry[]>;
+  /** How many listed players are strictly above `value` on the board. */
+  countAbove(board: Board, week: string, value: number): Promise<number>;
+
+  /**
+   * Feed events not yet expired at `now`, newest first, each with whether its
+   * player is listed now (a hidden player shows as "A player").
+   */
+  listFeed(now: string, limit: number): Promise<(FeedEventRecord & { listed: boolean })[]>;
 }

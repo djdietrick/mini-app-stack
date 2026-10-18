@@ -13,11 +13,11 @@ import { toFastifyPlugin } from "@stack/service-kit/fastify";
 import { coinflip } from "../games/coinflip.testkit.js";
 import type { Rng } from "../games/rng.js";
 import { createFirestoreHighrollerRepo } from "../repo/firestore.js";
-import { createPostgresHighrollerRepo, purgeSettledHands } from "../repo/postgres.js";
+import { createPostgresHighrollerRepo, purgeFeedEvents, purgeSettledHands } from "../repo/postgres.js";
 import type { HighrollerRepo } from "../repo/types.js";
 import { CATALOG, DEFAULT_EQUIPPED } from "./catalog.js";
 import { STARTING_BALANCE, dayIn } from "./economy.js";
-import { isoWeek, levelProgress, xpForHand } from "./progress.js";
+import { isoWeek, levelFor, levelProgress, shiftWeek, xpForHand } from "./progress.js";
 import { ACHIEVEMENTS, type QuestPool, isoWeekOfDay } from "./quests.js";
 import { defineGame } from "./registry.js";
 import { highrollerRoutes, resolveHighrollerScope } from "./routes.js";
@@ -42,8 +42,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 interface Backend {
   repo: HighrollerRepo;
   addUser(email: string): Promise<string>;
-  /** Postgres only: the boot-time purge, run against this database. */
+  /** Postgres only: the boot-time purges, run against this database. */
   purge?: (now: Date) => Promise<number>;
+  purgeFeed?: (now: Date) => Promise<number>;
   stop(): Promise<void>;
 }
 
@@ -80,6 +81,7 @@ const backends: Record<string, { skip: string | false; start: () => Promise<Back
           return u.id;
         },
         purge: (now) => purgeSettledHands(pg, now),
+        purgeFeed: (now) => purgeFeedEvents(pg, now),
         async stop() {
           await admin.close();
           await pg.close();
@@ -213,7 +215,15 @@ for (const [backendName, backend] of Object.entries(backends)) {
       before(async () => {
         b = await backend.start();
         const opts = { repo: b.repo, verify, resolveScope: resolveHighrollerScope };
-        const routes = highrollerRoutes({ rng: rigged, games, quests, now: clock.now });
+        const routes = highrollerRoutes({
+          rng: rigged,
+          games,
+          quests,
+          now: clock.now,
+          // Small boards, so "outside the top" needs four players; no caching, so reads see writes.
+          boardSize: 3,
+          cacheMs: { boards: 0, feed: 0 },
+        });
 
         if (adapter === "fastify") {
           const app = Fastify();
@@ -468,6 +478,7 @@ for (const [backendName, backend] of Object.entries(backends)) {
           wagered: 200,
           net: 200,
           biggestWin: 200,
+          listed: true,
         });
       });
 
@@ -814,6 +825,310 @@ for (const [backendName, backend] of Object.entries(backends)) {
         assert.equal(paid.status, 200);
         assert.equal(paid.body.balance, STARTING_BALANCE - 5_000 + collector.tiers[0].reward.chips);
       });
+
+      // ---------- social ----------
+
+      /**
+       * Moves the clock to a week far in the future that no other test plays
+       * in, so a weekly board holds only this test's players. Returns the
+       * Monday 00:00 UTC that starts it.
+       */
+      function freshWeek(): number {
+        const weeks = 2_000 + Math.floor(Math.random() * 40_000);
+        const t = Date.now() + weeks * 7 * DAY;
+        const monday = Math.floor(t / DAY) * DAY - ((new Date(t).getUTCDay() || 7) - 1) * DAY;
+        clock.shift = monday + DAY / 2 - Date.now();
+        return monday;
+      }
+
+      const flip = async (user: SessionUser, main: number, side: number, variant = "instant") => {
+        rigged.side = side;
+        const res = await play(as(user), { variant, bets: { main } });
+        assert.equal(res.status, 200, JSON.stringify(res.body));
+        return res.body;
+      };
+      const board = async (user: SessionUser, path: string) => {
+        const res = await as(user)("GET", `/leaderboards/${path}`);
+        assert.equal(res.status, 200, JSON.stringify(res.body));
+        return res.body;
+      };
+      const ranks = (rows: any[]) => rows.map((r) => [r.rank, r.display_name, r.value]);
+
+      it("ranks the week's players, hides those who opt out, and still tells them their rank", async () => {
+        freshWeek();
+        const week = isoWeek(clock.now());
+        try {
+          const [ada, ben, cy, dot, eve] = await Promise.all(["Ada", "Ben", "Cy", "Dot", "Eve"].map(newUser));
+          await flip(ada, 300, 1);
+          await flip(ben, 100, 1);
+          await flip(cy, 50, 0);
+          await flip(dot, 200, 1);
+          await flip(eve, 500, 0);
+
+          let net = await board(ada, "net");
+          assert.equal(net.week, week);
+          assert.equal(net.previous_week, shiftWeek(week, -1));
+          assert.deepEqual(ranks(net.rows), [
+            [1, "Ada", 300],
+            [2, "Dot", 200],
+            [3, "Ben", 100],
+          ]);
+          assert.deepEqual(net.rows[0], { rank: 1, user_id: ada.userId, display_name: "Ada", value: 300, level: levelFor(xpForHand(300)) });
+          assert.deepEqual(net.me, { ...net.rows[0], listed: true });
+
+          const hidden = await as(dot)("PUT", "/settings", { leaderboardListed: false });
+          assert.equal(hidden.status, 200);
+          assert.deepEqual(hidden.body, { leaderboard_listed: false });
+          assert.equal((await as(dot)("GET", "/me")).body.leaderboard_listed, false);
+
+          net = await board(ada, "net");
+          assert.deepEqual(ranks(net.rows), [
+            [1, "Ada", 300],
+            [2, "Ben", 100],
+            [3, "Cy", -50],
+          ]);
+          // Hidden, but still told where they stand among the listed players.
+          const dots = await board(dot, "net");
+          assert.deepEqual([dots.me.rank, dots.me.value, dots.me.listed], [2, 200, false]);
+          assert.ok(!dots.rows.some((r: any) => r.user_id === dot.userId));
+          // Outside the top three, Eve still gets her row and rank.
+          const eves = await board(eve, "net");
+          assert.equal(eves.rows.length, 3);
+          assert.deepEqual([eves.me.rank, eves.me.display_name, eves.me.value], [4, "Eve", -500]);
+
+          // Biggest win: only wins count, and Dot is still hidden.
+          const big = await board(cy, "biggest_win");
+          assert.deepEqual(ranks(big.rows), [
+            [1, "Ada", 300],
+            [2, "Ben", 100],
+          ]);
+          assert.deepEqual([big.me.rank, big.me.value], [3, 0]);
+
+          // All-time level, shared with every other test's players: check what we can.
+          const level = await board(dot, "level");
+          assert.deepEqual([level.week, level.previous_week], [null, null]);
+          assert.ok(!level.rows.some((r: any) => r.user_id === dot.userId));
+          assert.equal(level.me.listed, false);
+          assert.equal(level.me.value, xpForHand(200));
+          const [adaLevel, benLevel] = [await board(ada, "level"), await board(ben, "level")];
+          assert.ok(adaLevel.me.rank < benLevel.me.rank, "more XP ranks higher");
+
+          await as(dot)("PUT", "/settings", { leaderboardListed: true });
+          assert.deepEqual(ranks((await board(ada, "net")).rows)[1], [2, "Dot", 200]);
+        } finally {
+          clock.shift = 0;
+          rigged.side = 1;
+        }
+      });
+
+      it("keeps ISO weeks apart at Monday 00:00 UTC", async () => {
+        const monday = freshWeek();
+        try {
+          const wes = await newUser("Wes");
+          // Sunday 23:59:30 UTC (still Sunday evening in New York, where the player is).
+          clock.shift = monday - 30_000 - Date.now();
+          const before = isoWeek(clock.now());
+          await flip(wes, 100, 1);
+          clock.shift = monday + 30_000 - Date.now();
+          const week = isoWeek(clock.now());
+          assert.equal(before, shiftWeek(week, -1));
+          await flip(wes, 200, 1);
+
+          const now = await board(wes, "net");
+          assert.deepEqual([now.week, now.previous_week], [week, before]);
+          assert.deepEqual(ranks(now.rows), [[1, "Wes", 200]]);
+          const last = await board(wes, `net?week=${before}`);
+          assert.deepEqual(ranks(last.rows), [[1, "Wes", 100]]);
+          assert.equal(last.previous_week, shiftWeek(before, -1));
+          const older = await board(wes, `net?week=${shiftWeek(before, -1)}`);
+          assert.deepEqual([older.rows, older.me], [[], null]);
+
+          assert.equal((await as(wes)("GET", "/leaderboards/net?week=2026-42")).status, 400);
+          assert.equal((await as(wes)("GET", "/leaderboards/richest")).status, 400);
+        } finally {
+          clock.shift = 0;
+        }
+      });
+
+      const gift = (from: SessionUser, to: unknown, amount: number, extra: Record<string, unknown> = {}) =>
+        as(from)("POST", "/gifts", { id: randomUUID(), to, amount, timeZone: TZ, ...extra });
+
+      it("gifts chips by email, once per gift id, and the receiver sees it", async () => {
+        const [gia, hob] = await Promise.all([newUser("Gia"), newUser("Hob")]);
+        await as(hob)("GET", "/me");
+        const id = randomUUID();
+        const body = { id, to: { email: hob.email.toUpperCase() }, amount: 1_000, message: "  good luck  ", timeZone: TZ };
+
+        const sent = await as(gia)("POST", "/gifts", body);
+        assert.equal(sent.status, 200, JSON.stringify(sent.body));
+        assert.deepEqual(sent.body, {
+          gift: { id, from_name: "Gia", to_name: "Hob", amount: 1_000, message: "good luck", created_at: sent.body.gift.created_at },
+          balance: 9_000,
+          sent_today: 1_000,
+        });
+        assert.match(sent.body.gift.created_at, /^\d{4}-\d\d-\d\dT.*Z$/);
+
+        // A retry is the same gift, made once.
+        const again = await as(gia)("POST", "/gifts", body);
+        assert.equal(again.status, 200);
+        assert.deepEqual(again.body.gift, sent.body.gift);
+        assert.equal(again.body.balance, 9_000);
+
+        const giaLedger = await fullLedger(as(gia));
+        const hobLedger = await fullLedger(as(hob));
+        assert.deepEqual(giaLedger.slice(0, 2).map((e) => [e.kind, e.amount, e.ref]), [
+          ["gift_out", -1_000, hob.userId],
+          ["initial_grant", 10_000, null],
+        ]);
+        assert.deepEqual(hobLedger.slice(0, 2).map((e) => [e.kind, e.amount, e.ref]), [
+          ["gift_in", 1_000, gia.userId],
+          ["initial_grant", 10_000, null],
+        ]);
+        const [giaMe, hobMe] = [(await as(gia)("GET", `/me?timeZone=${encodeURIComponent(TZ)}`)).body, (await as(hob)("GET", "/me")).body];
+        assert.deepEqual([giaMe.balance, hobMe.balance], [9_000, 11_000]);
+        assert.deepEqual(giaMe.gifting, { sent_today: 1_000, send_limit: 5_000, receive_limit: 10_000, min: 100, floor: 500 });
+
+        const received = await as(hob)("GET", "/gifts/received");
+        assert.deepEqual(received.body, { gifts: [sent.body.gift] });
+        const since = encodeURIComponent(sent.body.gift.created_at);
+        assert.deepEqual((await as(hob)("GET", `/gifts/received?since=${since}`)).body, { gifts: [] });
+        assert.deepEqual((await as(gia)("GET", "/gifts/received")).body, { gifts: [] });
+
+        // By user id, as from a leaderboard row.
+        const byId = await gift(gia, { userId: hob.userId }, 500);
+        assert.equal(byId.status, 200);
+        assert.equal(byId.body.sent_today, 1_500);
+      });
+
+      it("refuses unknown and hidden players alike, yourself, and anything over the caps or floor", async () => {
+        const [ike, jo, kit, lu, mo, nell] = await Promise.all(["Ike", "Jo", "Kit", "Lu", "Mo", "Nell"].map(newUser));
+        await Promise.all([jo, lu, mo, nell].map((u) => as(u)("GET", "/me")));
+        await as(kit)("PUT", "/settings", { leaderboardListed: false });
+
+        const unknown = await gift(ike, { email: `nobody-${randomUUID()}@example.com` }, 100);
+        assert.equal(unknown.status, 404);
+        assert.deepEqual(unknown.body, { error: "NO_SUCH_PLAYER" });
+        for (const to of [{ email: kit.email }, { userId: kit.userId }, { userId: randomUUID() }, { userId: "not-a-player" }]) {
+          const res = await gift(ike, to, 100);
+          assert.deepEqual([res.status, res.body], [404, unknown.body], JSON.stringify(to));
+        }
+        for (const to of [{ email: ike.email }, { userId: ike.userId }]) {
+          const res = await gift(ike, to, 100);
+          assert.deepEqual([res.status, res.body.error], [409, "SELF_GIFT"]);
+        }
+        assert.equal((await gift(ike, { email: jo.email }, 50)).status, 400);
+        assert.equal((await gift(ike, { email: jo.email }, 150.5)).status, 400);
+        assert.equal((await gift(ike, { email: jo.email }, 100, { message: "x".repeat(141) })).status, 400);
+        assert.equal((await gift(ike, { email: "not an email" }, 100)).status, 400);
+
+        // Send cap: 5,000 a day.
+        assert.equal((await gift(ike, { email: jo.email }, 4_000)).status, 200);
+        assert.equal((await gift(ike, { email: jo.email }, 1_010)).body.error, "OVER_SEND_CAP");
+        assert.equal((await gift(ike, { email: jo.email }, 1_000)).status, 200);
+        // Receive cap: 10,000 a day.
+        assert.equal((await gift(lu, { email: jo.email }, 5_000)).status, 200);
+        assert.equal((await gift(mo, { email: jo.email }, 100)).body.error, "OVER_RECEIVE_CAP");
+
+        try {
+          // Both caps start again the next day.
+          clock.shift = DAY;
+          assert.equal((await gift(ike, { email: jo.email }, 4_000)).status, 200);
+          assert.equal((await gift(mo, { email: jo.email }, 100)).status, 200);
+        } finally {
+          clock.shift = 0;
+        }
+
+        // The floor: Nell can't gift herself below 500.
+        await flip(nell, 6_000, 0); // 4,000 left
+        assert.equal((await gift(nell, { email: lu.email }, 3_600)).body.error, "BELOW_FLOOR");
+        assert.equal((await gift(nell, { email: lu.email }, 3_500)).status, 200);
+
+        // Nothing refused moved a chip.
+        const balance = async (u: SessionUser) => (await as(u)("GET", "/me")).body.balance;
+        assert.deepEqual(
+          [await balance(ike), await balance(jo), await balance(kit), await balance(lu), await balance(mo), await balance(nell)],
+          [1_000, 24_100, 10_000, 8_500, 9_900, 500],
+        );
+        rigged.side = 1;
+      });
+
+      it("gives one gift id once when it is sent twice at once", async () => {
+        const [pip, quin] = await Promise.all([newUser("Pip"), newUser("Quin")]);
+        await Promise.all([as(pip)("GET", "/me"), as(quin)("GET", "/me")]);
+        const body = { id: randomUUID(), to: { userId: quin.userId }, amount: 700, timeZone: TZ };
+        const both = await Promise.all([1, 2].map(() => as(pip)("POST", "/gifts", body)));
+        assert.deepEqual(both.map((r) => r.status), [200, 200]);
+        assert.equal((await as(pip)("GET", "/me")).body.balance, 9_300);
+        assert.equal((await as(quin)("GET", "/me")).body.balance, 10_700);
+        assert.equal((await as(quin)("GET", "/gifts/received")).body.gifts.length, 1);
+      });
+
+      it("posts big wins to everyone's feed, newest first, hiding opted-out names, for 7 days", async () => {
+        const [nia, oz] = await Promise.all([newUser("Nia"), newUser("Oz")]);
+        const big = await flip(nia, 200, 1, "longshot"); // 7,200 back: 36×
+        const short = await flip(nia, 100, 1, "longshot"); // 3,600: under 5,000
+        const even = await flip(nia, 5_000, 1); // 10,000, but only 2×
+        const bigger = await flip(nia, 300, 1, "longshot"); // 10,800
+        rigged.side = 1;
+
+        const feedIds = async (u: SessionUser) => {
+          const res = await as(u)("GET", "/feed?limit=50");
+          assert.equal(res.status, 200);
+          return res.body.events as any[];
+        };
+        const id = (h: any) => `${h.hand.id}:big_win`;
+        let events = await feedIds(oz);
+        const ids = events.map((e) => e.id);
+        assert.ok(ids.includes(id(big)) && ids.includes(id(bigger)));
+        assert.ok(ids.indexOf(id(bigger)) < ids.indexOf(id(big)), "newest first");
+        assert.ok(!ids.includes(`${short.hand.id}:big_win`) && !ids.includes(`${even.hand.id}:big_win`));
+        const event = events.find((e) => e.id === id(big));
+        assert.deepEqual(event, {
+          id: id(big),
+          kind: "big_win",
+          display_name: "Nia",
+          game: "coinflip",
+          game_name: "Coin flip",
+          variant: "longshot",
+          wagered: 200,
+          amount: 7_200,
+          multiplier: 36,
+          hand_label: "Coin flip",
+          created_at: event.created_at,
+        });
+        assert.ok(!Number.isNaN(Date.parse(event.created_at)));
+        assert.ok(!("user_id" in event), "the feed carries no user ids");
+
+        await as(nia)("PUT", "/settings", { leaderboardListed: false });
+        events = await feedIds(oz);
+        assert.deepEqual(
+          events.filter((e) => e.id === id(big) || e.id === id(bigger)).map((e) => e.display_name),
+          ["A player", "A player"],
+        );
+        await as(nia)("PUT", "/settings", { leaderboardListed: true });
+
+        try {
+          clock.shift = 6 * DAY;
+          assert.ok((await feedIds(oz)).some((e) => e.id === id(big)));
+          clock.shift = 7 * DAY + 60_000;
+          assert.ok(!(await feedIds(oz)).some((e) => e.id === id(big)), "expired after 7 days");
+        } finally {
+          clock.shift = 0;
+        }
+        assert.equal((await as(oz)("GET", "/feed?limit=0")).status, 400);
+      });
+
+      if (backend.skip === false && backendName === "postgres") {
+        it("purges feed events past 7 days", async () => {
+          const ren = await newUser("Ren");
+          const won = await flip(ren, 200, 1, "longshot");
+          const has = async () => (await as(ren)("GET", "/feed?limit=50")).body.events.some((e: any) => e.id === `${won.hand.id}:big_win`);
+          await b.purgeFeed!(new Date(Date.now() + 6 * DAY));
+          assert.ok(await has());
+          await b.purgeFeed!(new Date(Date.now() + 8 * DAY));
+          assert.ok(!(await has()));
+        });
+      }
 
       if (backend.skip === false && backendName === "postgres") {
         it("purges settled hands past retention, and keeps their ledger rows", async () => {

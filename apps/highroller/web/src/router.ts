@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
  * Hash routing, like the other apps in the stack: it needs no server rewrite
  * rules on either target and survives being opened from a home-screen icon.
  *
- * The five tabs are lobby, shop, quests, stats and more; ledger and settings
- * live under More. A table is `#/play/<game>` (`#/play/roulette/american`
+ * The five tabs are lobby, shop, quests, stats and more; leaderboards, ledger
+ * and settings live under More (the lobby links to the leaderboards too). A table is `#/play/<game>` (`#/play/roulette/american`
  * for a variant). `table-demo` is the PixiJS kit's test bench and exists in
  * dev builds only.
  */
@@ -15,12 +15,13 @@ export type Route =
   | { name: "quests" }
   | { name: "stats" }
   | { name: "more" }
+  | { name: "leaderboards" }
   | { name: "ledger" }
   | { name: "settings" }
   | { name: "play"; game: string; variant: string | null }
   | { name: "table-demo" };
 
-const SIMPLE = ["shop", "quests", "stats", "more", "ledger", "settings"] as const;
+const SIMPLE = ["shop", "quests", "stats", "more", "leaderboards", "ledger", "settings"] as const;
 
 export function parseRoute(hash: string): Route {
   const [head, game, variant] = hash.replace(/^#\/?/, "").split("/");

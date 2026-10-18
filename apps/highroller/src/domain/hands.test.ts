@@ -152,7 +152,7 @@ describe("planStart", () => {
         biggestWin: won ? 100 : 0,
         expectedReturn: 100,
       });
-      assert.deepEqual(w.weeklyStats, { week: WEEK, userId: "u1", hands: 1, wagered: 100, net: won ? 100 : -100, biggestWin: won ? 100 : 0 });
+      assert.deepEqual(w.weeklyStats, { week: WEEK, userId: "u1", hands: 1, wagered: 100, net: won ? 100 : -100, biggestWin: won ? 100 : 0, listed: true });
     }
   });
 });

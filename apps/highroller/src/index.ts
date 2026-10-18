@@ -11,7 +11,12 @@ import { toFastifyPlugin } from "@stack/service-kit/fastify";
 import { config } from "./config.js";
 import { cryptoRng } from "./cryptoRng.js";
 import { highrollerRoutes, resolveHighrollerScope } from "./domain/routes.js";
-import { createPostgresHighrollerRepo, purgeSettledHands } from "./repo/postgres.js";
+import {
+  FEED_PURGE_INTERVAL_MS,
+  createPostgresHighrollerRepo,
+  purgeFeedEvents,
+  purgeSettledHands,
+} from "./repo/postgres.js";
 
 /**
  * Self-hosted entrypoint. Game rules, the hand lifecycle and the economy live
@@ -31,6 +36,17 @@ const app = Fastify({ logger: true });
 // Firestore does the same with a TTL policy on purgeAt.
 const purged = await purgeSettledHands(pg);
 if (purged) app.log.info({ purged }, "purged settled hands past retention");
+
+// Big-win feed events last 7 days: purged on boot and hourly (reads check the
+// expiry too). Firestore has a TTL policy on expiresAt instead.
+const purgeFeed = () =>
+  purgeFeedEvents(pg).then(
+    (n) => n && app.log.info({ purged: n }, "purged expired feed events"),
+    (err) => app.log.warn({ err }, "feed purge failed"),
+  );
+await purgeFeed();
+const feedTimer = setInterval(purgeFeed, FEED_PURGE_INTERVAL_MS);
+feedTimer.unref();
 
 const repo = createPostgresHighrollerRepo(pg);
 
@@ -71,6 +87,7 @@ app.setNotFoundHandler((req, reply) => {
 });
 
 const shutdown = async () => {
+  clearInterval(feedTimer);
   await app.close();
   await repo.close();
 };

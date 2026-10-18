@@ -6,6 +6,8 @@
 import type { CosmeticKind } from "../../src/domain/catalog.js";
 import type {
   AchievementRow,
+  Board,
+  BoardRow,
   BalancePoint,
   BalanceRange,
   BalanceSeries,
@@ -13,10 +15,16 @@ import type {
   ClaimResponse,
   CompletionRow,
   EquipResponse,
+  FeedEventRow,
+  FeedResponse,
   GameStatsRow,
+  GiftResponse,
+  GiftRow,
+  GiftsReceived,
   HandPage,
   HandResponse,
   HandRow,
+  LeaderboardResponse,
   LedgerKind,
   LedgerPage,
   LedgerRow,
@@ -28,11 +36,14 @@ import type {
   RewardRow,
   ShopItemRow,
   ShopResponse,
+  SocialSettings,
   StatsResponse,
 } from "../../src/domain/types.js";
 
 export type {
   AchievementRow,
+  Board,
+  BoardRow,
   BalancePoint,
   BalanceRange,
   BalanceSeries,
@@ -41,10 +52,16 @@ export type {
   CompletionRow,
   CosmeticKind,
   EquipResponse,
+  FeedEventRow,
+  FeedResponse,
   GameStatsRow,
+  GiftResponse,
+  GiftRow,
+  GiftsReceived,
   HandPage,
   HandResponse,
   HandRow,
+  LeaderboardResponse,
   LedgerKind,
   LedgerPage,
   LedgerRow,
@@ -56,6 +73,7 @@ export type {
   RewardRow,
   ShopItemRow,
   ShopResponse,
+  SocialSettings,
   StatsResponse,
 };
 
@@ -132,4 +150,14 @@ export const api = {
 
   quests: () => call<QuestsResponse>("GET", `/quests?timeZone=${encodeURIComponent(timeZone())}`),
   claimQuest: (id: string) => call<QuestClaimResponse>("POST", `/quests/${encodeURIComponent(id)}/claim`, { timeZone: timeZone() }),
+
+  leaderboard: (board: Board, week?: string) =>
+    call<LeaderboardResponse>("GET", `/leaderboards/${board}${week ? `?week=${encodeURIComponent(week)}` : ""}`),
+  setListed: (leaderboardListed: boolean) => call<SocialSettings>("PUT", "/settings", { leaderboardListed }),
+  /** `id` is made once per gift by the caller, so a retry after a dropped response sends it once. */
+  gift: (input: { id: string; to: { email: string } | { userId: string }; amount: number; message?: string }) =>
+    call<GiftResponse>("POST", "/gifts", { ...input, timeZone: timeZone() }),
+  giftsReceived: (since?: string) =>
+    call<GiftsReceived>("GET", `/gifts/received${since ? `?since=${encodeURIComponent(since)}` : ""}`),
+  feed: () => call<FeedResponse>("GET", "/feed?limit=20"),
 };

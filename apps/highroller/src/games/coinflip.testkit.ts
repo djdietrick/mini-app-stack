@@ -9,6 +9,8 @@ import { type GameEngine, checkStake, outcomeOf } from "./engine.js";
  *   everything a multi-decision game like blackjack will.
  * - `instant`: the player always takes heads and the hand settles as it is
  *   dealt, like a roulette spin.
+ * - `longshot`: `instant`, but a win pays 36 for 1, like a straight-up
+ *   roulette number: big enough for the big-win feed.
  *
  * Both coins are flipped in `deal`. The first decides the hand and is shown
  * once it is over; the second is never used and never shown, so a test can
@@ -21,7 +23,7 @@ export interface CoinflipBets {
 }
 
 export interface CoinflipState {
-  variant: "call" | "instant";
+  variant: "call" | "instant" | "longshot";
   stake: number;
   doubled: boolean;
   call: Coin | null;
@@ -43,7 +45,7 @@ const staked = (s: CoinflipState) => s.stake * (s.doubled ? 2 : 1);
 const legal = (s: CoinflipState) => (done(s) ? [] : s.doubled ? ["heads", "tails"] : ["double", "heads", "tails"]);
 
 export const coinflip: GameEngine<CoinflipBets, CoinflipState, CoinflipAction, CoinflipView> = {
-  variants: ["call", "instant"],
+  variants: ["call", "instant", "longshot"],
 
   validateBets(bets, limits) {
     return checkStake(bets.main, limits);
@@ -51,8 +53,8 @@ export const coinflip: GameEngine<CoinflipBets, CoinflipState, CoinflipAction, C
 
   deal(bets, rng, variant) {
     const coins: [Coin, Coin] = [rng.int(2) ? "H" : "T", rng.int(2) ? "H" : "T"];
-    const v = variant === "instant" ? "instant" : "call";
-    return { variant: v, stake: bets.main, doubled: false, call: v === "instant" ? "H" : null, coins };
+    const v = variant === "instant" || variant === "longshot" ? variant : "call";
+    return { variant: v, stake: bets.main, doubled: false, call: v === "call" ? null : "H", coins };
   },
 
   legalActions: legal,
@@ -68,7 +70,7 @@ export const coinflip: GameEngine<CoinflipBets, CoinflipState, CoinflipAction, C
 
   settle(s) {
     const stake = staked(s);
-    const returned = s.call === s.coins[0] ? stake * 2 : 0;
+    const returned = s.call === s.coins[0] ? stake * (s.variant === "longshot" ? 36 : 2) : 0;
     return { returned, results: [{ spot: "main", stake, returned, outcome: outcomeOf(stake, returned) }] };
   },
 
@@ -80,7 +82,7 @@ export const coinflip: GameEngine<CoinflipBets, CoinflipState, CoinflipAction, C
     return { called: s.call ?? "", landed: s.coins[0], doubled: s.doubled };
   },
 
-  theoreticalRtp() {
-    return 1;
+  theoreticalRtp(variant) {
+    return variant === "longshot" ? 18 : 1;
   },
 };

@@ -30,6 +30,14 @@ export interface PlayerRecord {
   ledgerSeq: number;
   /** Item ids by kind; the defaults until something else is equipped. */
   equipped: Equipped;
+  /** Shown on the leaderboards and by name in the feed. Off hides both. */
+  leaderboardListed: boolean;
+  /** Chips gifted on `giftsSentOn`, the sender's calendar day. */
+  giftsSentToday: number;
+  giftsSentOn: string | null;
+  /** Chips received on `giftsReceivedOn`, a UTC day. */
+  giftsReceivedToday: number;
+  giftsReceivedOn: string | null;
   createdAt: string;
 }
 
@@ -109,6 +117,8 @@ export interface WeeklyStatsRecord {
   wagered: number;
   net: number;
   biggestWin: number;
+  /** The player's `leaderboardListed`, copied on every write so boards can filter on it. */
+  listed: boolean;
 }
 
 /**
@@ -129,6 +139,52 @@ export interface QuestProgressRecord {
   claimed: number;
   updatedAt: string;
   claimedAt: string | null;
+}
+
+/** One gift between two players. `id` is the client's, so a retry lands once. */
+export interface GiftRecord {
+  id: string;
+  fromUserId: string;
+  /** Public names (social.ts `publicName`) at the time of the gift. */
+  fromName: string;
+  toUserId: string;
+  toName: string;
+  amount: number;
+  message: string | null;
+  createdAt: string;
+}
+
+export const FEED_KINDS = ["big_win", "jackpot"] as const;
+export type FeedKind = (typeof FEED_KINDS)[number];
+
+/** A big win or a jackpot hit, written by settlement, kept 7 days. At most one per (hand, kind). */
+export interface FeedEventRecord {
+  handId: string;
+  kind: FeedKind;
+  userId: string;
+  /** The public name when it was won; the feed shows "A player" for hidden players instead. */
+  displayName: string;
+  game: string;
+  variant: string | null;
+  wagered: number;
+  /** Chips returned by the hand, stakes included. */
+  amount: number;
+  /** amount ÷ wagered, two decimals. */
+  multiplier: number;
+  /** "Straight up 17", "Royal flush"; the game's name when nothing more specific fits. */
+  handLabel: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** One place on a leaderboard, as the repo reads it. */
+export interface BoardEntry {
+  userId: string;
+  displayName: string;
+  email: string;
+  xp: number;
+  /** The board's figure: net, biggest win or XP. */
+  value: number;
 }
 
 // ---------- wire ----------
@@ -156,6 +212,16 @@ export interface PlayerRow {
     top_up_to: number;
   };
   equipped: Equipped;
+  leaderboard_listed: boolean;
+  gifting: {
+    /** Sent today, in the time zone of the request. */
+    sent_today: number;
+    send_limit: number;
+    receive_limit: number;
+    min: number;
+    /** You can't gift yourself below this. */
+    floor: number;
+  };
   created_at: string;
 }
 
@@ -337,6 +403,87 @@ export interface QuestClaimResponse extends LevelRow {
   xp: number;
 }
 
+// ---------- social ----------
+
+export const BOARDS = ["net", "biggest_win", "level"] as const;
+export type Board = (typeof BOARDS)[number];
+
+export interface BoardRow {
+  /** Players with the same figure share a rank: 1 + the listed players above. */
+  rank: number;
+  user_id: string;
+  display_name: string;
+  value: number;
+  level: number;
+}
+
+export interface LeaderboardResponse {
+  board: Board;
+  /** The ISO week (UTC) of a weekly board; null for the level board. */
+  week: string | null;
+  previous_week: string | null;
+  /** The top of the board, listed players only. */
+  rows: BoardRow[];
+  /** Your own place, even when hidden or below the top; null before you have played that week. */
+  me: (BoardRow & { listed: boolean }) | null;
+}
+
+export interface GiftRow {
+  id: string;
+  from_name: string;
+  to_name: string;
+  amount: number;
+  message: string | null;
+  created_at: string;
+}
+
+export interface GiftResponse {
+  gift: GiftRow;
+  balance: number;
+  sent_today: number;
+}
+
+export interface GiftsReceived {
+  /** Newest first. */
+  gifts: GiftRow[];
+}
+
+export interface FeedEventRow {
+  /** `${hand_id}:${kind}`. */
+  id: string;
+  kind: FeedKind;
+  /** "A player" when they are hidden from the leaderboards. */
+  display_name: string;
+  game: string;
+  game_name: string;
+  variant: string | null;
+  wagered: number;
+  amount: number;
+  multiplier: number;
+  hand_label: string;
+  created_at: string;
+}
+
+export interface FeedResponse {
+  /** Newest first. */
+  events: FeedEventRow[];
+}
+
+export interface SocialSettings {
+  leaderboard_listed: boolean;
+}
+
+export function toGiftRow(g: GiftRecord): GiftRow {
+  return {
+    id: g.id,
+    from_name: g.fromName,
+    to_name: g.toName,
+    amount: g.amount,
+    message: g.message,
+    created_at: g.createdAt,
+  };
+}
+
 export function toLedgerRow(e: LedgerEntry): LedgerRow {
   return {
     seq: e.seq,
@@ -422,3 +569,35 @@ export const equipInput = z.object({
 export const questsQuery = z.object({ timeZone: timeZone.default("UTC") });
 export const questIdParam = z.object({ id: z.string().min(1).max(60) });
 export const questClaimInput = z.object({ timeZone });
+
+const isoWeekString = z.string().regex(/^\d{4}-W\d{2}$/, "an ISO week like 2026-W42");
+
+export const boardParam = z.object({ board: z.enum(BOARDS) });
+export const boardQuery = z.object({ week: isoWeekString.optional() });
+
+export const giftInput = z.object({
+  /** Made by the client, so a retried gift lands once. */
+  id: z.string().uuid(),
+  to: z.union([
+    z.object({ email: z.string().trim().email().max(320) }).strict(),
+    z.object({ userId: z.string().min(1).max(128) }).strict(),
+  ]),
+  amount: z.number().int().min(100).max(1_000_000),
+  /** Plain text; the SPA never renders it as HTML. */
+  message: z.string().trim().max(140).optional(),
+  /** The sender's day, for the send cap. */
+  timeZone,
+});
+export type GiftInput = z.infer<typeof giftInput>;
+
+export const giftsReceivedQuery = z.object({
+  since: z
+    .string()
+    .refine((s) => !Number.isNaN(Date.parse(s)), { message: "an ISO timestamp" })
+    .optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export const feedQuery = z.object({ limit: z.coerce.number().int().min(1).max(50).default(20) });
+
+export const socialSettingsInput = z.object({ leaderboardListed: z.boolean() }).strict();

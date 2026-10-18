@@ -3,8 +3,13 @@ import type { Firestore, Transaction } from "@google-cloud/firestore";
 import { equippedOf } from "../domain/catalog.js";
 import { applyCreditTo, displayNameOf, newPlayer } from "../domain/economy.js";
 import { type HandTxRead, type HandTxWrites, type QuestKey, SETTLED_HAND_RETENTION_DAYS } from "../domain/hands.js";
+import { FEED_RETENTION_DAYS } from "../domain/social.js";
 import type {
+  Board,
+  BoardEntry,
+  FeedEventRecord,
   GameStatsRecord,
+  GiftRecord,
   HandRecord,
   LedgerEntry,
   LedgerKind,
@@ -23,6 +28,9 @@ import type { HighrollerRepo } from "./types.js";
  *                                        game (Firestore has no partial unique index):
  *                                        every hand transaction reads and writes it.
  *                                        `equipped` is written only by setEquipped.
+ *                                        `listed` is the leaderboard flag (the level
+ *                                        board's index is on it) and `emailKey` the
+ *                                        lowercased email gifting looks up.
  *   highroller_ledger/{userId}_{seq}     one per balance change; the deterministic id
  *                                        (seq zero-padded) makes a retried write land
  *                                        on the same document
@@ -37,6 +45,15 @@ import type { HighrollerRepo } from "./types.js";
  *                                        makes a second purchase a conflict the purchase
  *                                        transaction sees when it reads
  *   highroller_quest_progress/{userId}_{questId}_{period}
+ *   highroller_gifts/{id}                one per gift, id from the client, so a retried
+ *                                        gift finds itself when the transaction reads
+ *   highroller_feed_events/{handId}_{kind}   big wins, at most one per hand and kind.
+ *                                        `expiresAt` carries the TTL policy (and has no
+ *                                        index), so reads filter on `createdAt`.
+ *
+ * Weekly stats carry the player's `listed` flag, copied on every write and by
+ * setListed, so the boards are single indexed queries; names come from a
+ * getAll of the players on the board, and a rank is a count() aggregation.
  *
  * Every transaction does all its reads before any write and calls only pure
  * domain functions, so contention retries are safe.
@@ -49,6 +66,8 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
   const weeklyStats = db.collection(`${prefix}weekly_stats`);
   const inventory = db.collection(`${prefix}inventory`);
   const questProgress = db.collection(`${prefix}quest_progress`);
+  const gifts = db.collection(`${prefix}gifts`);
+  const feedEvents = db.collection(`${prefix}feed_events`);
 
   interface PlayerDoc {
     userId: string;
@@ -64,6 +83,13 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
     activeHands: Record<string, string>;
     /** Absent on players from before the shop. */
     equipped?: Record<string, string>;
+    /** Absent on players from before social; ensurePlayer fills them in. */
+    listed?: boolean;
+    emailKey?: string;
+    giftsSentToday?: number;
+    giftsSentOn?: string | null;
+    giftsReceivedToday?: number;
+    giftsReceivedOn?: string | null;
   }
 
   const toPlayer = (d: PlayerDoc): PlayerRecord => ({
@@ -77,20 +103,30 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
     lastBailoutOn: d.lastBailoutOn,
     ledgerSeq: d.ledgerSeq,
     equipped: equippedOf(d.equipped),
+    leaderboardListed: d.listed ?? true,
+    giftsSentToday: d.giftsSentToday ?? 0,
+    giftsSentOn: d.giftsSentOn ?? null,
+    giftsReceivedToday: d.giftsReceivedToday ?? 0,
+    giftsReceivedOn: d.giftsReceivedOn ?? null,
     createdAt: d.createdAt.toDate().toISOString(),
   });
 
-  /** The record's fields as stored; `activeHands` and `equipped` are written separately. */
+  /** The record's fields as stored; `activeHands`, `equipped` and `listed` are written separately. */
   const playerFields = (p: PlayerRecord) => ({
     userId: p.userId,
     displayName: p.displayName,
     email: p.email,
+    emailKey: p.email.toLowerCase(),
     balance: p.balance,
     xp: p.xp,
     dailyStreak: p.dailyStreak,
     lastDailyOn: p.lastDailyOn,
     lastBailoutOn: p.lastBailoutOn,
     ledgerSeq: p.ledgerSeq,
+    giftsSentToday: p.giftsSentToday,
+    giftsSentOn: p.giftsSentOn,
+    giftsReceivedToday: p.giftsReceivedToday,
+    giftsReceivedOn: p.giftsReceivedOn,
   });
 
   interface LedgerDoc {
@@ -225,6 +261,49 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
     for (const q of rows) tx.set(questRef(q.userId, q), toQuestDoc(q));
   };
 
+  interface GiftDoc extends Omit<GiftRecord, "createdAt"> {
+    createdAt: Timestamp;
+  }
+
+  const toGiftDoc = (g: GiftRecord): GiftDoc => ({ ...g, createdAt: Timestamp.fromDate(new Date(g.createdAt)) });
+  const toGift = (d: GiftDoc): GiftRecord => ({ ...d, createdAt: d.createdAt.toDate().toISOString() });
+
+  interface FeedDoc extends Omit<FeedEventRecord, "createdAt" | "expiresAt"> {
+    createdAt: Timestamp;
+    expiresAt: Timestamp;
+  }
+
+  const feedRef = (f: { handId: string; kind: string }) => feedEvents.doc(`${f.handId}_${f.kind}`);
+  const toFeedDoc = (f: FeedEventRecord): FeedDoc => ({
+    ...f,
+    createdAt: Timestamp.fromDate(new Date(f.createdAt)),
+    expiresAt: Timestamp.fromDate(new Date(f.expiresAt)),
+  });
+  const toFeed = (d: FeedDoc): FeedEventRecord => ({
+    ...d,
+    createdAt: d.createdAt.toDate().toISOString(),
+    expiresAt: d.expiresAt.toDate().toISOString(),
+  });
+
+  /** Players by id, for names and flags; missing ones are left out. */
+  async function playersById(ids: string[]): Promise<Map<string, PlayerDoc>> {
+    const unique = [...new Set(ids)];
+    if (!unique.length) return new Map();
+    const snaps = await db.getAll(...unique.map((id) => players.doc(id)));
+    return new Map(snaps.filter((s) => s.exists).map((s) => [s.id, s.data() as PlayerDoc]));
+  }
+
+  /** Each board's query over listed players, ordered best first. */
+  const boardQuery = (board: Board, week: string) =>
+    board === "level"
+      ? { q: players.where("listed", "==", true), field: "xp" }
+      : board === "net"
+        ? { q: weeklyStats.where("week", "==", week).where("listed", "==", true), field: "net" }
+        : {
+            q: weeklyStats.where("week", "==", week).where("listed", "==", true).where("biggestWin", ">", 0),
+            field: "biggestWin",
+          };
+
   async function readPlayer(tx: Transaction, userId: string): Promise<PlayerDoc | null> {
     const snap = await tx.get(players.doc(userId));
     return snap.exists ? (snap.data() as PlayerDoc) : null;
@@ -242,6 +321,7 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
     if (w.gameStats) tx.set(gameStatsRef(w.gameStats.userId, w.gameStats.game), w.gameStats);
     if (w.weeklyStats) tx.set(weeklyRef(w.weeklyStats.week, w.weeklyStats.userId), w.weeklyStats);
     writeQuests(tx, w.quests);
+    for (const f of w.feed) tx.set(feedRef(f), toFeedDoc(f));
   }
 
   return {
@@ -249,16 +329,21 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
       const ref = players.doc(user.userId);
       const name = displayNameOf(user);
       const snap = await ref.get();
+      const emailKey = user.email.toLowerCase();
       if (snap.exists) {
         const d = snap.data() as PlayerDoc;
-        if (d.displayName === name && d.email === user.email) return toPlayer(d);
+        if (d.displayName === name && d.email === user.email && d.emailKey === emailKey && d.listed !== undefined) {
+          return toPlayer(d);
+        }
       }
 
       return db.runTransaction(async (tx) => {
         const existing = await readPlayer(tx, user.userId);
         if (existing) {
-          tx.update(ref, { displayName: name, email: user.email });
-          return toPlayer({ ...existing, displayName: name, email: user.email });
+          // Also fills in the fields players from before social lack, so they show on the level board.
+          const patch = { displayName: name, email: user.email, emailKey, listed: existing.listed ?? true };
+          tx.update(ref, patch);
+          return toPlayer({ ...existing, ...patch });
         }
         const { player, entry } = newPlayer(user, new Date().toISOString());
         tx.create(ref, {
@@ -266,6 +351,7 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
           createdAt: Timestamp.fromDate(new Date(player.createdAt)),
           activeHands: {},
           equipped: player.equipped,
+          listed: player.leaderboardListed,
         } satisfies PlayerDoc);
         tx.create(ledgerRef(entry), toLedgerDoc(entry));
         return player;
@@ -421,6 +507,86 @@ export function createFirestoreHighrollerRepo(db: Firestore, prefix = "highrolle
         writeQuests(tx, [out.row]);
         return out;
       });
+    },
+
+    // ---------- social ----------
+
+    async findPlayerByEmail(email) {
+      const snap = await players.where("emailKey", "==", email.toLowerCase()).limit(1).get();
+      return snap.empty ? null : toPlayer(snap.docs[0].data() as PlayerDoc);
+    },
+
+    async gift(key, step) {
+      return db.runTransaction(async (tx) => {
+        const [fromSnap, toSnap, giftSnap] = await tx.getAll(
+          players.doc(key.fromUserId),
+          players.doc(key.toUserId),
+          gifts.doc(key.giftId),
+        );
+        if (!fromSnap.exists) throw new Error(`no player ${key.fromUserId}`);
+        const out = step({
+          from: toPlayer(fromSnap.data() as PlayerDoc),
+          to: toSnap.exists ? toPlayer(toSnap.data() as PlayerDoc) : null,
+          existing: giftSnap.exists ? toGift(giftSnap.data() as GiftDoc) : null,
+        });
+        const w = out.writes;
+        if (w) {
+          tx.update(players.doc(w.from.userId), playerFields(w.from));
+          tx.update(players.doc(w.to.userId), playerFields(w.to));
+          for (const e of w.ledger) tx.create(ledgerRef(e), toLedgerDoc(e));
+          tx.create(gifts.doc(w.gift.id), toGiftDoc(w.gift));
+        }
+        return out;
+      });
+    },
+
+    async listGiftsReceived(userId, { since, limit }) {
+      let q = gifts.where("toUserId", "==", userId).orderBy("createdAt", "desc");
+      if (since) q = q.where("createdAt", ">", Timestamp.fromDate(new Date(since)));
+      const snap = await q.limit(limit).get();
+      return snap.docs.map((d) => toGift(d.data() as GiftDoc));
+    },
+
+    async setListed(userId, listed) {
+      await players.doc(userId).update({ listed });
+      // Every week of theirs, so a hidden player leaves past boards too. A hand
+      // settling meanwhile reads the player afresh (its transaction retries
+      // when the doc changes) and writes the new flag itself.
+      const rows = await weeklyStats.where("userId", "==", userId).get();
+      for (let i = 0; i < rows.docs.length; i += 500) {
+        const batch = db.batch();
+        for (const d of rows.docs.slice(i, i + 500)) batch.update(d.ref, { listed });
+        await batch.commit();
+      }
+    },
+
+    async leaderboard(board, week, limit) {
+      const { q, field } = boardQuery(board, week);
+      const snap = await q.orderBy(field, "desc").limit(limit).get();
+      const rows = snap.docs.map((d) => d.data() as { userId: string; [k: string]: unknown });
+      const byId = await playersById(rows.map((r) => r.userId));
+      return rows.flatMap((r): BoardEntry[] => {
+        const p = byId.get(r.userId);
+        if (!p) return [];
+        return [{ userId: r.userId, displayName: p.displayName, email: p.email, xp: p.xp, value: Number(r[field]) }];
+      });
+    },
+
+    async countAbove(board, week, value) {
+      const { q, field } = boardQuery(board, week);
+      // The biggest-win board already filters on its field; a second range on it is fine.
+      const snap = await q.where(field, ">", value).count().get();
+      return snap.data().count;
+    },
+
+    async listFeed(now, limit) {
+      // The TTL field has no index, so read by createdAt, which is 7 days behind it.
+      const at = Date.parse(now);
+      const cutoff = Timestamp.fromMillis(at - FEED_RETENTION_DAYS * 86_400_000);
+      const snap = await feedEvents.where("createdAt", ">", cutoff).orderBy("createdAt", "desc").limit(limit).get();
+      const events = snap.docs.map((d) => toFeed(d.data() as FeedDoc)).filter((e) => Date.parse(e.expiresAt) > at);
+      const byId = await playersById(events.map((e) => e.userId));
+      return events.map((e) => ({ ...e, listed: byId.get(e.userId)?.listed ?? true }));
     },
 
     async close() {
