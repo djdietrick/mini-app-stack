@@ -1,6 +1,7 @@
 import { type ComponentType, lazy, Suspense } from "react";
 import { AppShell } from "./components/AppShell";
 import { useRoute } from "./router";
+import { Leaderboards } from "./screens/Leaderboards";
 import { Ledger } from "./screens/Ledger";
 import { Lobby } from "./screens/Lobby";
 import { More, Placeholder } from "./screens/More";
@@ -38,6 +39,7 @@ export function App() {
       {route.name === "quests" && <Quests />}
       {route.name === "stats" && <Stats />}
       {route.name === "more" && <More />}
+      {route.name === "leaderboards" && <Leaderboards />}
       {route.name === "ledger" && <Ledger />}
       {route.name === "settings" && <Settings />}
       {route.name === "play" && !Table && <Placeholder title="Not a table" what="There's no game here. Pick one in the lobby." />}

@@ -41,3 +41,12 @@ export function isoWeek(at: Date): string {
   const week = Math.ceil(((d.getTime() - Date.UTC(year, 0, 1)) / 86_400_000 + 1) / 7);
   return `${year}-W${String(week).padStart(2, "0")}`;
 }
+
+/** The ISO week `n` weeks after `week` ("2026-W42", -1 → "2026-W41"), across year ends. */
+export function shiftWeek(week: string, n: number): string {
+  const [year, w] = week.split("-W").map(Number);
+  // 4 January is always in week 1; its Monday starts the ISO year.
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const monday = Date.UTC(year, 0, 4 - ((jan4.getUTCDay() || 7) - 1) + (w - 1 + n) * 7);
+  return isoWeek(new Date(monday));
+}

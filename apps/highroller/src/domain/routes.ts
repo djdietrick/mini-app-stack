@@ -13,15 +13,20 @@ import {
   BAILOUT_FLOOR,
   BAILOUT_TOP_UP,
   type Eligibility,
+  GIFT_MIN,
+  GIFT_RECEIVE_LIMIT,
+  GIFT_SEND_LIMIT,
   bailout,
   bonusFor,
   currentStreak,
   dailyBonus,
   dayIn,
+  planGift,
+  sentOn,
 } from "./economy.js";
 import { CATALOG, shopItem } from "./catalog.js";
 import { decodeHandCursor, encodeHandCursor, planAction, planStart, type QuestKey, toHandRow } from "./hands.js";
-import { levelProgress, isoWeek } from "./progress.js";
+import { levelFor, levelProgress, isoWeek, shiftWeek } from "./progress.js";
 import {
   type ActiveQuest,
   type Completion,
@@ -34,17 +39,32 @@ import {
 } from "./quests.js";
 import { GAMES, type GameRegistry } from "./registry.js";
 import { planPurchase, toShopItemRow } from "./shop.js";
+import {
+  BOARD_CACHE_MS,
+  BOARD_SIZE,
+  FEED_CACHE_MS,
+  TtlCache,
+  byValue,
+  publicName,
+  rankRows,
+  toFeedEventRow,
+} from "./social.js";
 import { chartDays, startOfDay, toStatsResponse } from "./stats.js";
 import {
   type AchievementRow,
   type BalanceSeries,
+  type BoardRow,
   type BuyResponse,
   type ClaimResponse,
   type CompletionRow,
   type EquipResponse,
+  type FeedResponse,
+  type GiftResponse,
+  type GiftsReceived,
   type HandPage,
   type HandResponse,
   type HandRow,
+  type LeaderboardResponse,
   type LedgerPage,
   type LevelRow,
   type PlayerRecord,
@@ -54,10 +74,16 @@ import {
   type QuestRow,
   type QuestsResponse,
   type ShopResponse,
+  type SocialSettings,
   type StatsResponse,
   actionInput,
+  boardParam,
+  boardQuery,
   claimInput,
   equipInput,
+  feedQuery,
+  giftInput,
+  giftsReceivedQuery,
   handIdParam,
   handsQuery,
   itemIdParam,
@@ -66,8 +92,10 @@ import {
   questClaimInput,
   questIdParam,
   questsQuery,
+  socialSettingsInput,
   startHandInput,
   statsBalanceQuery,
+  toGiftRow,
   toLedgerRow,
 } from "./types.js";
 
@@ -91,6 +119,10 @@ export interface HighrollerRouteDeps {
   quests?: QuestPool;
   /** Injectable clock for tests. */
   now?: () => Date;
+  /** Rows per leaderboard (social.ts BOARD_SIZE); tests pass a few. */
+  boardSize?: number;
+  /** In-process cache lifetimes for the boards and the feed; 0 turns caching off (tests). */
+  cacheMs?: { boards: number; feed: number };
 }
 
 export const resolveHighrollerScope = (user: SessionUser, repo: HighrollerRepo) => repo.ensurePlayer(user);
@@ -120,6 +152,14 @@ export function toPlayerRow(p: PlayerRecord, today: string): PlayerRow {
       top_up_to: BAILOUT_TOP_UP,
     },
     equipped: p.equipped,
+    leaderboard_listed: p.leaderboardListed,
+    gifting: {
+      sent_today: sentOn(p, today),
+      send_limit: GIFT_SEND_LIMIT,
+      receive_limit: GIFT_RECEIVE_LIMIT,
+      min: GIFT_MIN,
+      floor: BAILOUT_FLOOR,
+    },
     created_at: p.createdAt,
   };
 }
@@ -173,6 +213,10 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
   const games = deps.games ?? GAMES;
   const pool = deps.quests ?? QUESTS;
   const gameIds = Object.keys(games);
+  const boardSize = deps.boardSize ?? BOARD_SIZE;
+  const clockMs = () => now().getTime();
+  const boards = new TtlCache<BoardRow[]>(deps.cacheMs?.boards ?? BOARD_CACHE_MS, clockMs);
+  const feed = new TtlCache<FeedResponse>(deps.cacheMs?.feed ?? FEED_CACHE_MS, clockMs);
 
   /** The player's quests on their calendar day in `timeZone`, and the rows to read for them. */
   const questsFor = (userId: string, at: Date, timeZone: string) => {
@@ -492,6 +536,109 @@ export function highrollerRoutes(deps: HighrollerRouteDeps): AnyRoute<Highroller
           xp: out.player.xp,
           ...toLevelRow(out.player.xp),
         };
+      },
+    }),
+
+    // ---------- social ----------
+
+    route({
+      method: "GET",
+      path: "/leaderboards/:board",
+      input: { params: boardParam, query: boardQuery },
+      async handler(ctx, { params, query }): Promise<LeaderboardResponse> {
+        const { board } = params;
+        const week = board === "level" ? null : (query.week ?? isoWeek(now()));
+        const rows = await boards.get(`${board}|${week}`, async () =>
+          rankRows((await ctx.repo.leaderboard(board, week ?? "", boardSize)).sort(byValue)),
+        );
+
+        // Your own row, worked out fresh: hidden or not, inside the top or not.
+        const p = ctx.scope;
+        let value: number | null = p.xp;
+        if (week) {
+          const w = await ctx.repo.getWeeklyStats(p.userId, week);
+          value = w ? (board === "net" ? w.net : w.biggestWin) : null;
+        }
+        const me =
+          value === null
+            ? null
+            : {
+                rank: 1 + (await ctx.repo.countAbove(board, week ?? "", value)),
+                user_id: p.userId,
+                display_name: publicName(p),
+                value,
+                level: levelFor(p.xp),
+                listed: p.leaderboardListed,
+              };
+        return { board, week, previous_week: week && shiftWeek(week, -1), rows, me };
+      },
+    }),
+
+    route({
+      method: "PUT",
+      path: "/settings",
+      input: { body: socialSettingsInput },
+      async handler(ctx, { body }): Promise<SocialSettings> {
+        await ctx.repo.setListed(ctx.user.userId, body.leaderboardListed);
+        // This instance shows the change at once; others within their cache time.
+        boards.clear();
+        feed.clear();
+        return { leaderboard_listed: body.leaderboardListed };
+      },
+    }),
+
+    route({
+      method: "POST",
+      path: "/gifts",
+      input: { body: giftInput },
+      async handler(ctx, { body }): Promise<GiftResponse> {
+        const me = ctx.scope;
+        const to =
+          "email" in body.to ? await ctx.repo.findPlayerByEmail(body.to.email) : await ctx.repo.getPlayer(body.to.userId);
+        if (to?.userId === me.userId) throw conflict("SELF_GIFT");
+        // A hidden player answers exactly like a stranger, so this can't be used to find out who plays.
+        if (!to || !to.leaderboardListed) throw notFound("NO_SUCH_PLAYER");
+
+        const at = now();
+        const out = await ctx.repo.gift({ giftId: body.id, fromUserId: me.userId, toUserId: to.userId }, (read) =>
+          planGift(read, {
+            id: body.id,
+            amount: body.amount,
+            message: body.message || null,
+            senderDay: dayIn(at, body.timeZone),
+            utcDay: dayIn(at, "UTC"),
+            fromName: publicName(me),
+            toName: publicName(to),
+            now: at.toISOString(),
+          }),
+        );
+        return {
+          gift: toGiftRow(out.gift),
+          balance: out.from.balance,
+          sent_today: sentOn(out.from, dayIn(at, body.timeZone)),
+        };
+      },
+    }),
+
+    route({
+      method: "GET",
+      path: "/gifts/received",
+      input: { query: giftsReceivedQuery },
+      async handler(ctx, { query }): Promise<GiftsReceived> {
+        const gifts = await ctx.repo.listGiftsReceived(ctx.user.userId, { since: query.since, limit: query.limit });
+        return { gifts: gifts.map(toGiftRow) };
+      },
+    }),
+
+    route({
+      method: "GET",
+      path: "/feed",
+      input: { query: feedQuery },
+      async handler(ctx, { query }): Promise<FeedResponse> {
+        return feed.get(String(query.limit), async () => {
+          const events = await ctx.repo.listFeed(now().toISOString(), query.limit);
+          return { events: events.map((e) => toFeedEventRow(e, games[e.game]?.name ?? e.game)) };
+        });
       },
     }),
   ];

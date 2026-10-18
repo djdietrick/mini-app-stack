@@ -214,6 +214,44 @@
         { "fieldPath": "createdAt", "order": "DESCENDING" },
         { "fieldPath": "seq", "order": "DESCENDING" }
       ]
+    },
+    {
+      "//": "highroller GET /api/leaderboards/net — a week's listed players by net winnings, and the count above you.",
+      "collectionGroup": "highroller_weekly_stats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "week", "order": "ASCENDING" },
+        { "fieldPath": "listed", "order": "ASCENDING" },
+        { "fieldPath": "net", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "highroller GET /api/leaderboards/biggest_win — a week's listed players by biggest single win.",
+      "collectionGroup": "highroller_weekly_stats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "week", "order": "ASCENDING" },
+        { "fieldPath": "listed", "order": "ASCENDING" },
+        { "fieldPath": "biggestWin", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "highroller GET /api/leaderboards/level — listed players by all-time XP.",
+      "collectionGroup": "highroller_players",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "listed", "order": "ASCENDING" },
+        { "fieldPath": "xp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "highroller GET /api/gifts/received — a player's gifts, newest first.",
+      "collectionGroup": "highroller_gifts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "toUserId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

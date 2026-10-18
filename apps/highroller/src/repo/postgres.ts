@@ -3,7 +3,11 @@ import { equippedOf } from "../domain/catalog.js";
 import { applyCreditTo, displayNameOf, newPlayer } from "../domain/economy.js";
 import { type HandTxRead, type HandTxWrites, type QuestKey, SETTLED_HAND_RETENTION_DAYS } from "../domain/hands.js";
 import type {
+  Board,
+  BoardEntry,
+  FeedEventRecord,
   GameStatsRecord,
+  GiftRecord,
   HandRecord,
   LedgerEntry,
   LedgerKind,
@@ -42,6 +46,11 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     last_bailout_on: string | null;
     ledger_seq: number;
     equipped: Record<string, unknown> | null;
+    leaderboard_listed: boolean;
+    gifts_sent_today: string;
+    gifts_sent_on: string | null;
+    gifts_received_today: string;
+    gifts_received_on: string | null;
     created_at: string;
   }
 
@@ -56,6 +65,11 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     lastBailoutOn: day(r.last_bailout_on),
     ledgerSeq: r.ledger_seq,
     equipped: equippedOf(r.equipped),
+    leaderboardListed: r.leaderboard_listed,
+    giftsSentToday: Number(r.gifts_sent_today),
+    giftsSentOn: day(r.gifts_sent_on),
+    giftsReceivedToday: Number(r.gifts_received_today),
+    giftsReceivedOn: day(r.gifts_received_on),
     createdAt: iso(r.created_at),
   });
 
@@ -146,6 +160,7 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     wagered: string;
     net: string;
     biggest_win: string;
+    listed: boolean;
   }
 
   const toWeekly = (r: WeeklyDbRow): WeeklyStatsRecord => ({
@@ -155,6 +170,77 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     wagered: Number(r.wagered),
     net: Number(r.net),
     biggestWin: Number(r.biggest_win),
+    listed: r.listed,
+  });
+
+  interface GiftDbRow {
+    id: string;
+    from_user_id: string;
+    from_name: string;
+    to_user_id: string;
+    to_name: string;
+    amount: string;
+    message: string | null;
+    created_at: string;
+  }
+
+  const toGift = (r: GiftDbRow): GiftRecord => ({
+    id: r.id,
+    fromUserId: r.from_user_id,
+    fromName: r.from_name,
+    toUserId: r.to_user_id,
+    toName: r.to_name,
+    amount: Number(r.amount),
+    message: r.message,
+    createdAt: iso(r.created_at),
+  });
+
+  interface FeedDbRow {
+    hand_id: string;
+    kind: FeedEventRecord["kind"];
+    user_id: string;
+    display_name: string;
+    game: string;
+    variant: string | null;
+    wagered: string;
+    amount: string;
+    multiplier: number;
+    hand_label: string;
+    created_at: string;
+    expires_at: string;
+    listed: boolean;
+  }
+
+  const toFeed = (r: FeedDbRow): FeedEventRecord & { listed: boolean } => ({
+    handId: r.hand_id,
+    kind: r.kind,
+    userId: r.user_id,
+    displayName: r.display_name,
+    game: r.game,
+    variant: r.variant,
+    wagered: Number(r.wagered),
+    amount: Number(r.amount),
+    multiplier: Number(r.multiplier),
+    handLabel: r.hand_label,
+    createdAt: iso(r.created_at),
+    expiresAt: iso(r.expires_at),
+    listed: r.listed,
+  });
+
+  interface BoardDbRow {
+    user_id: string;
+    display_name: string;
+    email: string;
+    xp: string;
+    value: string;
+  }
+
+  const toBoardEntry = (r: BoardDbRow): BoardEntry => ({
+    userId: r.user_id,
+    displayName: r.display_name,
+    email: r.email,
+    xp: Number(r.xp),
+    value: Number(r.value),
   });
 
   interface QuestDbRow {
@@ -222,7 +308,11 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
         daily_streak = ${p.dailyStreak},
         last_daily_on = ${p.lastDailyOn}::date,
         last_bailout_on = ${p.lastBailoutOn}::date,
-        ledger_seq = ${p.ledgerSeq}
+        ledger_seq = ${p.ledgerSeq},
+        gifts_sent_today = ${p.giftsSentToday},
+        gifts_sent_on = ${p.giftsSentOn}::date,
+        gifts_received_today = ${p.giftsReceivedToday},
+        gifts_received_on = ${p.giftsReceivedOn}::date
       WHERE user_id = ${p.userId}
     `;
   }
@@ -280,16 +370,38 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     const wk = w.weeklyStats;
     if (wk) {
       await tx`
-        INSERT INTO weekly_stats (week, user_id, hands, wagered, net, biggest_win)
-        VALUES (${wk.week}, ${wk.userId}, ${wk.hands}, ${wk.wagered}, ${wk.net}, ${wk.biggestWin})
+        INSERT INTO weekly_stats (week, user_id, hands, wagered, net, biggest_win, listed)
+        VALUES (${wk.week}, ${wk.userId}, ${wk.hands}, ${wk.wagered}, ${wk.net}, ${wk.biggestWin}, ${wk.listed})
         ON CONFLICT (week, user_id) DO UPDATE SET
           hands = EXCLUDED.hands,
           wagered = EXCLUDED.wagered,
           net = EXCLUDED.net,
-          biggest_win = EXCLUDED.biggest_win
+          biggest_win = EXCLUDED.biggest_win,
+          listed = EXCLUDED.listed
+      `;
+    }
+    for (const f of w.feed) {
+      await tx`
+        INSERT INTO feed_events (hand_id, kind, user_id, display_name, game, variant, wagered, amount,
+                                 multiplier, hand_label, created_at, expires_at)
+        VALUES (${f.handId}, ${f.kind}, ${f.userId}, ${f.displayName}, ${f.game}, ${f.variant}, ${f.wagered},
+                ${f.amount}, ${f.multiplier}, ${f.handLabel}, ${f.createdAt}::timestamptz, ${f.expiresAt}::timestamptz)
+        ON CONFLICT (hand_id, kind) DO NOTHING
       `;
     }
   }
+
+  /** Each board's figure and filter; the partial indexes in 0004_social.sql serve them. */
+  const boardSql = (board: Board, week: string) =>
+    board === "level"
+      ? { from: sql`players p`, value: sql`p.xp`, where: sql`p.leaderboard_listed` }
+      : board === "net"
+        ? { from: sql`weekly_stats w JOIN players p USING (user_id)`, value: sql`w.net`, where: sql`w.week = ${week} AND w.listed` }
+        : {
+            from: sql`weekly_stats w JOIN players p USING (user_id)`,
+            value: sql`w.biggest_win`,
+            where: sql`w.week = ${week} AND w.listed AND w.biggest_win > 0`,
+          };
 
   return {
     async ensurePlayer(user) {
@@ -325,6 +437,8 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
     },
 
     async getPlayer(userId) {
+      // Ids are uuids here; anything else (a gift to a made-up id) is simply nobody.
+      if (!UUID.test(userId)) return null;
       const [row] = await sql<PlayerDbRow[]>`SELECT * FROM players WHERE user_id = ${userId}`;
       return row ? toPlayer(row) : null;
     },
@@ -486,11 +600,108 @@ export function createPostgresHighrollerRepo(pg: PostgresClient): HighrollerRepo
       });
     },
 
+    // ---------- social ----------
+
+    async findPlayerByEmail(email) {
+      const [row] = await sql<PlayerDbRow[]>`SELECT * FROM players WHERE lower(email) = lower(${email}) LIMIT 1`;
+      return row ? toPlayer(row) : null;
+    },
+
+    async gift(key, step) {
+      return sql.begin(async (tx) => {
+        // Both rows, locked in id order, so two gifts crossing between the same pair can't deadlock.
+        const locked = await tx<PlayerDbRow[]>`
+          SELECT * FROM players WHERE user_id IN (${key.fromUserId}, ${key.toUserId}) ORDER BY user_id FOR UPDATE
+        `;
+        const from = locked.find((r) => r.user_id === key.fromUserId);
+        if (!from) throw new Error(`no player ${key.fromUserId}`);
+        const to = locked.find((r) => r.user_id === key.toUserId);
+        const [existing] = await tx<GiftDbRow[]>`SELECT * FROM gifts WHERE id = ${key.giftId}`;
+        const out = step({ from: toPlayer(from), to: to ? toPlayer(to) : null, existing: existing ? toGift(existing) : null });
+        const w = out.writes;
+        if (w) {
+          await writePlayer(tx, w.from);
+          await writePlayer(tx, w.to);
+          await insertLedger(tx, w.ledger);
+          const g = w.gift;
+          await tx`
+            INSERT INTO gifts (id, from_user_id, from_name, to_user_id, to_name, amount, message, created_at)
+            VALUES (${g.id}, ${g.fromUserId}, ${g.fromName}, ${g.toUserId}, ${g.toName}, ${g.amount}, ${g.message},
+                    ${g.createdAt}::timestamptz)
+          `;
+        }
+        return out;
+      });
+    },
+
+    async listGiftsReceived(userId, { since, limit }) {
+      const rows = await sql<GiftDbRow[]>`
+        SELECT * FROM gifts
+        WHERE to_user_id = ${userId} ${since ? sql`AND created_at > ${since}::timestamptz` : sql``}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ${limit}
+      `;
+      return rows.map(toGift);
+    },
+
+    async setListed(userId, listed) {
+      await sql.begin(async (tx) => {
+        // The player lock orders this after any hand transaction already writing their weekly row.
+        await lockPlayer(tx, userId);
+        await tx`UPDATE players SET leaderboard_listed = ${listed} WHERE user_id = ${userId}`;
+        await tx`UPDATE weekly_stats SET listed = ${listed} WHERE user_id = ${userId}`;
+      });
+    },
+
+    async leaderboard(board, week, limit) {
+      const b = boardSql(board, week);
+      const rows = await sql<BoardDbRow[]>`
+        SELECT p.user_id, p.display_name, p.email, p.xp, ${b.value} AS value
+        FROM ${b.from}
+        WHERE ${b.where}
+        ORDER BY ${b.value} DESC, p.user_id
+        LIMIT ${limit}
+      `;
+      return rows.map(toBoardEntry);
+    },
+
+    async countAbove(board, week, value) {
+      const b = boardSql(board, week);
+      const [row] = await sql<{ n: string }[]>`
+        SELECT count(*) AS n FROM ${b.from} WHERE ${b.where} AND ${b.value} > ${value}
+      `;
+      return Number(row.n);
+    },
+
+    async listFeed(now, limit) {
+      const rows = await sql<FeedDbRow[]>`
+        SELECT f.*, p.leaderboard_listed AS listed
+        FROM feed_events f JOIN players p USING (user_id)
+        WHERE f.expires_at > ${now}::timestamptz
+        ORDER BY f.created_at DESC, f.hand_id DESC
+        LIMIT ${limit}
+      `;
+      return rows.map(toFeed);
+    },
+
     async close() {
       await pg.close();
     },
   };
 }
+
+/**
+ * Deletes feed events older than their 7 days. Self-hosted only: index.ts
+ * runs it on boot and on a timer. Firestore has a TTL policy on `expiresAt`;
+ * both still check the expiry on read.
+ */
+export async function purgeFeedEvents(pg: PostgresClient, now = new Date()): Promise<number> {
+  const rows = await pg.sql`DELETE FROM feed_events WHERE expires_at <= ${now.toISOString()}::timestamptz RETURNING hand_id`;
+  return rows.length;
+}
+
+/** How often index.ts runs `purgeFeedEvents` while the server is up. */
+export const FEED_PURGE_INTERVAL_MS = 60 * 60_000;
 
 /**
  * Deletes settled hands past their retention, keeping their ledger rows.
@@ -504,6 +715,8 @@ export async function purgeSettledHands(pg: PostgresClient, now = new Date()): P
   `;
   return rows.length;
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function iso(pgTimestamp: string): string {
   return new Date(pgTimestamp).toISOString();

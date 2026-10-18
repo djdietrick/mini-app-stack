@@ -60,7 +60,7 @@ const TABS: { route: Route; label: string; icon: ReactNode }[] = [
 ];
 
 function isActive(tab: Route, current: Route): boolean {
-  if (current.name === "ledger" || current.name === "settings" || current.name === "table-demo") return tab.name === "more";
+  if (["leaderboards", "ledger", "settings", "table-demo"].includes(current.name)) return tab.name === "more";
   if (current.name === "play") return tab.name === "lobby";
   return tab.name === current.name;
 }
