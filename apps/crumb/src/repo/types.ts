@@ -13,8 +13,6 @@ import type {
   RecipeRow,
   ReminderInput,
   ReminderRow,
-  SettingsInput,
-  SettingsRow,
   StarterInput,
   StarterPatch,
   StarterRecord,
@@ -85,10 +83,9 @@ export interface CrumbRepo extends Closable {
 
   /**
    * Replaces every reminder in `group` (sent or not) with `reminders`, in one
-   * transaction. An empty list clears the group. `email` is where the email
-   * fallback will go.
+   * transaction. An empty list clears the group.
    */
-  replaceReminders(userId: string, email: string, group: string, reminders: ReminderInput[]): Promise<void>;
+  replaceReminders(userId: string, group: string, reminders: ReminderInput[]): Promise<void>;
   /** Not yet sent, soonest first. */
   listReminders(userId: string): Promise<ReminderRow[]>;
   /**
@@ -110,10 +107,4 @@ export interface CrumbRepo extends Closable {
   listPushSubscriptions(userId: string): Promise<PushSubscriptionRow[]>;
   /** For the dispatcher, when the push service says a subscription is gone. */
   forgetPushSubscription(endpoint: string): Promise<void>;
-
-  // ---------- settings ----------
-
-  /** DEFAULT_SETTINGS until saved. */
-  getSettings(userId: string): Promise<SettingsRow>;
-  saveSettings(userId: string, input: SettingsInput): Promise<SettingsRow>;
 }

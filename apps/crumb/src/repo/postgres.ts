@@ -2,14 +2,12 @@ import type { PostgresClient } from "@stack/db-clients";
 import type { BakeStep } from "../fermentation/index.js";
 import {
   type BakeRow,
-  DEFAULT_SETTINGS,
   type DueReminder,
   type FeedingRow,
   type RecipeConfig,
   type RecipeInput,
   type RecipeRow,
   type ReminderRow,
-  type SettingsRow,
   type StarterRecord,
 } from "../domain/types.js";
 import type { CrumbRepo } from "./types.js";
@@ -133,7 +131,6 @@ export function createPostgresCrumbRepo(pg: PostgresClient): CrumbRepo {
     title: string;
     body: string;
     url: string;
-    email: string;
     due_at: string;
     sent_at: string | null;
   }
@@ -357,7 +354,7 @@ export function createPostgresCrumbRepo(pg: PostgresClient): CrumbRepo {
 
     // ---------- reminders ----------
 
-    async replaceReminders(userId, email, group, reminders) {
+    async replaceReminders(userId, group, reminders) {
       await sql.begin(async (tx) => {
         await tx`DELETE FROM reminders WHERE user_id = ${userId} AND grp = ${group}`;
         if (reminders.length === 0) return;
@@ -368,21 +365,20 @@ export function createPostgresCrumbRepo(pg: PostgresClient): CrumbRepo {
           title: r.title,
           body: r.body,
           url: r.url,
-          email,
           due_at: r.due_at,
         }));
         await tx`
-          INSERT INTO reminders ${tx(rows, "user_id", "grp", "key", "title", "body", "url", "email", "due_at")}
+          INSERT INTO reminders ${tx(rows, "user_id", "grp", "key", "title", "body", "url", "due_at")}
           ON CONFLICT (user_id, key) DO UPDATE SET
             grp = EXCLUDED.grp, title = EXCLUDED.title, body = EXCLUDED.body, url = EXCLUDED.url,
-            email = EXCLUDED.email, due_at = EXCLUDED.due_at, sent_at = NULL
+            due_at = EXCLUDED.due_at, sent_at = NULL
         `;
       });
     },
 
     async listReminders(userId) {
       const rows = await sql<ReminderDb[]>`
-        SELECT id, user_id, grp, key, title, body, url, email, due_at, sent_at
+        SELECT id, user_id, grp, key, title, body, url, due_at, sent_at
         FROM reminders WHERE user_id = ${userId} AND sent_at IS NULL
         ORDER BY due_at, key
       `;
@@ -401,10 +397,10 @@ export function createPostgresCrumbRepo(pg: PostgresClient): CrumbRepo {
           LIMIT ${limit}
           FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, user_id, grp, key, title, body, url, email, due_at, sent_at
+        RETURNING id, user_id, grp, key, title, body, url, due_at, sent_at
       `;
       return rows
-        .map((r): DueReminder => ({ ...toReminder(r), user_id: r.user_id, email: r.email }))
+        .map((r): DueReminder => ({ ...toReminder(r), user_id: r.user_id }))
         .sort((a, b) => a.due_at.localeCompare(b.due_at));
     },
 
@@ -459,23 +455,6 @@ export function createPostgresCrumbRepo(pg: PostgresClient): CrumbRepo {
 
     async forgetPushSubscription(endpoint) {
       await sql`DELETE FROM push_subscriptions WHERE endpoint = ${endpoint}`;
-    },
-
-    // ---------- settings ----------
-
-    async getSettings(userId) {
-      const rows = await sql<SettingsRow[]>`SELECT email_reminders FROM user_settings WHERE user_id = ${userId}`;
-      return rows[0] ? { email_reminders: rows[0].email_reminders } : { ...DEFAULT_SETTINGS };
-    },
-
-    async saveSettings(userId, input) {
-      const [row] = await sql<SettingsRow[]>`
-        INSERT INTO user_settings (user_id, email_reminders)
-        VALUES (${userId}, ${input.emailReminders})
-        ON CONFLICT (user_id) DO UPDATE SET email_reminders = EXCLUDED.email_reminders, updated_at = now()
-        RETURNING email_reminders
-      `;
-      return { email_reminders: row.email_reminders };
     },
 
     close: () => pg.close(),

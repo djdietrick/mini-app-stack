@@ -287,11 +287,9 @@ export interface ReminderRow extends ReminderInput {
 /** As claimed by the dispatcher: who to send it to as well. */
 export interface DueReminder extends ReminderRow {
   user_id: string;
-  /** The user's email when the reminder was made, for the email fallback. */
-  email: string;
 }
 
-// ---------- push and settings ----------
+// ---------- push ----------
 
 export const pushSubscriptionInput = z.object({
   endpoint: z.string().url().max(2000).refine((u) => u.startsWith("https://"), { message: "must be https" }),
@@ -309,22 +307,6 @@ export interface PushSubscriptionRow {
   auth: string;
   created_at: string;
 }
-
-export const EMAIL_MODES = ["never", "fallback", "always"] as const;
-export const settingsInput = z.object({
-  /**
-   * `fallback`: email a reminder only when no device has notifications
-   * turned on. `always`: email as well. `never`: devices only.
-   */
-  emailReminders: z.enum(EMAIL_MODES),
-});
-export type SettingsInput = z.infer<typeof settingsInput>;
-
-export interface SettingsRow {
-  email_reminders: (typeof EMAIL_MODES)[number];
-}
-
-export const DEFAULT_SETTINGS: SettingsRow = { email_reminders: "fallback" };
 
 export interface VapidKeys {
   /** base64url, uncompressed P-256 point (65 bytes). */

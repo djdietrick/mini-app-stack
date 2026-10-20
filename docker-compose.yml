@@ -212,15 +212,8 @@ services:
       AUTH_URL: http://auth:3100
       AUTH_VERIFY_SECRET: ${AUTH_VERIFY_SECRET:?set AUTH_VERIFY_SECRET in .env}
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-stack_session}
-      # Optional email fallback for reminders: the same relay as ytdigest.
-      # Without SMTP_HOST, reminders go to devices with notifications on only.
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # The Web Push (VAPID) contact address; see vapidSubject in src/webpush.ts.
       MAIL_FROM: ${MAIL_FROM:-}
-      # Optional: the origin Crumb is served from, for links in reminder emails.
-      CRUMB_APP_URL: ${CRUMB_APP_URL:-}
     ports:
       - "${CRUMB_PORT:-3105}:3105"
     depends_on:

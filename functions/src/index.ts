@@ -12,7 +12,7 @@ import { firestoreCache, firestoreLease } from "@stack/service-kit";
 import { toExpressApp } from "@stack/service-kit/express";
 import { crateRoutes } from "@stack/crate/domain";
 import { crumbRoutes } from "@stack/crumb/domain";
-import { type ReminderMailer, dispatchReminders } from "@stack/crumb/domain/reminders";
+import { dispatchReminders } from "@stack/crumb/domain/reminders";
 import { createFirestoreCrumbRepo } from "@stack/crumb/repo/firestore";
 import { createWebPush, generateVapidKeys, vapidSubject } from "@stack/crumb/webpush";
 import { createItunesGateway } from "@stack/crate/domain/itunes";
@@ -256,22 +256,6 @@ const crumbPush = createWebPush({
   subject: () => vapidSubject(process.env.CRUMB_VAPID_SUBJECT, process.env.MAIL_FROM),
 });
 
-/**
- * Reminder emails, when a user has no device with notifications on. Same
- * SMTP relay and secret as ytdigest, with Crumb's name on the From line.
- */
-let crumbSmtp: ReturnType<typeof createMailer> | undefined;
-const crumbMailer: ReminderMailer = {
-  send: (mail) =>
-    (crumbSmtp ??= createMailer({
-      host: requiredEnv("SMTP_HOST"),
-      port: Number(process.env.SMTP_PORT || 587),
-      user: requiredEnv("SMTP_USER"),
-      password: SMTP_PASSWORD.value(),
-      from: requiredEnv("MAIL_FROM").replace(/^[^<]*</, "Crumb <"),
-    })).send(mail),
-};
-
 export const crumbApi = onRequest(
   { serviceAccount: crumbServiceAccount },
   mount(
@@ -292,18 +276,12 @@ export const crumbReminders = onSchedule(
   {
     schedule: "every 1 minutes",
     serviceAccount: crumbServiceAccount,
-    secrets: [SMTP_PASSWORD],
     timeoutSeconds: 120,
     // One run at a time is plenty, and keeps a backlog from fanning out.
     maxInstances: 1,
   },
   async () => {
-    await dispatchReminders({
-      repo: crumbRepo,
-      push: crumbPush,
-      mailer: crumbMailer,
-      appUrl: process.env.CRUMB_APP_URL || undefined,
-    });
+    await dispatchReminders({ repo: crumbRepo, push: crumbPush });
   },
 );
 

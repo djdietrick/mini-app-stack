@@ -129,7 +129,6 @@ for (const [backendName, backend] of Object.entries(backends)) {
       let baker: SessionUser;
       let outsider: SessionUser;
       const push = fakePush(() => b.repo);
-      const mail: { to: string; subject: string; text?: string }[] = [];
 
       const as =
         (user: SessionUser | null): Call =>
@@ -203,7 +202,6 @@ for (const [backendName, backend] of Object.entries(backends)) {
           ["POST", "/bakes"],
           ["GET", "/reminders"],
           ["GET", "/push/key"],
-          ["GET", "/settings"],
         ] as const) {
           assert.deepEqual(
             await as(null)(method, path),
@@ -489,37 +487,24 @@ for (const [backendName, backend] of Object.entries(backends)) {
         assert.deepEqual(await as(baker)("POST", "/push/test"), { status: 200, body: { sent: 0 } });
       });
 
-      it("keeps per-user settings", async () => {
-        assert.deepEqual(await as(baker)("GET", "/settings"), { status: 200, body: { email_reminders: "fallback" } });
-        assert.equal((await as(baker)("PUT", "/settings", { emailReminders: "sometimes" })).status, 400);
-        assert.deepEqual(await as(baker)("PUT", "/settings", { emailReminders: "always" }), {
-          status: 200,
-          body: { email_reminders: "always" },
-        });
-        assert.deepEqual(await as(baker)("GET", "/settings"), { status: 200, body: { email_reminders: "always" } });
-        assert.deepEqual(await as(outsider)("GET", "/settings"), { status: 200, body: { email_reminders: "fallback" } });
-      });
-
-      it("dispatches due reminders once: push, email fallback, stale ones dropped", async () => {
-        // Bea: a device, plus email "always" from the test above. Nell: no
-        // device, so the email fallback. Ugo: a device the push service has
-        // forgotten, and email off.
+      it("dispatches due reminders once by push, stale ones dropped", async () => {
+        // Bea: a device. Nell: no device, so nothing is sent. Ugo: a device
+        // the push service has forgotten.
         const nell = await newUser("Nell");
         const ugo = await newUser("Ugo");
         await as(baker)("POST", "/push/subscriptions", subscription("bea"));
         await as(ugo)("POST", "/push/subscriptions", subscription("gone"));
-        await as(ugo)("PUT", "/settings", { emailReminders: "never" });
 
         const due = new Date(Date.now() + 365 * 24 * H);
         const at = (h: number) => new Date(due.getTime() + h * H).toISOString();
         const r = (key: string, dueAt: string) => ({ key, title: key, body: "b", url: "#/", due_at: dueAt });
-        await b.repo.replaceReminders(baker.userId, baker.email, "t", [r("t:bea", at(0)), r("t:late", at(-5))]);
-        await b.repo.replaceReminders(nell.userId, nell.email, "t", [r("t:nell", at(0))]);
-        await b.repo.replaceReminders(ugo.userId, ugo.email, "t", [r("t:ugo", at(0))]);
+        await b.repo.replaceReminders(baker.userId, "t", [r("t:bea", at(0)), r("t:late", at(-5))]);
+        await b.repo.replaceReminders(nell.userId, "t", [r("t:nell", at(0))]);
+        await b.repo.replaceReminders(ugo.userId, "t", [r("t:ugo", at(0))]);
 
         const sentBefore = push.sent.length;
         const result = await dispatchReminders(
-          { repo: b.repo, push: push.service, mailer: { send: async (m) => void mail.push(m) }, log: silent },
+          { repo: b.repo, push: push.service, log: silent },
           new Date(due.getTime() + 60_000),
         );
         // Other suites' reminders may be due by then too; only ours are asserted.
@@ -527,16 +512,14 @@ for (const [backendName, backend] of Object.entries(backends)) {
         const ours = push.sent.slice(sentBefore).map((s) => s.payload.title);
         assert.ok(ours.includes("t:bea"));
         assert.ok(!ours.includes("t:late"), "five hours late is dropped");
-        assert.ok(mail.some((m) => m.to === baker.email && m.subject === "t:bea"), "always: email as well");
-        assert.ok(mail.some((m) => m.to === nell.email && m.subject === "t:nell"), "fallback: no device");
-        assert.ok(!mail.some((m) => m.to === ugo.email), "never");
+        assert.ok(!ours.includes("t:nell") && !ours.includes("t:ugo"), "no device, nothing sent");
         assert.deepEqual(await b.repo.listPushSubscriptions(ugo.userId), [], "a gone device is forgotten");
 
         for (const u of [baker, nell, ugo]) {
           assert.ok(!(await b.repo.listReminders(u.userId)).some((x) => x.key.startsWith("t:")));
         }
         const again = await dispatchReminders(
-          { repo: b.repo, push: push.service, mailer: { send: async (m) => void mail.push(m) }, log: silent },
+          { repo: b.repo, push: push.service, log: silent },
           new Date(due.getTime() + 60_000),
         );
         assert.equal(again.claimed, 0, "claimed once");
