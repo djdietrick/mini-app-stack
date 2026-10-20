@@ -28,7 +28,6 @@
     "@stack/auth-client": "workspace:*",
     "@stack/auth-ui": "workspace:*",
     "@stack/db-clients": "workspace:*",
-    "@stack/mailer": "workspace:*",
     "@stack/service-kit": "workspace:*",
     "fastify": "^5.0.0",
     "tsx": "^4.19.0",

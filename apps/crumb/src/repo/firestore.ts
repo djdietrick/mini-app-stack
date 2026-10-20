@@ -3,14 +3,12 @@ import { type Firestore, type Query, Timestamp } from "@google-cloud/firestore";
 import type { BakeStep } from "../fermentation/index.js";
 import {
   type BakeRow,
-  DEFAULT_SETTINGS,
   type DueReminder,
   type FeedingRow,
   type PushSubscriptionRow,
   type RecipeConfig,
   type RecipeRow,
   type ReminderRow,
-  type SettingsRow,
   type StarterRecord,
   type VapidKeys,
 } from "../domain/types.js";
@@ -30,7 +28,6 @@ import type { CrumbRepo } from "./types.js";
  *   push_subscriptions/{sha256(endpoint)}
  *                              a deterministic id, so one row per device
  *                              without a unique index
- *   settings/{userId}
  *   config/vapid               the app's VAPID key pair, made once
  *
  * A reminder group is replaced in one transaction, and the dispatcher claims
@@ -48,7 +45,6 @@ export function createFirestoreCrumbRepo(db: Firestore, prefix = "crumb_"): Crum
   const bakes = db.collection(`${prefix}bakes`);
   const reminders = db.collection(`${prefix}reminders`);
   const pushSubs = db.collection(`${prefix}push_subscriptions`);
-  const settings = db.collection(`${prefix}settings`);
   const config = db.collection(`${prefix}config`);
 
   // ---------- document shapes ----------
@@ -118,7 +114,6 @@ export function createFirestoreCrumbRepo(db: Firestore, prefix = "crumb_"): Crum
     title: string;
     body: string;
     url: string;
-    email: string;
     dueAt: Timestamp;
     sentAt: Timestamp | null;
     pending: boolean;
@@ -488,7 +483,7 @@ export function createFirestoreCrumbRepo(db: Firestore, prefix = "crumb_"): Crum
 
     // ---------- reminders ----------
 
-    async replaceReminders(userId, email, group, list) {
+    async replaceReminders(userId, group, list) {
       const q = reminders.where("userId", "==", userId).where("group", "==", group);
       await db.runTransaction(async (tx) => {
         const existing = await tx.get(q);
@@ -502,7 +497,6 @@ export function createFirestoreCrumbRepo(db: Firestore, prefix = "crumb_"): Crum
             title: r.title,
             body: r.body,
             url: r.url,
-            email,
             dueAt: ts(r.due_at),
             sentAt: null,
             pending: true,
@@ -532,7 +526,7 @@ export function createFirestoreCrumbRepo(db: Firestore, prefix = "crumb_"): Crum
         return snap.docs.map((d) => {
           const doc = d.data() as ReminderDoc;
           tx.update(d.ref, { pending: false, sentAt });
-          return { ...toReminder(d.id, { ...doc, sentAt }), user_id: doc.userId, email: doc.email } satisfies DueReminder;
+          return { ...toReminder(d.id, { ...doc, sentAt }), user_id: doc.userId } satisfies DueReminder;
         });
       });
     },
@@ -577,19 +571,6 @@ export function createFirestoreCrumbRepo(db: Firestore, prefix = "crumb_"): Crum
 
     async forgetPushSubscription(endpoint) {
       await pushSubs.doc(pushId(endpoint)).delete();
-    },
-
-    // ---------- settings ----------
-
-    async getSettings(userId) {
-      const snap = await settings.doc(userId).get();
-      if (!snap.exists) return { ...DEFAULT_SETTINGS };
-      return { email_reminders: (snap.data() as { emailReminders: SettingsRow["email_reminders"] }).emailReminders };
-    },
-
-    async saveSettings(userId, input) {
-      await settings.doc(userId).set({ emailReminders: input.emailReminders, updatedAt: Timestamp.now() });
-      return { email_reminders: input.emailReminders };
     },
 
     async close() {

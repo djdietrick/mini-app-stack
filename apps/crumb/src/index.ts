@@ -4,7 +4,6 @@ import fastifyHttpProxy from "@fastify/http-proxy";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPostgresClient } from "@stack/db-clients";
-import { createMailer } from "@stack/mailer";
 import { AuthClient } from "@stack/auth-client";
 import { stackVerifier } from "@stack/auth-client/verifier";
 import { runMigrations } from "@stack/service-kit";
@@ -17,7 +16,7 @@ import { createWebPush, generateVapidKeys, vapidSubject } from "./webpush.js";
 
 /**
  * Self-hosted entrypoint. Routing, planning and reminder logic live in
- * src/domain; this file only wires the Postgres/SMTP/apps/auth
+ * src/domain; this file only wires the Postgres/apps/auth
  * implementations into it, serves the SPA and starts the reminder timer. The
  * cloud entrypoint (functions/src/index.ts) wires Firestore and Firebase into
  * the same code.
@@ -35,16 +34,6 @@ const push = createWebPush({
   keys: () => repo.vapidKeys(generateVapidKeys),
   subject: vapidSubject(config.vapidSubject, config.mailFrom),
 });
-
-const mailer = config.smtp
-  ? createMailer({
-      host: config.smtp.host,
-      port: config.smtp.port,
-      user: config.smtp.user,
-      password: config.smtp.password,
-      from: config.smtp.from,
-    })
-  : null;
 
 const auth = new AuthClient({
   authUrl: config.authUrl,
@@ -83,15 +72,11 @@ app.setNotFoundHandler((req, reply) => {
   return reply.sendFile("index.html");
 });
 
-const stopDispatch = startReminderDispatch(
-  { repo, push, mailer, appUrl: config.appUrl, log: app.log },
-  config.dispatchEverySeconds,
-);
+const stopDispatch = startReminderDispatch({ repo, push, log: app.log }, config.dispatchEverySeconds);
 
 const shutdown = async () => {
   stopDispatch();
   await app.close();
-  await mailer?.close();
   await repo.close();
 };
 process.on("SIGINT", shutdown);

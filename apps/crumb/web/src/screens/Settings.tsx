@@ -1,27 +1,20 @@
 import { useEffect, useState } from "react";
 import { useAuth, useSession } from "@stack/auth-ui";
-import { type SettingsRow, api } from "../api";
+import { api } from "../api";
 import { ErrorNote, PageTitle, Section, Segmented, useAction } from "../components/ui";
 import { type PushState, disablePush, enablePush, pushState } from "../push";
 import { updatePrefs, usePrefs } from "../settings";
-import { useApi } from "../useApi";
 
 export function Settings() {
   const prefs = usePrefs();
   const session = useSession();
   const { logout } = useAuth();
-  const settings = useApi("settings", api.getSettings);
 
   return (
     <div>
       <PageTitle>Settings</PageTitle>
 
       <Notifications />
-
-      <Section title="Email">
-        {settings.error && <ErrorNote error={settings.error} retry={settings.reload} />}
-        {settings.data && <EmailMode settings={settings.data} />}
-      </Section>
 
       <Section title="Temperature">
         <Segmented
@@ -66,7 +59,7 @@ function Notifications() {
             <strong>Add to Home Screen</strong>, open Crumb from there and come back here.
           </p>
         )}
-        {state?.kind === "unsupported" && <p className="text-muted">{state.reason} Reminders will come by email instead.</p>}
+        {state?.kind === "unsupported" && <p className="text-muted">{state.reason} Reminders only arrive as notifications, so this device won't get them.</p>}
         {state?.kind === "blocked" && (
           <p>Notifications are blocked for Crumb. Allow them in your browser or phone settings, then reload.</p>
         )}
@@ -104,34 +97,5 @@ function Notifications() {
         {action.error && <ErrorNote error={action.error} />}
       </div>
     </Section>
-  );
-}
-
-function EmailMode({ settings }: { settings: SettingsRow }) {
-  const [mode, setMode] = useState(settings.email_reminders);
-  const action = useAction();
-  const hints = {
-    fallback: "Only when no device has notifications on.",
-    always: "Every reminder, on top of notifications.",
-    never: "Never. Notifications only.",
-  } as const;
-  return (
-    <div className="flex flex-col gap-2">
-      <Segmented
-        label="Email reminders"
-        value={mode}
-        options={[
-          { value: "fallback", label: "Fallback" },
-          { value: "always", label: "Always" },
-          { value: "never", label: "Never" },
-        ]}
-        onChange={(m) => {
-          setMode(m);
-          void action.run(() => api.saveSettings({ emailReminders: m }));
-        }}
-      />
-      <p className="text-sm text-muted">{hints[mode]}</p>
-      {action.error && <ErrorNote error={action.error} />}
-    </div>
   );
 }

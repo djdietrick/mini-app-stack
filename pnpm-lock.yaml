@@ -163,9 +163,6 @@ importers:
       '@stack/db-clients':
         specifier: workspace:*
         version: link:../../packages/db-clients
-      '@stack/mailer':
-        specifier: workspace:*
-        version: link:../../packages/mailer
       '@stack/service-kit':
         specifier: workspace:*
         version: link:../../packages/service-kit

@@ -24,7 +24,6 @@ import {
   pushSubscriptionInput,
   recipeInput,
   recipePatch,
-  settingsInput,
   starterInput,
   starterPatch,
 } from "./types.js";
@@ -61,16 +60,11 @@ export function crumbRoutes(deps: CrumbRouteDeps): AnyRoute<CrumbRepo>[] {
 
   /** Recomputes a starter's reminders from its current state. */
   async function syncStarter(ctx: C, starter: StarterRow): Promise<void> {
-    await ctx.repo.replaceReminders(
-      ctx.user.userId,
-      ctx.user.email,
-      starterGroup(starter.id),
-      starterReminders(starter, now()),
-    );
+    await ctx.repo.replaceReminders(ctx.user.userId, starterGroup(starter.id), starterReminders(starter, now()));
   }
 
   async function syncBake(ctx: C, bake: BakeRow): Promise<void> {
-    await ctx.repo.replaceReminders(ctx.user.userId, ctx.user.email, bakeGroup(bake.id), bakeReminders(bake, now()));
+    await ctx.repo.replaceReminders(ctx.user.userId, bakeGroup(bake.id), bakeReminders(bake, now()));
   }
 
   async function starterOr404(ctx: C, id: string): Promise<StarterRow> {
@@ -163,7 +157,7 @@ export function crumbRoutes(deps: CrumbRouteDeps): AnyRoute<CrumbRepo>[] {
       input: { params: idParam },
       handler: async (ctx, { params }) => {
         if (!(await ctx.repo.deleteStarter(ctx.user.userId, params.id))) throw notFound();
-        await ctx.repo.replaceReminders(ctx.user.userId, ctx.user.email, starterGroup(params.id), []);
+        await ctx.repo.replaceReminders(ctx.user.userId, starterGroup(params.id), []);
         return { ok: true };
       },
     }),
@@ -336,7 +330,7 @@ export function crumbRoutes(deps: CrumbRouteDeps): AnyRoute<CrumbRepo>[] {
       input: { params: idParam },
       handler: async (ctx, { params }) => {
         if (!(await ctx.repo.deleteBake(ctx.user.userId, params.id))) throw notFound();
-        await ctx.repo.replaceReminders(ctx.user.userId, ctx.user.email, bakeGroup(params.id), []);
+        await ctx.repo.replaceReminders(ctx.user.userId, bakeGroup(params.id), []);
         return { ok: true };
       },
     }),
@@ -377,7 +371,7 @@ export function crumbRoutes(deps: CrumbRouteDeps): AnyRoute<CrumbRepo>[] {
         changeSteps(ctx, params.id, (bake) => shiftRemaining(bake.steps, body.minutes, now())),
     }),
 
-    // ---------- reminders, push, settings ----------
+    // ---------- reminders, push ----------
 
     route({
       method: "GET",
@@ -416,19 +410,6 @@ export function crumbRoutes(deps: CrumbRouteDeps): AnyRoute<CrumbRepo>[] {
         if (!deps.push) throw conflict("PUSH_DISABLED");
         return { sent: await sendTestPush(ctx.repo, deps.push, ctx.user.userId) };
       },
-    }),
-
-    route({
-      method: "GET",
-      path: "/settings",
-      handler: async (ctx) => ctx.repo.getSettings(ctx.user.userId),
-    }),
-
-    route({
-      method: "PUT",
-      path: "/settings",
-      input: { body: settingsInput },
-      handler: async (ctx, { body }) => ctx.repo.saveSettings(ctx.user.userId, body),
     }),
   ];
 }

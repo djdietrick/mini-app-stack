@@ -16,8 +16,6 @@ import type {
   RecipePatch,
   RecipeRow,
   ReminderRow,
-  SettingsInput,
-  SettingsRow,
   StarterInput,
   StarterPatch,
   StarterRow,
@@ -32,7 +30,6 @@ export type {
   RecipeKind,
   RecipeRow,
   ReminderRow,
-  SettingsRow,
   StarterRow,
 };
 
@@ -120,7 +117,4 @@ export const api = {
     call<{ id: string }>("POST", "/push/subscriptions", sub),
   unsubscribe: (endpoint: string) => call<{ ok: boolean }>("POST", "/push/unsubscribe", { endpoint }),
   testPush: () => call<{ sent: number }>("POST", "/push/test"),
-
-  getSettings: () => call<SettingsRow>("GET", "/settings"),
-  saveSettings: (input: SettingsInput) => call<SettingsRow>("PUT", "/settings", input),
 };
