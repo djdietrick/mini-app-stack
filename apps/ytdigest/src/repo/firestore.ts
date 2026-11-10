@@ -569,6 +569,7 @@ export function createFirestoreYtdigestRepo(
           cadence: doc.cadence,
           notifyMode: doc.notifyMode,
           lastDigestedAt: doc.lastDigestedAt?.toDate() ?? null,
+          createdAt: doc.createdAt.toDate(),
         }));
     },
 
@@ -584,9 +585,13 @@ export function createFirestoreYtdigestRepo(
       const sent = await db.getAll(...snap.docs.map((d) => notified.doc(`${userId}_${d.id}`)));
       const alreadySent = new Set(sent.filter((s) => s.exists).map((s) => s.id));
 
+      // published_at >= the subscription's start, in memory: a second
+      // inequality would need its own composite index.
+      const from = sub.createdAt.getTime();
       return snap.docs
         .filter((d) => !alreadySent.has(`${userId}_${d.id}`))
         .map((d) => ({ id: d.id, v: d.data() as VideoDoc }))
+        .filter(({ v }) => v.publishedAt.toMillis() >= from)
         .sort((a, b) => a.v.publishedAt.toMillis() - b.v.publishedAt.toMillis())
         .map(({ id, v }) => ({
           id,
