@@ -589,8 +589,10 @@ for (const [backendName, backend] of Object.entries(backends)) {
           "title",
           "video_id",
           "view_count",
+          "watch_progress",
           "youtube_video_id",
         ]);
+        assert.equal(k1.watch_progress, null, "never played");
         assert.equal(k1.channel_title, "Kitchen Channel");
         assert.equal(k1.matched_rule_id, globalRule);
         assert.ok(k1.reasons[0].includes("physics"));
@@ -667,6 +669,45 @@ for (const [backendName, backend] of Object.entries(backends)) {
         });
         assert.equal((await as(alice)("GET", "/videos/nope")).status, 404);
         assert.equal((await as(alice)("GET", "/videos/not%20an%20id")).status, 400);
+      });
+
+      it("remembers where each user left off in a video", async () => {
+        const save = (user: SessionUser, id: string, body: unknown) =>
+          as(user)("PUT", `/videos/${id}/progress`, body);
+
+        assert.deepEqual(await save(alice, videos.s1, { positionSeconds: 61.7, durationSeconds: 600.2 }), {
+          status: 200,
+          body: { ok: true },
+        });
+        const s1 = (await as(alice)("GET", `/videos/${videos.s1}`)).body.watch_progress;
+        assert.deepEqual([s1.position_seconds, s1.duration_seconds], [62, 600], "whole seconds");
+        assert.ok(s1.updated_at.endsWith("Z"));
+
+        // Overwritten, not appended; a position past the end is the end.
+        await save(alice, videos.s1, { positionSeconds: 700, durationSeconds: 600 });
+        const feed = (await as(alice)("GET", "/feed")).body.items;
+        const bySid = new Map(feed.map((i: any) => [i.youtube_video_id, i.watch_progress]));
+        assert.deepEqual(
+          [(bySid.get(videos.s1) as any).position_seconds, bySid.get(videos.s2)],
+          [600, null],
+          "the feed carries it too",
+        );
+
+        // Per user, and only for the user's own channels.
+        assert.equal((await save(bob, videos.s1, { positionSeconds: 1, durationSeconds: 600 })).status, 404);
+        assert.equal((await save(alice, "nope", { positionSeconds: 1, durationSeconds: 600 })).status, 404);
+        assert.equal((await save(alice, videos.s1, { positionSeconds: -1, durationSeconds: 600 })).status, 400);
+        assert.equal((await save(alice, videos.s1, { positionSeconds: 1, durationSeconds: 0 })).status, 400);
+
+        const other = await newUser("carol");
+        const sub = await as(other)("POST", "/subscriptions", {
+          query: "@science",
+          cadence: "daily",
+          notifyMode: "all",
+        });
+        assert.equal(sub.status, 201);
+        assert.equal((await as(other)("GET", `/videos/${videos.s1}`)).body.watch_progress, null);
+        await as(other)("DELETE", `/subscriptions/${sub.body.id}`);
       });
 
       it("run-now digests matching uploads and links them by YouTube id", async () => {

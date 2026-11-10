@@ -9,6 +9,7 @@ import type {
   NotifyMode,
   RuleScope,
   Snapshot,
+  WatchProgress,
 } from "../domain/types.js";
 import type { YtdigestRepo } from "./types.js";
 
@@ -24,6 +25,7 @@ import type { YtdigestRepo } from "./types.js";
  *   digest_runs/{uuid}                 lines[] embedded, with the video and
  *                                      channel titles copied onto each line
  *   notified/{userId}_{videoId}        deterministic id = the old composite PK
+ *   progress/{userId}_{videoId}        likewise; read with getAll, so no index
  * plus the unprefixed `users/{uid}` mirror the auth function maintains, which
  * stands in for shared.users.
  *
@@ -67,6 +69,14 @@ interface SnapshotDoc {
   viewCount: number;
   likeCount: number | null;
   commentCount: number | null;
+}
+
+interface ProgressDoc {
+  userId: string;
+  videoId: string;
+  positionSeconds: number;
+  durationSeconds: number;
+  updatedAt: Timestamp;
 }
 
 interface SubscriptionDoc {
@@ -134,6 +144,7 @@ export function createFirestoreYtdigestRepo(
   const rules = db.collection(`${prefix}rules`);
   const runs = db.collection(`${prefix}digest_runs`);
   const notified = db.collection(`${prefix}notified`);
+  const progress = db.collection(`${prefix}progress`);
   const users = db.collection(usersCollection);
 
   async function commitInChunks(writes: ((b: WriteBatch) => void)[]): Promise<void> {
@@ -462,6 +473,36 @@ export function createFirestoreYtdigestRepo(
         { id: sub.docs[0].id, doc: sub.docs[0].data() as SubscriptionDoc },
         channel.data() as ChannelDoc,
       );
+    },
+
+    // ---------- watch progress ----------
+
+    async watchProgress(userId, videoIds) {
+      const out = new Map<string, WatchProgress>();
+      const unique = [...new Set(videoIds)];
+      if (unique.length === 0) return out;
+      const snaps = await db.getAll(...unique.map((id) => progress.doc(`${userId}_${id}`)));
+      for (const snap of snaps) {
+        if (!snap.exists) continue;
+        const d = snap.data() as ProgressDoc;
+        out.set(d.videoId, {
+          positionSeconds: d.positionSeconds,
+          durationSeconds: d.durationSeconds,
+          updatedAt: d.updatedAt.toDate(),
+        });
+      }
+      return out;
+    },
+
+    async saveWatchProgress(userId, videoId, p) {
+      const doc: ProgressDoc = {
+        userId,
+        videoId,
+        positionSeconds: p.positionSeconds,
+        durationSeconds: p.durationSeconds,
+        updatedAt: Timestamp.now(),
+      };
+      await progress.doc(`${userId}_${videoId}`).set(doc);
     },
 
     // ---------- poll job ----------

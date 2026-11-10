@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 /**
  * YouTube's embedded player with its rabbit holes covered.
@@ -11,11 +11,17 @@ import { useEffect, useRef, useState } from "react";
  *     free so scrubbing still works
  * Everything else (annotations, the nocookie host, inline playback on iOS) is
  * a player parameter.
+ *
+ * It also reports how far in you are through `onProgress`: every few seconds
+ * while playing, on pause and end, and when it closes or the page is hidden
+ * (the last moment a phone reliably gives). `startAt` resumes from a second.
  */
 
 interface YTPlayer {
   playVideo(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
+  getCurrentTime(): number;
+  getDuration(): number;
   destroy(): void;
 }
 
@@ -45,7 +51,8 @@ declare global {
 
 let apiLoading: Promise<YTNamespace> | null = null;
 
-function loadYouTubeApi(): Promise<YTNamespace> {
+/** Safe to call early (and often): fetches the IFrame API script once. */
+export function loadYouTubeApi(): Promise<YTNamespace> {
   if (window.YT?.Player) return Promise.resolve(window.YT);
   apiLoading ??= new Promise<YTNamespace>((resolve, reject) => {
     const previous = window.onYouTubeIframeAPIReady;
@@ -75,13 +82,58 @@ const EMBED_BLOCKED = new Set([101, 150]);
 
 type State = "loading" | "playing" | "paused" | "ended" | "blocked" | "failed";
 
-export function YouTubePlayer({ videoId, onDone }: { videoId: string; onDone: () => void }) {
+/** How often a playing video reports its position. */
+const REPORT_EVERY_MS = 10_000;
+
+export interface YouTubePlayerHandle {
+  /** Back to the start, playing. */
+  restart(): void;
+}
+
+interface Props {
+  videoId: string;
+  /** Second to start from; read when the player is created. */
+  startAt?: number;
+  onProgress?: (positionSeconds: number, durationSeconds: number) => void;
+  onDone: () => void;
+}
+
+export const YouTubePlayer = forwardRef<YouTubePlayerHandle, Props>(function YouTubePlayer(
+  { videoId, startAt = 0, onProgress, onDone },
+  ref,
+) {
   const mount = useRef<HTMLDivElement>(null);
   const player = useRef<YTPlayer | null>(null);
   const [state, setState] = useState<State>("loading");
+  const onProgressRef = useRef(onProgress);
+  onProgressRef.current = onProgress;
+  const startAtRef = useRef(startAt);
+  startAtRef.current = startAt;
+  /** Nothing is reported for a video that never started playing. */
+  const played = useRef(false);
+
+  const report = (ended = false) => {
+    const p = player.current;
+    if (!p || !played.current) return;
+    try {
+      const duration = p.getDuration();
+      if (!(duration > 0)) return;
+      onProgressRef.current?.(ended ? duration : p.getCurrentTime(), duration);
+    } catch {
+      // The player isn't ready (or is already gone); the next report covers it.
+    }
+  };
+
+  useImperativeHandle(ref, () => ({
+    restart: () => {
+      player.current?.seekTo(0, true);
+      player.current?.playVideo();
+    },
+  }));
 
   useEffect(() => {
     let cancelled = false;
+    played.current = false;
     setState("loading");
     loadYouTubeApi()
       .then((YT) => {
@@ -96,6 +148,7 @@ export function YouTubePlayer({ videoId, onDone }: { videoId: string; onDone: ()
           height: "100%",
           playerVars: {
             autoplay: 1,
+            start: Math.max(0, Math.floor(startAtRef.current)),
             rel: 0,
             playsinline: 1,
             iv_load_policy: 3,
@@ -103,9 +156,16 @@ export function YouTubePlayer({ videoId, onDone }: { videoId: string; onDone: ()
           },
           events: {
             onStateChange: ({ data }) => {
-              if (data === PLAYING) setState("playing");
-              else if (data === PAUSED) setState("paused");
-              else if (data === ENDED) setState("ended");
+              if (data === PLAYING) {
+                played.current = true;
+                setState("playing");
+              } else if (data === PAUSED) {
+                setState("paused");
+                report();
+              } else if (data === ENDED) {
+                setState("ended");
+                report(true);
+              }
             },
             onError: ({ data }) => setState(EMBED_BLOCKED.has(data) ? "blocked" : "failed"),
           },
@@ -114,10 +174,33 @@ export function YouTubePlayer({ videoId, onDone }: { videoId: string; onDone: ()
       .catch(() => !cancelled && setState("failed"));
     return () => {
       cancelled = true;
-      player.current?.destroy();
+      if (player.current) {
+        report();
+        player.current.destroy();
+      }
       player.current = null;
     };
   }, [videoId]);
+
+  useEffect(() => {
+    if (state !== "playing") return;
+    const timer = window.setInterval(() => report(), REPORT_EVERY_MS);
+    return () => window.clearInterval(timer);
+  }, [state]);
+
+  // Closing the tab, switching apps, locking the phone.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") report();
+    };
+    const onPageHide = () => report();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, []);
 
   const play = () => player.current?.playVideo();
   const replay = () => {
@@ -147,7 +230,7 @@ export function YouTubePlayer({ videoId, onDone }: { videoId: string; onDone: ()
             <button onClick={replay} className="rounded-full bg-white/15 px-4 py-2 text-sm hover:bg-white/25">
               Replay
             </button>
-            <button onClick={onDone} className="rounded-full bg-white px-4 py-2 text-sm font-medium text-ink">
+            <button onClick={onDone} className="rounded-full bg-white px-4 py-2 text-sm font-medium text-neutral-900">
               Back to feed
             </button>
           </div>
@@ -165,7 +248,7 @@ export function YouTubePlayer({ videoId, onDone }: { videoId: string; onDone: ()
             href={`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`}
             target="_blank"
             rel="noreferrer"
-            className="mt-4 rounded-full bg-white px-4 py-2 text-sm font-medium text-ink"
+            className="mt-4 rounded-full bg-white px-4 py-2 text-sm font-medium text-neutral-900"
           >
             Watch on YouTube
           </a>
@@ -173,7 +256,7 @@ export function YouTubePlayer({ videoId, onDone }: { videoId: string; onDone: ()
       )}
     </div>
   );
-}
+});
 
 function Cover({ children }: { children: React.ReactNode }) {
   return (
@@ -185,7 +268,7 @@ function Cover({ children }: { children: React.ReactNode }) {
 
 function PlayIcon() {
   return (
-    <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/90 text-ink shadow-lg">
+    <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/90 text-neutral-900 shadow-lg">
       <svg viewBox="0 0 24 24" className="ml-1 h-7 w-7" fill="currentColor" aria-hidden>
         <path d="M8 5.5v13l11-6.5z" />
       </svg>

@@ -11,6 +11,7 @@ import type {
   NotifyMode,
   RuleRow,
   SubscriptionRow,
+  WatchProgress,
 } from "../domain/types.js";
 import type { YtdigestRepo } from "./types.js";
 
@@ -264,6 +265,39 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
         WHERE v.youtube_video_id = ${youtubeVideoId}
       `;
       return row ? toFeedCandidate(row) : null;
+    },
+
+    // ---------- watch progress ----------
+
+    async watchProgress(userId, videoIds) {
+      const out = new Map<string, WatchProgress>();
+      if (videoIds.length === 0) return out;
+      const rows = await sql<
+        { video_id: string; position_seconds: number; duration_seconds: number; updated_at: string }[]
+      >`
+        SELECT video_id, position_seconds, duration_seconds, updated_at
+        FROM watch_progress
+        WHERE user_id = ${userId} AND video_id = ANY(${videoIds})
+      `;
+      for (const r of rows) {
+        out.set(r.video_id, {
+          positionSeconds: r.position_seconds,
+          durationSeconds: r.duration_seconds,
+          updatedAt: toDate(r.updated_at),
+        });
+      }
+      return out;
+    },
+
+    async saveWatchProgress(userId, videoId, p) {
+      await sql`
+        INSERT INTO watch_progress (user_id, video_id, position_seconds, duration_seconds)
+        VALUES (${userId}, ${videoId}, ${p.positionSeconds}, ${p.durationSeconds})
+        ON CONFLICT (user_id, video_id) DO UPDATE
+          SET position_seconds = EXCLUDED.position_seconds,
+              duration_seconds = EXCLUDED.duration_seconds,
+              updated_at = now()
+      `;
     },
 
     // ---------- poll job ----------

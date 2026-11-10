@@ -7,6 +7,8 @@ import type {
   FeedItemRow,
   FeedPage,
   VideoDetailRow,
+  WatchProgress,
+  WatchProgressRow,
 } from "./types.js";
 
 /**
@@ -61,7 +63,16 @@ async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => P
   return out;
 }
 
-function toRow(c: FeedCandidate, m: MatchResult): FeedItemRow {
+const toProgressRow = (p: WatchProgress | undefined): WatchProgressRow | null =>
+  p
+    ? {
+        position_seconds: p.positionSeconds,
+        duration_seconds: p.durationSeconds,
+        updated_at: p.updatedAt.toISOString(),
+      }
+    : null;
+
+function toRow(c: FeedCandidate, m: MatchResult, p: WatchProgress | undefined): FeedItemRow {
   return {
     video_id: c.id,
     youtube_video_id: c.youtubeVideoId,
@@ -75,6 +86,7 @@ function toRow(c: FeedCandidate, m: MatchResult): FeedItemRow {
     channel_thumbnail_url: c.subscription.channelThumbnailUrl,
     matched_rule_id: m.matchedRuleId,
     reasons: m.reasons,
+    watch_progress: toProgressRow(p),
   };
 }
 
@@ -99,8 +111,14 @@ export async function buildFeed(
   baseline: BaselineOptions = DEFAULT_BASELINE,
 ): Promise<FeedPage> {
   const rulesFor = rulesLoader(repo, userId);
-  const items: FeedItemRow[] = [];
+  const found: [FeedCandidate, MatchResult][] = [];
   let cursor = before;
+
+  // Progress is read once, for the page that is returned.
+  const page = async (next: string | null): Promise<FeedPage> => {
+    const progress = await repo.watchProgress(userId, found.map(([c]) => c.id));
+    return { items: found.map(([c, m]) => toRow(c, m, progress.get(c.id))), next };
+  };
   let scanned = 0;
 
   while (scanned < MAX_SCAN) {
@@ -112,19 +130,38 @@ export async function buildFeed(
 
     for (let i = 0; i < batch.length; i++) {
       if (!matches[i].matched) continue;
-      items.push(toRow(batch[i], matches[i]));
-      if (items.length === limit) {
+      found.push([batch[i], matches[i]]);
+      if (found.length === limit) {
         const last = exhausted && i === batch.length - 1;
-        return { items, next: last ? null : encodeCursor(cursorOf(batch[i])) };
+        return page(last ? null : encodeCursor(cursorOf(batch[i])));
       }
     }
 
-    if (exhausted) return { items, next: null };
+    if (exhausted) return page(null);
     scanned += batch.length;
     cursor = cursorOf(batch[batch.length - 1]);
   }
 
-  return { items, next: cursor ? encodeCursor(cursor) : null };
+  return page(cursor ? encodeCursor(cursor) : null);
+}
+
+/**
+ * Records how far into a video the user is. The player reports seconds as
+ * floats; whole seconds are plenty to resume from. False when the video isn't
+ * from one of the user's channels.
+ */
+export async function saveWatchProgress(
+  repo: YtdigestRepo,
+  userId: string,
+  youtubeVideoId: string,
+  { positionSeconds, durationSeconds }: { positionSeconds: number; durationSeconds: number },
+): Promise<boolean> {
+  const c = await repo.feedVideo(userId, youtubeVideoId);
+  if (!c) return false;
+  const duration = Math.max(1, Math.round(durationSeconds));
+  const position = Math.min(duration, Math.max(0, Math.round(positionSeconds)));
+  await repo.saveWatchProgress(userId, c.id, { positionSeconds: position, durationSeconds: duration });
+  return true;
 }
 
 /** One video for the player, or null when it isn't from one of the user's channels. */
@@ -136,6 +173,9 @@ export async function videoDetail(
 ): Promise<VideoDetailRow | null> {
   const c = await repo.feedVideo(userId, youtubeVideoId);
   if (!c) return null;
-  const m = await matchVideo(repo, c.subscription, await rulesLoader(repo, userId)(c), c, baseline);
-  return { ...toRow(c, m), description: c.description, matched: m.matched };
+  const [m, progress] = await Promise.all([
+    rulesLoader(repo, userId)(c).then((rules) => matchVideo(repo, c.subscription, rules, c, baseline)),
+    repo.watchProgress(userId, [c.id]),
+  ]);
+  return { ...toRow(c, m, progress.get(c.id)), description: c.description, matched: m.matched };
 }

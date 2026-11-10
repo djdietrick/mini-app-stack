@@ -17,7 +17,7 @@ function ConditionRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded border border-canvas-200 bg-white p-3">
+    <div className="flex flex-wrap items-center gap-2 rounded border border-canvas-200 bg-surface p-3">
       <select
         className="rounded border border-canvas-200 px-2 py-1 text-sm"
         value={condition.type}

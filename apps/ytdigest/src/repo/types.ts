@@ -24,6 +24,7 @@ import type {
   TrackedVideo,
   UploadListItem,
   VideoStats,
+  WatchProgress,
 } from "../domain/types.js";
 
 /**
@@ -90,6 +91,17 @@ export interface YtdigestRepo extends Closable {
   feedCandidates(userId: string, after: FeedCursor | null, limit: number): Promise<FeedCandidate[]>;
   /** One video by its YouTube id, only if this user subscribes to its channel. */
   feedVideo(userId: string, youtubeVideoId: string): Promise<FeedCandidate | null>;
+
+  // ---------- watch progress ----------
+
+  /** This user's progress in each of these videos (internal ids); a video never played is absent. */
+  watchProgress(userId: string, videoIds: string[]): Promise<Map<string, WatchProgress>>;
+  /** Inserts or overwrites this user's position in one video (internal id). */
+  saveWatchProgress(
+    userId: string,
+    videoId: string,
+    progress: { positionSeconds: number; durationSeconds: number },
+  ): Promise<void>;
 
   // ---------- poll job ----------
 

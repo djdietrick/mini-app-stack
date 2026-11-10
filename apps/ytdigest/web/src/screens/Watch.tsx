@@ -1,26 +1,43 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type VideoDetail } from "../api";
-import { formatViews, timeAgo } from "../format";
-import { YouTubePlayer } from "../player/YouTubePlayer";
+import { formatDuration, formatViews, timeAgo } from "../format";
+import { loadYouTubeApi, YouTubePlayer, type YouTubePlayerHandle } from "../player/YouTubePlayer";
+import { latest, localProgress, recordProgress, resumeFrom } from "../progress";
 import { ChannelAvatar } from "./Feed";
 
 /**
  * The video and what it is, nothing else: no comments, no up-next, no
  * suggestions. The description stays folded until asked for.
+ *
+ * Playback picks up where you left off (on any device), so the player waits
+ * for the video's details, which carry the position. The IFrame API script
+ * loads meanwhile, so that costs nothing noticeable.
  */
 export function Watch({ id, onBack }: { id: string; onBack: () => void }) {
   const [video, setVideo] = useState<VideoDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDescription, setShowDescription] = useState(false);
   const [ruleName, setRuleName] = useState<string | null>(null);
+  /** Where playback began; 0 when from the top. */
+  const [resumedAt, setResumedAt] = useState(0);
+  /** The id `video` and `resumedAt` belong to, which lags `id` by a render. */
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const player = useRef<YouTubePlayerHandle>(null);
 
   useEffect(() => {
     setVideo(null);
     setError(null);
     setShowDescription(false);
+    loadYouTubeApi().catch(() => undefined);
     api
       .video(id)
-      .then(setVideo)
+      .then((v) => {
+        // What this page has reported may be newer than the server's copy
+        // (a save still in flight), and the server's newer than ours (another device).
+        setResumedAt(resumeFrom(latest(v.watch_progress, localProgress(id))));
+        setVideo(v);
+        setLoadedId(id);
+      })
       .catch((err) =>
         setError(
           err instanceof ApiError && err.status === 404
@@ -58,11 +75,35 @@ export function Watch({ id, onBack }: { id: string; onBack: () => void }) {
       </button>
 
       {error ? (
-        <p className="rounded-xl border border-canvas-200 bg-white p-6 text-sm text-ink-muted">{error}</p>
-      ) : (
+        <p className="rounded-xl border border-canvas-200 bg-surface p-6 text-sm text-ink-muted">{error}</p>
+      ) : video && loadedId === id ? (
         <div className="-mx-4 sm:mx-0">
-          <YouTubePlayer videoId={id} onDone={onBack} />
+          <YouTubePlayer
+            key={id}
+            ref={player}
+            videoId={id}
+            startAt={resumedAt}
+            onProgress={(position, duration) => recordProgress(id, position, duration)}
+            onDone={onBack}
+          />
         </div>
+      ) : (
+        <div className="-mx-4 aspect-video bg-black sm:mx-0 sm:rounded-xl" />
+      )}
+
+      {video && loadedId === id && resumedAt > 0 && (
+        <p className="mt-2 text-sm text-ink-muted">
+          Picked up at {formatDuration(resumedAt)}.{" "}
+          <button
+            className="font-medium text-ink underline-offset-2 hover:underline"
+            onClick={() => {
+              player.current?.restart();
+              setResumedAt(0);
+            }}
+          >
+            Start over
+          </button>
+        </p>
       )}
 
       {video && (

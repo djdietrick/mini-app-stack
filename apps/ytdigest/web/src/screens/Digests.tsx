@@ -43,7 +43,7 @@ export function Digests() {
         <button
           onClick={runNow}
           disabled={busy}
-          className="rounded bg-brand-500 px-4 py-1.5 text-white hover:bg-brand-600 disabled:opacity-50"
+          className="rounded bg-brand-500 px-4 py-1.5 text-white hover:brightness-90 disabled:opacity-50"
         >
           Run digest now
         </button>
@@ -52,7 +52,7 @@ export function Digests() {
 
       <div className="space-y-2">
         {runs.map((r) => (
-          <div key={r.id} className="rounded border border-canvas-200 bg-white p-3">
+          <div key={r.id} className="rounded border border-canvas-200 bg-surface p-3">
             <button className="flex w-full items-center gap-3 text-left" onClick={() => toggle(r.id)}>
               <span className="font-medium">{r.run_date}</span>
               <span className="rounded-full bg-canvas-100 px-2 py-0.5 text-xs text-ink-muted">{r.cadence}</span>
