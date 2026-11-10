@@ -5,12 +5,12 @@
   "type": "module",
   "main": "lib/index.js",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=lib/index.js --external:firebase-functions --external:firebase-admin --external:@google-cloud/firestore --external:express --external:nodemailer",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=lib/index.js --external:firebase-functions --external:firebase-admin --external:@google-cloud/firestore --external:express --external:nodemailer",
     "typecheck": "tsc --noEmit",
     "serve": "pnpm build && firebase emulators:start --only functions,firestore,auth,hosting"
   },
   "engines": {
-    "node": "20"
+    "node": "24"
   },
   "dependencies": {
     "@google-cloud/firestore": "^7.10.0",
