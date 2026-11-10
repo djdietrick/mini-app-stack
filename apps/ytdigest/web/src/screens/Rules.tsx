@@ -93,6 +93,11 @@ export function Rules() {
           </div>
         </div>
 
+        <p className="text-xs text-ink-muted">
+          A channel with rules of its own is filtered by those alone; "All channels" rules only apply to channels
+          without any.
+        </p>
+
         <RuleConditionEditor group={group} onChange={setGroup} />
 
         <div className="flex items-center gap-3">

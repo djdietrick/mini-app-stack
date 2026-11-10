@@ -1,6 +1,5 @@
 import type { YtdigestRepo } from "../repo/types.js";
-import { type MatchResult, matchVideo } from "./match.js";
-import type { RuleGroup } from "./rules/types.js";
+import { applicableRules, type MatchResult, matchVideo, type ScopedRule } from "./match.js";
 import { type BaselineOptions, DEFAULT_BASELINE } from "./rules/evaluate.js";
 import type {
   FeedCandidate,
@@ -81,12 +80,12 @@ function toRow(c: FeedCandidate, m: MatchResult): FeedItemRow {
 
 /** Enabled rules per subscription, read once per request. */
 function rulesLoader(repo: YtdigestRepo, userId: string) {
-  const cache = new Map<string, Promise<{ id: string; rule: RuleGroup }[]>>();
+  const cache = new Map<string, Promise<ScopedRule[]>>();
   return (c: FeedCandidate) => {
     if (c.subscription.notifyMode === "all") return Promise.resolve([]);
     let rules = cache.get(c.subscription.id);
     if (!rules) {
-      rules = repo.enabledRules(userId, c.subscription.id);
+      rules = repo.enabledRules(userId, c.subscription.id).then(applicableRules);
       cache.set(c.subscription.id, rules);
     }
     return rules;

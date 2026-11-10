@@ -423,14 +423,14 @@ for (const [backendName, backend] of Object.entries(backends)) {
           );
         }
 
-        // Scoped to kitchen: a performance rule. Its channel has no history,
-        // so it can't match, but evaluating it must not throw. (It did on
+        // A global performance rule, so it is evaluated against kitchen
+        // (notify=rules, no rules of its own). Its channel has no history, so
+        // it can't match, but evaluating it must not throw. (It did on
         // Postgres, which returns timestamps as strings.)
         assert.equal(
           (
             await as(alice)("POST", "/rules", {
-              scope: "subscription",
-              subscriptionId: kitchenSub,
+              scope: "global",
               name: "Breakout",
               ruleJson: {
                 op: "AND",
@@ -610,6 +610,30 @@ for (const [backendName, backend] of Object.entries(backends)) {
           [videos.s2, videos.s1],
         );
         await as(alice)("PATCH", `/rules/${globalRule}`, { enabled: true });
+      });
+
+      it("filters a channel with its own rules by those alone, not the global ones", async () => {
+        const own = await as(alice)("POST", "/rules", {
+          scope: "subscription",
+          subscriptionId: kitchenSub,
+          name: "Bread",
+          ruleJson: {
+            op: "OR",
+            conditions: [{ type: "keyword", field: "title", match: "any", terms: ["bread"] }],
+          },
+        });
+        assert.equal(own.status, 201);
+        const ids = async () =>
+          (await as(alice)("GET", "/feed")).body.items.map((i: any) => i.youtube_video_id);
+
+        // k1 matched only the global "physics" rule, so it drops out.
+        assert.deepEqual(await ids(), [videos.k2, videos.s2, videos.s1]);
+
+        // A disabled channel rule doesn't count: the global ones apply again.
+        await as(alice)("PATCH", `/rules/${own.body.id}`, { enabled: false });
+        assert.deepEqual(await ids(), [videos.k1, videos.s2, videos.s1]);
+
+        await as(alice)("DELETE", `/rules/${own.body.id}`);
       });
 
       it("serves one video for the player, only from the user's own channels", async () => {
