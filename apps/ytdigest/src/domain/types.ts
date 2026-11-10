@@ -105,6 +105,15 @@ export interface FeedItemRow {
   channel_thumbnail_url: string | null;
   matched_rule_id: string | null;
   reasons: string[];
+  /** Where this user left off; null when they have never played it. */
+  watch_progress: WatchProgressRow | null;
+}
+
+export interface WatchProgressRow {
+  position_seconds: number;
+  /** As the player measured it, which can differ from duration_seconds. */
+  duration_seconds: number;
+  updated_at: string;
 }
 
 export interface FeedPage {
@@ -188,6 +197,18 @@ export interface FeedSubscription {
 export interface FeedCandidate extends CandidateVideo {
   subscription: FeedSubscription;
 }
+
+export interface WatchProgress {
+  positionSeconds: number;
+  durationSeconds: number;
+  updatedAt: Date;
+}
+
+/** PUT /videos/:youtubeVideoId/progress. A position past the end is clamped to it. */
+export const watchProgressBody = z.object({
+  positionSeconds: z.number().min(0).max(172_800),
+  durationSeconds: z.number().positive().max(172_800),
+});
 
 /** Position in the feed: newest published first, ties broken by id descending. */
 export interface FeedCursor {

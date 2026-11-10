@@ -63,7 +63,7 @@ export function Rules() {
       <form
         ref={formRef}
         onSubmit={submit}
-        className={`space-y-3 rounded border bg-white p-4 ${editingId ? "border-brand-500" : "border-canvas-200"}`}
+        className={`space-y-3 rounded border bg-surface p-4 ${editingId ? "border-brand-500" : "border-canvas-200"}`}
       >
         {editingId && <p className="text-sm font-medium">Editing rule</p>}
         <div className="flex flex-wrap items-end gap-2">
@@ -101,7 +101,7 @@ export function Rules() {
         <RuleConditionEditor group={group} onChange={setGroup} />
 
         <div className="flex items-center gap-3">
-          <button type="submit" className="rounded bg-brand-500 px-4 py-1.5 text-white hover:bg-brand-600">
+          <button type="submit" className="rounded bg-brand-500 px-4 py-1.5 text-white hover:brightness-90">
             {editingId ? "Update rule" : "Save rule"}
           </button>
           {editingId && (
@@ -117,7 +117,7 @@ export function Rules() {
         {rules.map((r) => (
           <div
             key={r.id}
-            className={`rounded border bg-white p-3 ${editingId === r.id ? "border-brand-500" : "border-canvas-200"}`}
+            className={`rounded border bg-surface p-3 ${editingId === r.id ? "border-brand-500" : "border-canvas-200"}`}
           >
             <div className="flex items-center gap-2">
               <span className="font-medium">{r.name}</span>

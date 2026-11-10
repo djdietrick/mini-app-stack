@@ -5,6 +5,7 @@ import { Watch } from "./screens/Watch";
 import { Subscriptions } from "./screens/Subscriptions";
 import { Rules } from "./screens/Rules";
 import { Digests } from "./screens/Digests";
+import { ThemePicker } from "./components/ThemePicker";
 
 const TABS: { route: Route; label: string }[] = [
   { route: { name: "feed" }, label: "Feed" },
@@ -45,7 +46,10 @@ export function App() {
 
   return (
     <div className={`mx-auto px-4 py-6 ${watching ? "max-w-4xl" : route.name === "feed" ? "max-w-6xl" : "max-w-3xl"}`}>
-      <h1 className="text-2xl font-semibold">YouTube Digest</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">YouTube Digest</h1>
+        <ThemePicker />
+      </div>
       {!watching && (
         <nav className="mt-4 flex gap-1 overflow-x-auto border-b border-canvas-200">
           {TABS.map((t) => (

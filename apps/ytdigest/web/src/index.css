@@ -1,3 +1,61 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Colour tokens as "r g b", read by tailwind.config.js. Dark applies when the
+ * device prefers it, unless the theme picker (src/theme.ts) has set
+ * data-theme on <html>. The two dark blocks must stay identical.
+ */
+:root {
+  --surface: 255 255 255;
+  --canvas-50: 250 250 252;
+  --canvas-100: 242 242 247;
+  --canvas-200: 229 229 236;
+  --ink: 22 22 29;
+  --ink-muted: 92 92 110;
+  --ink-soft: 138 138 160;
+  --brand-400: 255 92 92;
+  --brand-500: 230 57 70;
+  --brand-600: 195 43 58;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface: 24 24 31;
+    --canvas-50: 15 15 20;
+    --canvas-100: 30 30 39;
+    --canvas-200: 46 46 58;
+    --ink: 237 237 242;
+    --ink-muted: 166 166 184;
+    --ink-soft: 120 120 140;
+    --brand-400: 255 122 122;
+    --brand-500: 230 57 70;
+    /* Text on a dark page, so lighter rather than darker than 500. */
+    --brand-600: 255 107 114;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --surface: 24 24 31;
+  --canvas-50: 15 15 20;
+  --canvas-100: 30 30 39;
+  --canvas-200: 46 46 58;
+  --ink: 237 237 242;
+  --ink-muted: 166 166 184;
+  --ink-soft: 120 120 140;
+  --brand-400: 255 122 122;
+  --brand-500: 230 57 70;
+  --brand-600: 255 107 114;
+  color-scheme: dark;
+}
+
+@layer base {
+  input,
+  select,
+  textarea {
+    @apply bg-surface;
+  }
+}

@@ -11,6 +11,13 @@
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>YouTube Digest</title>
+    <script>
+      // The saved theme (src/theme.ts) before first paint, so dark never flashes white.
+      try {
+        var t = localStorage.getItem("ytdigest:theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
   </head>
   <body class="bg-canvas-50 text-ink">
     <div id="root"></div>

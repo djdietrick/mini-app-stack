@@ -4,6 +4,7 @@ import { AuthGate } from "@stack/auth-ui";
 import { StackAuthProvider } from "./authProvider";
 import { App } from "./App";
 import "./index.css";
+import "./theme";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

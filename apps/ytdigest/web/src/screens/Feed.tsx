@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type FeedItem } from "../api";
 import { feedSection, formatDuration, formatViews, thumbnailFor, timeAgo } from "../format";
 import { hrefFor } from "../route";
+import { isFinished, latest, useLocalProgress } from "../progress";
 
 /**
  * Only the uploads that pass your filters, newest first, grouped by day like
@@ -98,6 +99,10 @@ export function Feed() {
 }
 
 function VideoCard({ item, ruleName }: { item: FeedItem; ruleName?: string }) {
+  const progress = latest(item.watch_progress, useLocalProgress(item.youtube_video_id));
+  const watched = progress && progress.position_seconds > 0
+    ? Math.min(1, progress.position_seconds / progress.duration_seconds)
+    : 0;
   return (
     <a href={hrefFor({ name: "watch", id: item.youtube_video_id })} className="group block">
       <div className="relative aspect-video overflow-hidden rounded-xl bg-canvas-200">
@@ -111,6 +116,24 @@ function VideoCard({ item, ruleName }: { item: FeedItem; ruleName?: string }) {
           <span className="absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1 py-0.5 text-xs font-medium text-white">
             {formatDuration(item.duration_seconds)}
           </span>
+        )}
+        {progress && isFinished(progress) && (
+          <span className="absolute left-1.5 top-1.5 rounded bg-black/80 px-1 py-0.5 text-xs font-medium text-white">
+            Watched
+          </span>
+        )}
+        {watched > 0 && (
+          // Like YouTube's: how much of it you've seen, along the bottom edge.
+          <div
+            className="absolute inset-x-0 bottom-0 h-1 bg-white/40"
+            role="progressbar"
+            aria-label="Watched"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(watched * 100)}
+          >
+            <div className="h-full bg-brand-500" style={{ width: `${watched * 100}%` }} />
+          </div>
         )}
       </div>
       <div className="mt-3 flex gap-3">
@@ -163,7 +186,7 @@ function SkeletonGrid() {
 
 function Empty() {
   return (
-    <div className="rounded-xl border border-dashed border-canvas-200 bg-white p-8 text-center">
+    <div className="rounded-xl border border-dashed border-canvas-200 bg-surface p-8 text-center">
       <p className="font-medium">Nothing here yet.</p>
       <p className="mx-auto mt-1 max-w-md text-sm text-ink-muted">
         The feed shows uploads from your <a className="text-brand-600 underline" href={hrefFor({ name: "channels" })}>channels</a>{" "}

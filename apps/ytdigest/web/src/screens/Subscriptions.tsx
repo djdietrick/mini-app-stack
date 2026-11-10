@@ -40,7 +40,7 @@ export function Subscriptions() {
 
   return (
     <div className="space-y-6">
-      <form onSubmit={submit} className="flex flex-wrap items-end gap-2 rounded border border-canvas-200 bg-white p-4">
+      <form onSubmit={submit} className="flex flex-wrap items-end gap-2 rounded border border-canvas-200 bg-surface p-4">
         <div className="flex-1 min-w-64">
           <label className="block text-xs text-ink-muted">Channel (@handle, URL, or search)</label>
           <input
@@ -91,7 +91,7 @@ export function Subscriptions() {
         <button
           type="submit"
           disabled={busy}
-          className="rounded bg-brand-500 px-4 py-1.5 text-white hover:bg-brand-600 disabled:opacity-50"
+          className="rounded bg-brand-500 px-4 py-1.5 text-white hover:brightness-90 disabled:opacity-50"
         >
           Subscribe
         </button>
@@ -100,7 +100,7 @@ export function Subscriptions() {
 
       <div className="space-y-2">
         {subs.map((s) => (
-          <div key={s.id} className="flex flex-wrap items-center gap-3 rounded border border-canvas-200 bg-white p-3">
+          <div key={s.id} className="flex flex-wrap items-center gap-3 rounded border border-canvas-200 bg-surface p-3">
             {s.thumbnail_url && <img src={s.thumbnail_url} className="h-10 w-10 rounded-full" />}
             <div className="flex-1 min-w-40 font-medium">{s.channel_title}</div>
 

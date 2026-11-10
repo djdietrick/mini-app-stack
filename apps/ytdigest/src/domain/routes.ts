@@ -7,6 +7,7 @@ import {
   decodeCursor,
   FEED_DEFAULT_LIMIT,
   FEED_MAX_LIMIT,
+  saveWatchProgress,
   videoDetail,
 } from "./feed.js";
 import {
@@ -14,6 +15,7 @@ import {
   createSubscriptionBody,
   patchRuleBody,
   patchSubscriptionBody,
+  watchProgressBody,
 } from "./types.js";
 import type { YouTubeGateway } from "./youtube.js";
 
@@ -35,6 +37,8 @@ export interface YtdigestDeps {
 const route = createRouteBuilder<YtdigestRepo>();
 
 const idParam = z.object({ id: z.string().uuid() });
+// A YouTube id, not a UUID: that is the only video id both backends share.
+const youtubeVideoParam = z.object({ youtubeVideoId: z.string().regex(/^[\w-]{1,64}$/) });
 const ok = { ok: true } as const;
 const created = () => 201;
 
@@ -199,12 +203,21 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
     route({
       method: "GET",
       path: "/videos/:youtubeVideoId",
-      // A YouTube id, not a UUID: that is the only id both backends share.
-      input: { params: z.object({ youtubeVideoId: z.string().regex(/^[\w-]{1,64}$/) }) },
+      input: { params: youtubeVideoParam },
       handler: async ({ repo, user }, { params }) => {
         const video = await videoDetail(repo, user.userId, params.youtubeVideoId, deps.digest?.baseline);
         if (!video) throw notFound();
         return video;
+      },
+    }),
+
+    route({
+      method: "PUT",
+      path: "/videos/:youtubeVideoId/progress",
+      input: { params: youtubeVideoParam, body: watchProgressBody },
+      handler: async ({ repo, user }, { params, body }) => {
+        if (!(await saveWatchProgress(repo, user.userId, params.youtubeVideoId, body))) throw notFound();
+        return ok;
       },
     }),
 

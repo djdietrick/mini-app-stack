@@ -89,6 +89,15 @@ export interface FeedItem {
   channel_thumbnail_url: string | null;
   matched_rule_id: string | null;
   reasons: string[];
+  /** Where you left off; null when never played. */
+  watch_progress: WatchProgress | null;
+}
+
+export interface WatchProgress {
+  position_seconds: number;
+  /** As the player measured it. */
+  duration_seconds: number;
+  updated_at: string;
 }
 
 export interface FeedPage {
@@ -173,6 +182,13 @@ export const api = {
   feed: (before?: string | null) =>
     request<FeedPage>(`/feed${before ? `?before=${encodeURIComponent(before)}` : ""}`),
   video: (youtubeVideoId: string) => request<VideoDetail>(`/videos/${encodeURIComponent(youtubeVideoId)}`),
+  // keepalive: sent as the page closes too, and must outlive it.
+  saveProgress: (youtubeVideoId: string, positionSeconds: number, durationSeconds: number) =>
+    request<{ ok: true }>(`/videos/${encodeURIComponent(youtubeVideoId)}/progress`, {
+      method: "PUT",
+      body: JSON.stringify({ positionSeconds, durationSeconds }),
+      keepalive: true,
+    }),
 
   digests: () => request<DigestRun[]>(`/digests`),
   digest: (id: string) => request<DigestDetail>(`/digests/${id}`),
