@@ -609,7 +609,7 @@ export function createFirestoreYtdigestRepo(
             ((r.scope === "subscription" && r.subscriptionId === subscriptionId) ||
               r.scope === "global"),
         )
-        .map(({ id, r }) => ({ id, rule: r.ruleJson }));
+        .map(({ id, r }) => ({ id, scope: r.scope, rule: r.ruleJson }));
     },
 
     async latestSnapshot(videoId) {

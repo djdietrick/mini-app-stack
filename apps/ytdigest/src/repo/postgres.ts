@@ -1,6 +1,7 @@
 import type { PostgresClient } from "@stack/db-clients";
 import type { RuleGroup } from "../domain/rules/types.js";
 import type {
+  RuleScope,
   Cadence,
   ChannelRow,
   FeedCandidate,
@@ -394,13 +395,13 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
     },
 
     async enabledRules(userId, subscriptionId) {
-      const rows = await sql<{ id: string; rule_json: RuleGroup }[]>`
-        SELECT id, rule_json FROM criteria_rules
+      const rows = await sql<{ id: string; scope: RuleScope; rule_json: RuleGroup }[]>`
+        SELECT id, scope, rule_json FROM criteria_rules
         WHERE enabled = true
           AND user_id = ${userId}
           AND ((scope = 'subscription' AND subscription_id = ${subscriptionId}) OR scope = 'global')
       `;
-      return rows.map((r) => ({ id: r.id, rule: r.rule_json }));
+      return rows.map((r) => ({ id: r.id, scope: r.scope, rule: r.rule_json }));
     },
 
     async latestSnapshot(videoId) {

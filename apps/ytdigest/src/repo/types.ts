@@ -1,5 +1,5 @@
 import type { Closable } from "@stack/service-kit";
-import type { RuleGroup } from "../domain/rules/types.js";
+import type { ScopedRule } from "../domain/match.js";
 import type {
   CandidateVideo,
   Cadence,
@@ -119,8 +119,12 @@ export interface YtdigestRepo extends Closable {
    * user hasn't been sent, oldest published first.
    */
   candidateVideos(userId: string, sub: DueSubscription): Promise<CandidateVideo[]>;
-  /** Enabled rules that apply to this subscription: its own plus the user's global ones. */
-  enabledRules(userId: string, subscriptionId: string): Promise<{ id: string; rule: RuleGroup }[]>;
+  /**
+   * Enabled rules that could apply to this subscription: its own plus the
+   * user's global ones, each with its scope. Which of them actually apply is
+   * `applicableRules` (domain), not the repo's call.
+   */
+  enabledRules(userId: string, subscriptionId: string): Promise<ScopedRule[]>;
   latestSnapshot(videoId: string): Promise<Snapshot | null>;
   /** The channel's most recent videos other than `excludeVideoId`, newest first. */
   pastVideos(channelId: string, excludeVideoId: string, limit: number): Promise<PastVideo[]>;

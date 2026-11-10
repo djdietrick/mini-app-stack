@@ -1,7 +1,7 @@
 import type { Logger } from "@stack/service-kit";
 import type { YtdigestRepo } from "../repo/types.js";
 import { renderDigestEmail } from "./renderEmail.js";
-import { matchVideo } from "./match.js";
+import { applicableRules, matchVideo } from "./match.js";
 import { type BaselineOptions, DEFAULT_BASELINE } from "./rules/evaluate.js";
 import type { DigestLine, DueSubscription } from "./types.js";
 
@@ -81,7 +81,7 @@ export async function buildDigest(
     const candidates = await repo.candidateVideos(userId, sub);
     if (candidates.length === 0) continue;
 
-    const rules = sub.notifyMode === "rules" ? await repo.enabledRules(userId, sub.id) : [];
+    const rules = sub.notifyMode === "rules" ? applicableRules(await repo.enabledRules(userId, sub.id)) : [];
 
     for (const video of candidates) {
       const match = await matchVideo(repo, sub, rules, video, opts.baseline ?? DEFAULT_BASELINE);
