@@ -343,9 +343,11 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
           cadence: Cadence;
           notify_mode: NotifyMode;
           last_digested_at: string | null;
+          created_at: string;
         }[]
       >`
-        SELECT s.id, s.channel_id, c.title AS channel_title, s.cadence, s.notify_mode, s.last_digested_at
+        SELECT s.id, s.channel_id, c.title AS channel_title, s.cadence, s.notify_mode, s.last_digested_at,
+               s.created_at
         FROM subscriptions s
         JOIN channels c ON c.id = s.channel_id
         WHERE s.user_id = ${userId}
@@ -358,6 +360,7 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
         cadence: r.cadence,
         notifyMode: r.notify_mode,
         lastDigestedAt: toDateOrNull(r.last_digested_at),
+        createdAt: toDate(r.created_at),
       }));
     },
 
@@ -378,6 +381,7 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
         FROM videos v
         WHERE v.channel_id = ${sub.channelId}
           AND v.first_seen_at > ${since}
+          AND v.published_at >= ${sub.createdAt.toISOString()}
           AND NOT EXISTS (
             SELECT 1 FROM notified_videos nv WHERE nv.user_id = ${userId} AND nv.video_id = v.id
           )

@@ -161,6 +161,9 @@ export interface DueSubscription {
   cadence: Cadence;
   notifyMode: NotifyMode;
   lastDigestedAt: Date | null;
+  /** Digests only include videos published at or after this: a new
+   * subscription starts from now, not from the channel's back catalogue. */
+  createdAt: Date;
 }
 
 export interface CandidateVideo {

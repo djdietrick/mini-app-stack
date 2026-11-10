@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
-import { Firestore } from "@google-cloud/firestore";
+import { Firestore, Timestamp } from "@google-cloud/firestore";
 import Fastify from "fastify";
 import { createPostgresClient } from "@stack/db-clients";
 import { type Lease, type SessionUser, runMigrations } from "@stack/service-kit";
@@ -35,6 +35,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 interface Backend {
   repo: YtdigestRepo;
   addUser(email: string): Promise<string>;
+  /** Moves a user's subscriptions' start back, as if made `hours` ago. */
+  backdateSubscriptions(userId: string, hours: number): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -51,6 +53,11 @@ const backends: Record<string, { skip: string | false; start: () => Promise<Back
           const uid = randomBytes(21).toString("base64url").slice(0, 28);
           await db.collection(usersCollection).doc(uid).set({ email, displayName: null });
           return uid;
+        },
+        async backdateSubscriptions(userId, hours) {
+          const at = Timestamp.fromMillis(Date.now() - hours * 3_600_000);
+          const snap = await db.collection(`${prefix}subscriptions`).where("userId", "==", userId).get();
+          await Promise.all(snap.docs.map((d) => d.ref.update({ createdAt: at })));
         },
         stop: () => db.terminate(),
       };
@@ -78,6 +85,10 @@ const backends: Record<string, { skip: string | false; start: () => Promise<Back
             INSERT INTO shared.users (email) VALUES (${email}) RETURNING id
           `;
           return u.id;
+        },
+        async backdateSubscriptions(userId, hours) {
+          const at = new Date(Date.now() - hours * 3_600_000).toISOString();
+          await admin.sql`UPDATE ytdigest.subscriptions SET created_at = ${at} WHERE user_id = ${userId}`;
         },
         async stop() {
           await admin.close();
@@ -306,6 +317,9 @@ for (const [backendName, backend] of Object.entries(backends)) {
         const k = await as(alice)("POST", "/subscriptions", { query: "@kitchen", cadence: "daily" });
         assert.equal(k.status, 201);
         kitchenSub = k.body.id;
+        // The uploads below are published hours ago; digests skip anything
+        // published before a subscription, so these must predate them.
+        await b.backdateSubscriptions(alice.userId, 48);
 
         const subs = (await as(alice)("GET", "/subscriptions")).body;
         assert.deepEqual(
@@ -757,6 +771,15 @@ for (const [backendName, backend] of Object.entries(backends)) {
           notifyMode: "all",
         });
         assert.equal(sub.status, 201);
+
+        // s1–s3 were published before Bob subscribed: a new subscription
+        // starts from now, so his first digest has nothing to send.
+        assert.deepEqual(await as(bob)("POST", "/digests/run-now"), {
+          status: 200,
+          body: { sent: false, itemCount: 0 },
+        });
+        videos.s4 = yt.upload(science, "s4", "Comets", -0.01);
+        await poll();
         const before = outbox.length;
 
         // 02:00 UTC on Monday 2026-09-28 is 22:00 on Sunday in New York.
@@ -777,6 +800,8 @@ for (const [backendName, backend] of Object.entries(backends)) {
         const [run] = (await as(bob)("GET", "/digests")).body;
         assert.equal(String(run.run_date).slice(0, 10), "2026-09-27", "run_date is the local date");
         assert.equal(run.cadence, "weekly");
+        assert.ok(bobs[0].html.includes(videos.s4), "only the upload since he subscribed");
+        assert.ok(!bobs[0].html.includes(videos.s1));
       });
     });
   }
