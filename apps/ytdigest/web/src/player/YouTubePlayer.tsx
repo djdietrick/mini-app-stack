@@ -12,6 +12,11 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
  * Everything else (annotations, the nocookie host, inline playback on iOS) is
  * a player parameter.
  *
+ * Captions start off. `cc_load_policy` can only force them on, so when the
+ * player turns them on by itself as a video starts (the uploader's default,
+ * or a language mismatch), the captions module is unloaded. That only happens
+ * around the start: the CC button still turns them on afterwards.
+ *
  * It also reports how far in you are through `onProgress`: every few seconds
  * while playing, on pause and end, and when it closes or the page is hidden
  * (the last moment a phone reliably gives). `startAt` resumes from a second.
@@ -19,6 +24,8 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 
 interface YTPlayer {
   playVideo(): void;
+  /** Undocumented, but stable: unloading "captions" hides them until CC is pressed. */
+  unloadModule?(name: string): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
   getDuration(): number;
@@ -37,6 +44,7 @@ interface YTNamespace {
       events?: {
         onStateChange?: (e: { data: number }) => void;
         onError?: (e: { data: number }) => void;
+        onApiChange?: () => void;
       };
     },
   ) => YTPlayer;
@@ -82,6 +90,12 @@ const EMBED_BLOCKED = new Set([101, 150]);
 
 type State = "loading" | "playing" | "paused" | "ended" | "blocked" | "failed";
 
+/**
+ * How long after the video first plays a captions module that loads is still
+ * the player's own default rather than the viewer pressing CC.
+ */
+const CAPTIONS_DEFAULT_WINDOW_MS = 3_000;
+
 /** How often a playing video reports its position. */
 const REPORT_EVERY_MS = 10_000;
 
@@ -111,6 +125,18 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, Props>(function You
   startAtRef.current = startAt;
   /** Nothing is reported for a video that never started playing. */
   const played = useRef(false);
+  /** Until when a captions module that loads is turned back off. */
+  const captionsOffUntil = useRef(Infinity);
+
+  const captionsOff = () => {
+    if (Date.now() > captionsOffUntil.current) return;
+    try {
+      player.current?.unloadModule?.("captions");
+      player.current?.unloadModule?.("cc");
+    } catch {
+      // Not loaded, or the player has gone; either way nothing is showing.
+    }
+  };
 
   const report = (ended = false) => {
     const p = player.current;
@@ -134,6 +160,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, Props>(function You
   useEffect(() => {
     let cancelled = false;
     played.current = false;
+    captionsOffUntil.current = Infinity;
     setState("loading");
     loadYouTubeApi()
       .then((YT) => {
@@ -152,11 +179,16 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, Props>(function You
             rel: 0,
             playsinline: 1,
             iv_load_policy: 3,
+            cc_load_policy: 0,
             origin: window.location.origin,
           },
           events: {
             onStateChange: ({ data }) => {
               if (data === PLAYING) {
+                if (!played.current) {
+                  captionsOffUntil.current = Date.now() + CAPTIONS_DEFAULT_WINDOW_MS;
+                  captionsOff();
+                }
                 played.current = true;
                 setState("playing");
               } else if (data === PAUSED) {
@@ -167,6 +199,8 @@ export const YouTubePlayer = forwardRef<YouTubePlayerHandle, Props>(function You
                 report(true);
               }
             },
+            // Fires when the captions module loads, which can be just after playback starts.
+            onApiChange: captionsOff,
             onError: ({ data }) => setState(EMBED_BLOCKED.has(data) ? "blocked" : "failed"),
           },
         });
