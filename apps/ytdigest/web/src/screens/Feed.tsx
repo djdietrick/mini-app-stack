@@ -3,6 +3,7 @@ import { api, type FeedItem } from "../api";
 import { feedSection, formatDuration, formatViews, thumbnailFor, timeAgo } from "../format";
 import { hrefFor } from "../route";
 import { isFinished, latest, useLocalProgress } from "../progress";
+import { PullToRefresh, RefreshIcon } from "../components/PullToRefresh";
 
 /**
  * Only the uploads that pass your filters, newest first, grouped by day like
@@ -12,35 +13,59 @@ import { isFinished, latest, useLocalProgress } from "../progress";
 export function Feed() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [next, setNext] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // "first" is the first page (opening the feed, or a refresh); "more" pages on.
+  const [loading, setLoading] = useState<"first" | "more" | null>("first");
+  // The load that failed, so Retry repeats that one.
+  const [error, setError] = useState<{ message: string; before: string | null } | null>(null);
   const [ruleNames, setRuleNames] = useState<Map<string, string>>(new Map());
-  const busy = useRef(false);
+  const busy = useRef<"first" | "more" | null>(null);
+  // Bumped by every load; a response for an older one is dropped, so a refresh
+  // can overtake a page that was still on its way.
+  const gen = useRef(0);
+  const root = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async (before: string | null) => {
-    if (busy.current) return;
-    busy.current = true;
-    setLoading(true);
+    const kind = before ? "more" : "first";
+    // A refresh replaces a page load in flight, but never runs twice at once;
+    // paging waits for whatever is running.
+    if (busy.current === "first" || (kind === "more" && busy.current)) return;
+    const mine = ++gen.current;
+    busy.current = kind;
+    setLoading(kind);
     setError(null);
     try {
       const page = await api.feed(before);
+      if (mine !== gen.current) return;
       setItems((prev) => (before ? [...prev, ...page.items] : page.items));
       setNext(page.next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to load the feed");
+      if (mine !== gen.current) return;
+      setError({ message: err instanceof Error ? err.message : "failed to load the feed", before });
     } finally {
-      busy.current = false;
-      setLoading(false);
+      if (mine === gen.current) {
+        busy.current = null;
+        setLoading(null);
+      }
     }
   }, []);
 
-  useEffect(() => {
-    load(null);
+  const loadRuleNames = useCallback(() => {
     api
       .rules()
       .then((rules) => setRuleNames(new Map(rules.map((r) => [r.id, r.name]))))
       .catch(() => undefined);
-  }, [load]);
+  }, []);
+
+  // Reruns the feed from the top. The server filters on read, so this picks up
+  // whatever the last poll found and any rule edited since.
+  const refresh = useCallback(() => {
+    load(null);
+    loadRuleNames();
+  }, [load, loadRuleNames]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   // Infinite scroll: fetch the next page when the sentinel comes into view.
   const sentinel = useRef<HTMLDivElement>(null);
@@ -54,7 +79,32 @@ export function Feed() {
     return () => io.disconnect();
   }, [next, load]);
 
-  if (!loading && !error && items.length === 0 && !next) return <Empty />;
+  const refreshing = loading === "first";
+  const toolbar = (
+    <>
+      <PullToRefresh target={root} refreshing={refreshing} onRefresh={refresh} />
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 rounded-full border border-canvas-200 bg-surface px-3 py-1.5 text-sm font-medium text-ink-muted hover:text-ink disabled:opacity-60"
+        >
+          <RefreshIcon className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+    </>
+  );
+
+  if (!loading && !error && items.length === 0 && !next) {
+    return (
+      <div ref={root} className="space-y-4">
+        {toolbar}
+        <Empty />
+      </div>
+    );
+  }
 
   const sections: { title: string; items: FeedItem[] }[] = [];
   for (const item of items) {
@@ -64,7 +114,8 @@ export function Feed() {
   }
 
   return (
-    <div className="space-y-8">
+    <div ref={root} className="space-y-8" aria-busy={loading !== null}>
+      <div className="-mb-4">{toolbar}</div>
       {sections.map((section) => (
         <section key={section.title}>
           <h2 className="mb-3 text-lg font-semibold">{section.title}</h2>
@@ -80,17 +131,17 @@ export function Feed() {
         </section>
       ))}
 
-      {loading && items.length === 0 && <SkeletonGrid />}
+      {refreshing && items.length === 0 && <SkeletonGrid />}
       {error && (
         <p className="text-sm text-brand-600">
-          {error}{" "}
-          <button className="underline" onClick={() => load(items.length ? next : null)}>
+          {error.message}{" "}
+          <button className="underline" onClick={() => load(error.before)}>
             Retry
           </button>
         </p>
       )}
       <div ref={sentinel} />
-      {loading && items.length > 0 && <p className="text-center text-sm text-ink-muted">Loading…</p>}
+      {loading === "more" && <p className="text-center text-sm text-ink-muted">Loading…</p>}
       {!next && items.length > 0 && (
         <p className="pb-4 text-center text-sm text-ink-soft">You're all caught up.</p>
       )}
