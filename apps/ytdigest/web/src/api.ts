@@ -180,7 +180,8 @@ export const api = {
   deleteRule: (id: string) => request<{ ok: true }>(`/rules/${id}`, { method: "DELETE" }),
 
   feed: (before?: string | null) =>
-    request<FeedPage>(`/feed${before ? `?before=${encodeURIComponent(before)}` : ""}`),
+    // no-store: a refresh must reach the server, never an HTTP cache.
+    request<FeedPage>(`/feed${before ? `?before=${encodeURIComponent(before)}` : ""}`, { cache: "no-store" }),
   video: (youtubeVideoId: string) => request<VideoDetail>(`/videos/${encodeURIComponent(youtubeVideoId)}`),
   // keepalive: sent as the page closes too, and must outlive it.
   saveProgress: (youtubeVideoId: string, positionSeconds: number, durationSeconds: number) =>
