@@ -57,10 +57,10 @@ export default function BlackjackScreen() {
   // The last hand stays on the felt until chips go down for the next.
   const view = useMemo<BlackjackSceneView>(
     () =>
-      betweenHands && (betting.total > 0 || !hand)
+      betweenHands && (betting.started || !hand)
         ? { id: "", hand: null, bets: betting.bets }
         : { id: hand!.id, hand: hand!.view as BlackjackView, bets: {} },
-    [betweenHands, betting.total, betting.bets, hand],
+    [betweenHands, betting.started, betting.bets, hand],
   );
 
   async function deal() {
@@ -99,7 +99,7 @@ export default function BlackjackScreen() {
       info={<Rules />}
       jackpot
       description={
-        betweenHands && (betting.total > 0 || !table.shownHand)
+        betweenHands && (betting.started || !table.shownHand)
           ? betsWords(betting.bets, SPOT_NAMES)
           : table.shownHand
             ? describeBlackjack(table.shownHand)

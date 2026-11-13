@@ -15,6 +15,13 @@ export interface BettingState {
   history: { spot: string; amount: number }[];
   /** The previous hand's bets, for Rebet. */
   last: Bets | null;
+  /**
+   * Chips have gone down since the last deal. Screens keep the last hand on
+   * the felt until then, and the betting felt after it, so Undo or Clear back
+   * to nothing leaves an empty felt rather than bringing the last hand back
+   * (which the scene would deal again as if it were new).
+   */
+  started: boolean;
 }
 
 export const total = (bets: Bets) => Object.values(bets).reduce((s, n) => s + n, 0);
@@ -40,7 +47,7 @@ export function place(s: BettingState, spot: string, balance: number, r: BetRule
   const room = Math.min(Math.floor((balance - cost(s.bets, r)) / w), maxOf(r, spot) - (s.bets[spot] ?? 0));
   const amount = Math.min(s.chip, room);
   if (amount <= 0) return s;
-  return { ...s, bets: { ...s.bets, [spot]: (s.bets[spot] ?? 0) + amount }, history: [...s.history, { spot, amount }] };
+  return { ...s, bets: { ...s.bets, [spot]: (s.bets[spot] ?? 0) + amount }, history: [...s.history, { spot, amount }], started: true };
 }
 
 export function undo(s: BettingState): BettingState {
@@ -60,7 +67,12 @@ export function clear(s: BettingState): BettingState {
 /** The last hand's bets again, if the balance covers them. */
 export function rebet(s: BettingState, balance: number, r: BetRules = {}): BettingState {
   if (!s.last || cost(s.last, r) > balance) return s;
-  return { ...s, bets: { ...s.last }, history: Object.entries(s.last).map(([spot, amount]) => ({ spot, amount })) };
+  return { ...s, bets: { ...s.last }, history: Object.entries(s.last).map(([spot, amount]) => ({ spot, amount })), started: true };
+}
+
+/** The hand is dealt: these bets are remembered for Rebet and the spots cleared. */
+export function commit(s: BettingState): BettingState {
+  return { ...s, last: s.bets, bets: {}, history: [], started: false };
 }
 
 /** Every spot doubled, if the balance and the limits allow it. */
@@ -74,7 +86,7 @@ export function double(s: BettingState, balance: number, r: BetRules = {}): Bett
 }
 
 export function useBetting(balance: number, opts: BetRules & { chip?: number } = {}) {
-  const [s, set] = useState<BettingState>({ chip: opts.chip ?? DENOMINATIONS[1], bets: {}, history: [], last: null });
+  const [s, set] = useState<BettingState>({ chip: opts.chip ?? DENOMINATIONS[1], bets: {}, history: [], last: null, started: false });
   return {
     ...s,
     total: total(s.bets),
@@ -86,7 +98,7 @@ export function useBetting(balance: number, opts: BetRules & { chip?: number } =
     clear: () => set(clear),
     rebet: () => set((x) => rebet(x, balance, opts)),
     double: () => set((x) => double(x, balance, opts)),
-    /** Call when the hand is dealt: remembers these bets for Rebet and clears the spots. */
-    commit: () => set((x) => ({ ...x, last: x.bets, bets: {}, history: [] })),
+    /** Call when the hand is dealt. */
+    commit: () => set(commit),
   };
 }

@@ -50,10 +50,10 @@ export default function UthScreen() {
 
   const view = useMemo<UthSceneView>(
     () =>
-      betweenHands && (betting.total > 0 || !hand)
+      betweenHands && (betting.started || !hand)
         ? { id: "", hand: null, ante: betting.bets.ante ?? 0, trips: betting.bets.trips ?? 0 }
         : { id: hand!.id, hand: hand!.view as UthView, ante: 0, trips: 0 },
-    [betweenHands, betting.total, betting.bets, hand],
+    [betweenHands, betting.started, betting.bets, hand],
   );
 
   async function deal() {
@@ -94,7 +94,7 @@ export default function UthScreen() {
       info={<Rules />}
       jackpot
       description={
-        betweenHands && (betting.total > 0 || !table.shownHand)
+        betweenHands && (betting.started || !table.shownHand)
           ? betsWords(betting.bets, SPOT_NAMES)
           : table.shownHand
             ? describeUth(table.shownHand)
