@@ -95,7 +95,7 @@ export default function RouletteScreen({ variant: requested }: { variant: string
       title={variant === "american" ? "American roulette" : "European roulette"}
       info={<Rules variant={variant} />}
       description={
-        betting.total > 0 || !table.shownHand
+        betting.started || !table.shownHand
           ? betsWords(betting.bets, rouletteSpotName, "Space to spin")
           : describeRoulette(table.shownHand)
       }

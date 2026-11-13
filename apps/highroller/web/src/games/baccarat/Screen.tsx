@@ -53,8 +53,8 @@ export default function BaccaratScreen() {
   }, []);
 
   const view = useMemo<BaccaratSceneView>(
-    () => (last && (showing || betting.total === 0) ? { id: last.id, hand: last.view as BaccaratView, bets: {} } : { id: "", hand: null, bets: betting.bets }),
-    [last, showing, betting.total, betting.bets],
+    () => (last && (showing || !betting.started) ? { id: last.id, hand: last.view as BaccaratView, bets: {} } : { id: "", hand: null, bets: betting.bets }),
+    [last, showing, betting.started, betting.bets],
   );
 
   async function deal() {
@@ -84,7 +84,7 @@ export default function BaccaratScreen() {
       title="Baccarat"
       info={<Rules />}
       description={
-        betting.total > 0 || !table.shownHand
+        betting.started || !table.shownHand
           ? betsWords(betting.bets, { player: "Player", banker: "Banker", tie: "Tie" })
           : describeBaccarat(table.shownHand)
       }

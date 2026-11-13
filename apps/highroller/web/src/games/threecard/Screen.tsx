@@ -46,10 +46,10 @@ export default function ThreeCardScreen() {
 
   const view = useMemo<ThreeCardSceneView>(
     () =>
-      betweenHands && (betting.total > 0 || !hand)
+      betweenHands && (betting.started || !hand)
         ? { id: "", hand: null, ante: betting.bets.ante ?? 0, pairPlus: betting.bets.pairPlus ?? 0 }
         : { id: hand!.id, hand: hand!.view as ThreeCardView, ante: 0, pairPlus: 0 },
-    [betweenHands, betting.total, betting.bets, hand],
+    [betweenHands, betting.started, betting.bets, hand],
   );
 
   async function deal() {
@@ -76,7 +76,7 @@ export default function ThreeCardScreen() {
       title="Three Card Poker"
       info={<Rules />}
       description={
-        betweenHands && (betting.total > 0 || !table.shownHand)
+        betweenHands && (betting.started || !table.shownHand)
           ? betsWords(betting.bets, SPOT_NAMES)
           : table.shownHand
             ? describeThreeCard(table.shownHand)
