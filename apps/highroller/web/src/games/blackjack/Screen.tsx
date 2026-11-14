@@ -3,7 +3,8 @@ import { BLACKJACK_LIMITS, type BlackjackView } from "../../../../src/games/blac
 import { PAIR_NAMES, type PairHand, THREE_CARD_NAMES, type ThreeCardHand } from "../../../../src/games/blackjack/sidebets.js";
 import { checkSideStake, checkStake } from "../../../../src/games/engine.js";
 import type { HandRow } from "../../api";
-import { ActionBar } from "../../components/ActionBar";
+import type { ActionSpec } from "../../components/ActionBar";
+import { ActionTray } from "../../components/ActionTray";
 import { BetBar } from "../../components/BetBar";
 import { useToast } from "../../components/Toast";
 import { chips } from "../../format";
@@ -16,15 +17,25 @@ import { betsWords, describeBlackjack } from "../describe";
 import { resultText, useHand } from "../useHand";
 import { type BlackjackSceneView, SIDE_SPOTS, type Spot, createBlackjackScene } from "./Scene";
 
-const ACTIONS = [
-  { type: "even_money", label: "Even money", key: "e" },
-  { type: "insurance", label: "Insurance", key: "i" },
-  { type: "no_insurance", label: "No insurance", primary: true, key: "n" },
-  { type: "surrender", label: "Surrender", key: "r" },
-  { type: "split", label: "Split", key: "p" },
-  { type: "double", label: "Double", key: "d" },
+// The tray's fixed slots (components/ActionTray.tsx): Hit and Stand always in
+// the bottom row, where Deal sits while betting; the top row, where the chips
+// sit, holds the rest, swapped for the insurance choice while it is open.
+const HIT_STAND: ActionSpec[] = [
   { type: "hit", label: "Hit", key: "h" },
   { type: "stand", label: "Stand", primary: true, key: "s" },
+];
+const EXTRAS: ActionSpec[] = [
+  { type: "double", label: "Double", key: "d" },
+  { type: "split", label: "Split", key: "p" },
+  { type: "surrender", label: "Surrender", key: "r" },
+];
+const INSURANCE: ActionSpec[] = [
+  { type: "insurance", label: "Insurance", key: "i" },
+  { type: "no_insurance", label: "No insurance", primary: true, key: "n" },
+];
+const EVEN_MONEY: ActionSpec[] = [
+  { type: "even_money", label: "Even money", key: "e" },
+  { type: "no_insurance", label: "No insurance", primary: true, key: "n" },
 ];
 
 const SPOTS = [
@@ -114,7 +125,14 @@ export default function BlackjackScreen() {
           onError={(e) => toast(`Table error: ${String(e)}`, "loss")}
         />
       }
-      above={prompt}
+      // Over the felt rather than above the bar, so it doesn't resize the table.
+      overlay={
+        prompt && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-4">
+            <p className="rounded-full bg-black/60 px-4 py-2 text-center text-[14px] text-ink/90 backdrop-blur">{prompt}</p>
+          </div>
+        )
+      }
       bar={
         betweenHands ? (
           <BetBar
@@ -134,7 +152,13 @@ export default function BlackjackScreen() {
             onSpot={(s) => placeRef.current(s as Spot)}
           />
         ) : (
-          <ActionBar actions={ACTIONS} legal={legal} onAction={(t) => void table.act(t)} busy={table.busy} />
+          <ActionTray
+            top={v?.phase === "insurance" ? (legal.includes("even_money") ? EVEN_MONEY : INSURANCE) : EXTRAS}
+            main={HIT_STAND}
+            legal={legal}
+            onAction={(t) => void table.act(t)}
+            busy={table.busy}
+          />
         )
       }
     />
