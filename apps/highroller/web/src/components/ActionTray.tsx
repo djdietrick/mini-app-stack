@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { useKeys } from "../keys";
 import { type ActionSpec, Kbd } from "./ActionBar";
 
@@ -8,7 +8,9 @@ import { type ActionSpec, Kbd } from "./ActionBar";
  * betting to playing never resizes the table. Every slot is always drawn and
  * an action that isn't legal right now is shown disabled, so a button never
  * moves under a thumb. `main` is the bottom row, where Deal sits while
- * betting (blackjack's Hit and Stand); `top` is the row where the chips sit.
+ * betting (blackjack's Hit and Stand); `top` is the row where the chips sit,
+ * or, for tables with nothing more to offer, `note`: a line of guidance that
+ * would otherwise be a bar of its own above the tray.
  *
  * The bottom row takes the place of Deal, so a quick second tap on Deal would
  * land on whatever is there now: taps (not keys) are ignored for a moment
@@ -17,13 +19,16 @@ import { type ActionSpec, Kbd } from "./ActionBar";
 export const TAP_GUARD_MS = 400;
 
 export function ActionTray({
-  top,
+  top = [],
+  note,
   main,
   legal,
   onAction,
   busy = false,
 }: {
-  top: ActionSpec[];
+  top?: ActionSpec[];
+  /** Shown in the top row when `top` is empty: two short lines at most. */
+  note?: ReactNode;
   main: ActionSpec[];
   legal: readonly string[];
   onAction: (type: string) => void;
@@ -54,11 +59,17 @@ export function ActionTray({
   return (
     // The bet bar's padding and gap, with its rows' heights: 48 px (the chips) and 44 px.
     <div className="flex flex-col gap-2 border-t border-line bg-surface/95 px-3 pb-3 pt-2 backdrop-blur">
-      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${top.length}, minmax(0, 1fr))` }}>
-        {top.map((a) => button(a, "h-12"))}
-      </div>
+      {top.length ? (
+        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${top.length}, minmax(0, 1fr))` }}>
+          {top.map((a) => button(a, "h-12"))}
+        </div>
+      ) : (
+        <div className="flex h-12 items-center justify-center px-2">
+          <p className="line-clamp-2 text-center text-[14px] leading-tight text-ink/90">{note}</p>
+        </div>
+      )}
       <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${main.length}, minmax(0, 1fr))` }}>
-        {main.map((a) => button(a, "h-11 text-[16px]"))}
+        {main.map((a) => button(a, main.length > 2 ? "h-11" : "h-11 text-[16px]"))}
       </div>
     </div>
   );

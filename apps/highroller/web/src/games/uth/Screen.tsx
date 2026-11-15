@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from "react";
 import { checkSideStake, checkStake } from "../../../../src/games/engine.js";
 import { UTH_LIMITS, type UthView } from "../../../../src/games/uth/engine.js";
 import type { HandRow } from "../../api";
-import { ActionBar } from "../../components/ActionBar";
+import type { ActionSpec } from "../../components/ActionBar";
+import { ActionTray } from "../../components/ActionTray";
 import { BetBar } from "../../components/BetBar";
 import { useToast } from "../../components/Toast";
 import { chipsShort, signed } from "../../format";
@@ -69,13 +70,17 @@ export default function UthScreen() {
 
   const ante = v?.ante ?? 0;
   const legal = (hand?.legal_actions ?? []).filter((a) => !(a in MULTIPLE) || balance >= MULTIPLE[a] * ante);
-  const actions = [
-    { type: "fold", label: "Fold", key: "f" },
-    { type: "check", label: "Check", key: "c" },
+  // The tray's fixed slots (components/ActionTray.tsx): not raising on the
+  // left, the street's raise on the right where Deal sits, 3× between them.
+  const street = v?.street ?? "preflop";
+  const main: ActionSpec[] = [
+    street === "river" ? { type: "fold", label: "Fold", key: "f" } : { type: "check", label: "Check", key: "c" },
     { type: "bet3", label: `3× · ${chipsShort(3 * ante)}`, key: "3" },
-    { type: "bet4", label: `4× · ${chipsShort(4 * ante)}`, primary: true, key: "4" },
-    { type: "bet2", label: `Bet 2× · ${chipsShort(2 * ante)}`, primary: true, key: "2" },
-    { type: "bet1", label: `Bet 1× · ${chipsShort(ante)}`, primary: true, key: "1" },
+    street === "river"
+      ? { type: "bet1", label: `1× · ${chipsShort(ante)}`, primary: true, key: "1" }
+      : street === "flop"
+        ? { type: "bet2", label: `2× · ${chipsShort(2 * ante)}`, primary: true, key: "2" }
+        : { type: "bet4", label: `4× · ${chipsShort(4 * ante)}`, primary: true, key: "4" },
   ];
   const short = (hand?.legal_actions ?? []).length > legal.length;
   const prompt = !betweenHands
@@ -109,7 +114,6 @@ export default function UthScreen() {
           onError={(e) => toast(`Table error: ${String(e)}`, "loss")}
         />
       }
-      above={prompt}
       bar={
         betweenHands ? (
           <BetBar
@@ -129,7 +133,7 @@ export default function UthScreen() {
             onSpot={(s) => placeRef.current(s as "ante" | "trips")}
           />
         ) : (
-          <ActionBar actions={actions} legal={legal} onAction={(t) => void table.act(t)} busy={table.busy} />
+          <ActionTray note={prompt} main={main} legal={legal} onAction={(t) => void table.act(t)} busy={table.busy} />
         )
       }
     />

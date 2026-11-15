@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from "react";
 import { checkSideStake, checkStake } from "../../../../src/games/engine.js";
 import { THREECARD_LIMITS, type ThreeCardView } from "../../../../src/games/threecard/engine.js";
 import type { HandRow } from "../../api";
-import { ActionBar } from "../../components/ActionBar";
+import type { ActionSpec } from "../../components/ActionBar";
+import { ActionTray } from "../../components/ActionTray";
 import { BetBar } from "../../components/BetBar";
 import { useToast } from "../../components/Toast";
 import { chipsShort, signed } from "../../format";
@@ -66,10 +67,14 @@ export default function ThreeCardScreen() {
   const ante = v?.ante ?? 0;
   // Play costs another ante; fold is always there.
   const legal = (hand?.legal_actions ?? []).filter((a) => a !== "play" || balance >= ante);
-  const actions = [
+  // Play on the right, where Deal sits (components/ActionTray.tsx).
+  const main: ActionSpec[] = [
     { type: "fold", label: "Fold", key: "f" },
     { type: "play", label: `Play · ${chipsShort(ante)}`, primary: true, key: "p" },
   ];
+  const prompt = legal.includes("play")
+    ? `${v?.label ?? ""}. Play for another ${chipsShort(ante)}, or fold.`
+    : "Not enough chips to play: fold, or top up.";
 
   return (
     <TableFrame
@@ -91,13 +96,6 @@ export default function ThreeCardScreen() {
           onError={(e) => toast(`Table error: ${String(e)}`, "loss")}
         />
       }
-      above={
-        betweenHands
-          ? null
-          : legal.includes("play")
-            ? `${v?.label ?? ""}. Play for another ${chipsShort(ante)}, or fold.`
-            : "Not enough chips to play: fold, or top up."
-      }
       bar={
         betweenHands ? (
           <BetBar
@@ -117,7 +115,7 @@ export default function ThreeCardScreen() {
             onSpot={(s) => placeRef.current(s as "ante" | "pairPlus")}
           />
         ) : (
-          <ActionBar actions={actions} legal={legal} onAction={(t) => void table.act(t)} busy={table.busy} />
+          <ActionTray note={prompt} main={main} legal={legal} onAction={(t) => void table.act(t)} busy={table.busy} />
         )
       }
     />
