@@ -1,14 +1,8 @@
 import type { Closable } from "@stack/service-kit";
 import type { ScopedRule } from "../domain/match.js";
 import type {
-  CandidateVideo,
   Cadence,
   ChannelRow,
-  DigestDetail,
-  DigestLine,
-  DigestRecipient,
-  DigestRunRow,
-  DueSubscription,
   FeedCandidate,
   FeedCursor,
   NotifyMode,
@@ -34,10 +28,9 @@ import type {
  * Four groups of callers:
  *   - the HTTP routes: the wire-row methods, scoped by userId in the query
  *   - the feed: candidate videos from the user's subscriptions, filtered in
- *     src/domain/feed.ts with the digest's own matcher
+ *     src/domain/feed.ts with the rule matcher
  *   - the poll job: channel and video bookkeeping, snapshots
- *   - the digest job and rule evaluation: due subscriptions, candidates,
- *     baselines, recording what was sent
+ *   - rule evaluation: enabled rules, snapshots and baselines
  *
  * Mutations report "did it match" rather than throwing, so the route owns the
  * 404.
@@ -64,7 +57,7 @@ export interface YtdigestRepo extends Closable {
   subscriptionExists(userId: string, id: string): Promise<boolean>;
   /** Callers skip this for an empty patch, matching the original no-op. */
   updateSubscription(userId: string, id: string, patch: SubscriptionPatch): Promise<boolean>;
-  /** Also removes the subscription's rules and its lines in past digests. */
+  /** Also removes the subscription's rules. */
   deleteSubscription(userId: string, id: string): Promise<boolean>;
 
   // ---------- rules ----------
@@ -75,18 +68,12 @@ export interface YtdigestRepo extends Closable {
   updateRule(userId: string, id: string, patch: RulePatch): Promise<boolean>;
   deleteRule(userId: string, id: string): Promise<boolean>;
 
-  // ---------- digests (HTTP) ----------
-
-  listDigests(userId: string): Promise<DigestRunRow[]>;
-  getDigest(userId: string, id: string): Promise<DigestDetail | null>;
-
   // ---------- feed ----------
 
   /**
    * Videos from channels this user subscribes to, newest published first
-   * (ties by id, descending), strictly after `after` in that order. Whether
-   * they were already digested doesn't matter: the feed is a view, not a
-   * queue.
+   * (ties by id, descending), strictly after `after` in that order. The
+   * feed is a view, not a queue.
    */
   feedCandidates(userId: string, after: FeedCursor | null, limit: number): Promise<FeedCandidate[]>;
   /** One video by its YouTube id, only if this user subscribes to its channel. */
@@ -117,20 +104,8 @@ export interface YtdigestRepo extends Closable {
   recordStats(video: TrackedVideo, stats: VideoStats): Promise<void>;
   markPolled(channelId: string): Promise<void>;
 
-  // ---------- digest job ----------
+  // ---------- rule evaluation ----------
 
-  /** Everyone with at least one subscription, with the address to mail. */
-  digestRecipients(): Promise<DigestRecipient[]>;
-  /**
-   * Daily subscriptions, plus weekly ones set for `dayOfWeek` (0 = Sunday).
-   * Every subscription when `force` is set, for "run now".
-   */
-  dueSubscriptions(userId: string, dayOfWeek: number, force: boolean): Promise<DueSubscription[]>;
-  /**
-   * Videos first seen since the subscription was last digested that this
-   * user hasn't been sent, oldest published first.
-   */
-  candidateVideos(userId: string, sub: DueSubscription): Promise<CandidateVideo[]>;
   /**
    * Enabled rules that could apply to this subscription: its own plus the
    * user's global ones, each with its scope. Which of them actually apply is
@@ -142,16 +117,4 @@ export interface YtdigestRepo extends Closable {
   pastVideos(channelId: string, excludeVideoId: string, limit: number): Promise<PastVideo[]>;
   /** The latest snapshot taken at or before `cutoff`. */
   snapshotAtOrBefore(videoId: string, cutoff: Date): Promise<Snapshot | null>;
-  /** Starts each subscription's next window at `runDate`. */
-  markDigested(subscriptionIds: string[], runDate: Date): Promise<void>;
-  /**
-   * Records a sent digest and marks its videos as notified, atomically, so a
-   * video is never sent to the same user twice.
-   */
-  recordDigest(
-    userId: string,
-    cadence: Cadence,
-    runDate: string,
-    lines: DigestLine[],
-  ): Promise<void>;
 }

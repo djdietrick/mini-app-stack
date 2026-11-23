@@ -9,7 +9,7 @@ import { z } from "zod";
  * backend returns them: Postgres text on one, ISO 8601 on the other. The SPA
  * only feeds them to `new Date()`.
  *
- * Job types (the poll and the digest) carry real Dates instead. They do
+ * Job types (the poll, the feed and rule evaluation) carry real Dates instead. They do
  * arithmetic on timestamps, and the Postgres client hands timestamps back as
  * strings: Drizzle, which @stack/db-clients wraps it in, replaces postgres.js's
  * date parsers. Each repo converts at its edge.
@@ -54,39 +54,9 @@ export interface RuleRow {
   created_at: string;
 }
 
-export interface DigestRunRow {
-  id: string;
-  cadence: Cadence;
-  run_date: string;
-  sent_at: string | null;
-  item_count: number;
-}
-
-export interface DigestItemRow {
-  video_id: string;
-  /**
-   * The id YouTube knows the video by. Added because `video_id` is an internal
-   * UUID on Postgres, so the watch links built from it never worked there.
-   */
-  youtube_video_id: string;
-  title: string;
-  thumbnail_url: string | null;
-  channel_title: string;
-  matched_rule_id: string | null;
-  reason_json: string[] | null;
-}
-
-export interface DigestDetail {
-  id: string;
-  cadence: Cadence;
-  run_date: string;
-  sent_at: string | null;
-  items: DigestItemRow[];
-}
-
 /**
  * One video in the feed: a subscribed channel's upload that passes that
- * subscription's filters (the same test the digest applies). Built by
+ * subscription's filters (`matchVideo` in match.ts). Built by
  * src/domain/feed.ts rather than read straight from a table, so both backends
  * produce it identically and `published_at` is always ISO 8601.
  */
@@ -163,18 +133,6 @@ export interface TrackedVideo {
   youtubeVideoId: string;
 }
 
-export interface DueSubscription {
-  id: string;
-  channelId: string;
-  channelTitle: string;
-  cadence: Cadence;
-  notifyMode: NotifyMode;
-  lastDigestedAt: Date | null;
-  /** Digests only include videos published at or after this: a new
-   * subscription starts from now, not from the channel's back catalogue. */
-  createdAt: Date;
-}
-
 export interface CandidateVideo {
   id: string;
   youtubeVideoId: string;
@@ -227,23 +185,6 @@ export interface PastVideo {
   publishedAt: Date;
 }
 
-export interface DigestRecipient {
-  userId: string;
-  email: string;
-}
-
-/** One line of a sent digest, as recorded for GET /digests/:id. */
-export interface DigestLine {
-  videoId: string;
-  youtubeVideoId: string;
-  title: string;
-  thumbnailUrl: string | null;
-  channelTitle: string;
-  subscriptionId: string;
-  matchedRuleId: string | null;
-  reasons: string[];
-}
-
 // ---------- request bodies ----------
 
 const conditionSchema: z.ZodType<unknown> = z.lazy(() =>
@@ -285,7 +226,9 @@ export const ruleGroupSchema: z.ZodType<unknown> = z.lazy(() =>
 export const createSubscriptionBody = z
   .object({
     query: z.string().min(1).max(200),
-    cadence: CADENCE,
+    // Cadence only scheduled the old email digest. The SPA no longer sends
+    // it; the column is still required, so it defaults.
+    cadence: CADENCE.default("daily"),
     digestDayOfWeek: z.number().int().min(0).max(6).optional(),
     notifyMode: NOTIFY_MODE.default("rules"),
   })

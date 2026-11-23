@@ -18,8 +18,7 @@ import type { PushSubscriptionRow, VapidKeys } from "./domain/types.js";
  *
  * Written here rather than taken from the `web-push` package because that
  * package is CommonJS that `require()`s Node builtins, which throws once
- * bundled into the functions' ESM output (the same reason nodemailer is
- * `--external` there). This is the whole protocol; webpush.test.ts decrypts
+ * bundled into the functions' ESM output. This is the whole protocol; webpush.test.ts decrypts
  * what it produces the way a browser does.
  *
  * Both deployments wire it the same way; the keys come from the repo, which

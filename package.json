@@ -25,7 +25,6 @@
     "@stack/crumb": "workspace:*",
     "@stack/fretwork": "workspace:*",
     "@stack/highroller": "workspace:*",
-    "@stack/mailer": "workspace:*",
     "@stack/pantry": "workspace:*",
     "@stack/service-kit": "workspace:*",
     "@stack/ytdigest": "workspace:*",

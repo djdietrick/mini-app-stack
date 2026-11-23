@@ -125,7 +125,7 @@ const redis = createRedisClient({
 - [apps/auth](apps/auth/) — shared identity service (port `3100`). Owns writes to `shared.users`, `shared.user_credentials`, `shared.sessions`.
 - [apps/crate](apps/crate/) — music queue / rating app backed by the iTunes search API (port `3101`).
 - [apps/pantry](apps/pantry/) — kitchen inventory + grocery list builder (port `3102`). Items track quantity, size, and a 3-state status (stocked / low / out); tags are typed (`store` / `section` / `general`); grocery lists are generated on demand from low/out items, checked off at the store, and reconciled back into inventory on finish.
-- [apps/ytdigest](apps/ytdigest/) — YouTube channel digest emailer (port `3103`). Subscribe to channels with a daily or weekly cadence; polls uploads + view/like stats on a schedule, evaluates per-channel or global rules (keyword match, performance/engagement vs. a channel's own trailing baseline, duration, or "every upload"), and emails one combined digest per day via `@stack/mailer`.
+- [apps/ytdigest](apps/ytdigest/) — YouTube channel feed (port `3103`). Subscribe to channels; polls uploads + view/like stats every hour, and shows the uploads that pass per-channel or global rules (keyword match, performance/engagement vs. a channel's own trailing baseline, duration, or "every upload") in an in-app feed with a player.
 - [apps/crumb](apps/crumb/) — sourdough starter care and bake planner (port `3105`). Logs feeds and learns how fast your starter peaks, works out how much to feed it to be ripe by a given time, plans bakes backward from when the bread should come out of the oven (with the cold retard adjustable to keep steps out of the night), and sends a reminder at every step by Web Push.
 - [apps/highroller](apps/highroller/) — casino simulator for fun chips (port `3106`). Table games and slots against the house, with every shuffle, deal and spin decided on the server; a balance that carries over, a daily bonus with a streak, and a once-a-day top-up; weekly leaderboards, chip gifting between players and a big-win feed. No real money in or out. See [PLAN.md](apps/highroller/PLAN.md) for what is built and what is next.
 - [apps/fretwork](apps/fretwork/) — guitar fretboard trainer (port `3104`). A library of exercises (find a note on every string, flashcards, scale and arpeggio sequences to a click) plus your own, graded in the browser from the microphone. See [PLAN.md](apps/fretwork/PLAN.md) for what is built and what is next.
@@ -197,9 +197,9 @@ the standing cost of keeping both targets.
 ### How a target is selected
 
 By entrypoint, not by environment variable. `apps/<app>/src/index.ts` wires
-the self-hosted implementations (Postgres, Redis, SMTP, `apps/auth`) into the
+the self-hosted implementations (Postgres, Redis, `apps/auth`) into the
 shared domain code; `functions/src/index.ts` wires the cloud ones (Firestore,
-Firebase Auth, SMTP with its password from Secret Manager). There is no
+Firebase Auth, secrets from Secret Manager). There is no
 runtime switch to set or forget.
 
 Frontends pick their auth provider at build time via `VITE_AUTH_MODE`. The
@@ -249,12 +249,10 @@ apply happens on merge to `main`.
 | `landing`  | yes (nginx) | yes (Hosting only, no function) |
 
 `ytdigest`'s background work runs from each target's own scheduler: an
-in-process timer and `node-cron` self-hosted, two `onSchedule` functions
-(`ytdigestPoll`, `ytdigestDigest`) in the cloud. Both call the same
-`pollChannels` and `runDailyDigest`. Mail goes over SMTP on both; Cloud
-Functions can send on 587 and 465, and only port 25 is blocked.
+in-process timer self-hosted, the `ytdigestPoll` `onSchedule` function in the
+cloud, both calling the same `pollChannels` every hour.
 
 `crumb`'s reminders work the same way: a one-minute timer self-hosted, the
 `crumbReminders` `onSchedule` function in the cloud, both calling
 `dispatchReminders`. It sends Web Push with a VAPID key pair it generates and
-stores itself, and falls back to email over the same SMTP relay as ytdigest.
+stores itself.

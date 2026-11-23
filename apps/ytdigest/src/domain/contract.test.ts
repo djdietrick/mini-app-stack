@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
-import { Firestore, Timestamp } from "@google-cloud/firestore";
+import { Firestore } from "@google-cloud/firestore";
 import Fastify from "fastify";
 import { createPostgresClient } from "@stack/db-clients";
 import { type Lease, type SessionUser, runMigrations } from "@stack/service-kit";
@@ -12,7 +12,6 @@ import { toFastifyPlugin } from "@stack/service-kit/fastify";
 import { createFirestoreYtdigestRepo } from "../repo/firestore.js";
 import { createPostgresYtdigestRepo } from "../repo/postgres.js";
 import type { YtdigestRepo } from "../repo/types.js";
-import { type DigestMailer, runDailyDigest } from "./digest.js";
 import { pollChannels } from "./poll.js";
 import { ytdigestRoutes } from "./routes.js";
 import type { ResolvedChannel, UploadListItem, VideoStats } from "./types.js";
@@ -20,8 +19,8 @@ import type { YouTubeGateway } from "./youtube.js";
 
 /**
  * ytdigest end to end against each real backend through each adapter: the
- * HTTP contract apps/ytdigest/web/src/api.ts depends on, and the two jobs
- * (poll, digest) the schedulers drive. YouTube and SMTP are fakes; the
+ * HTTP contract apps/ytdigest/web/src/api.ts depends on, and the poll job
+ * the schedulers drive. YouTube is a fake; the
  * storage is not.
  *
  * Each backend runs only when it is reachable:
@@ -35,8 +34,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 interface Backend {
   repo: YtdigestRepo;
   addUser(email: string): Promise<string>;
-  /** Moves a user's subscriptions' start back, as if made `hours` ago. */
-  backdateSubscriptions(userId: string, hours: number): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -48,16 +45,11 @@ const backends: Record<string, { skip: string | false; start: () => Promise<Back
       const prefix = `t${Date.now()}_${randomBytes(3).toString("hex")}_`;
       const usersCollection = `${prefix}users`;
       return {
-        repo: createFirestoreYtdigestRepo(db, { prefix, usersCollection }),
+        repo: createFirestoreYtdigestRepo(db, { prefix }),
         async addUser(email) {
           const uid = randomBytes(21).toString("base64url").slice(0, 28);
           await db.collection(usersCollection).doc(uid).set({ email, displayName: null });
           return uid;
-        },
-        async backdateSubscriptions(userId, hours) {
-          const at = Timestamp.fromMillis(Date.now() - hours * 3_600_000);
-          const snap = await db.collection(`${prefix}subscriptions`).where("userId", "==", userId).get();
-          await Promise.all(snap.docs.map((d) => d.ref.update({ createdAt: at })));
         },
         stop: () => db.terminate(),
       };
@@ -85,10 +77,6 @@ const backends: Record<string, { skip: string | false; start: () => Promise<Back
             INSERT INTO shared.users (email) VALUES (${email}) RETURNING id
           `;
           return u.id;
-        },
-        async backdateSubscriptions(userId, hours) {
-          const at = new Date(Date.now() - hours * 3_600_000).toISOString();
-          await admin.sql`UPDATE ytdigest.subscriptions SET created_at = ${at} WHERE user_id = ${userId}`;
         },
         async stop() {
           await admin.close();
@@ -185,8 +173,6 @@ for (const [backendName, backend] of Object.entries(backends)) {
       let stopServer: () => Promise<void>;
       let base: string;
       const sessions = new Map<string, SessionUser>();
-      const outbox: { to: string; subject: string; html: string; text?: string }[] = [];
-      const mailer: DigestMailer = { send: async (m) => void outbox.push(m) };
       const yt = fakeYouTube(randomBytes(4).toString("hex"));
       const lease = memoryLease();
 
@@ -225,7 +211,7 @@ for (const [backendName, backend] of Object.entries(backends)) {
 
       before(async () => {
         b = await backend.start();
-        const routes = ytdigestRoutes({ youtube: yt.gateway, mailer });
+        const routes = ytdigestRoutes({ youtube: yt.gateway });
         const opts = { repo: b.repo, verify };
 
         if (adapter === "fastify") {
@@ -259,7 +245,6 @@ for (const [backendName, backend] of Object.entries(backends)) {
       let kitchenSub: string;
       let scienceChannelId: string;
       let globalRule: string;
-      let digestId: string;
       const videos: Record<string, string> = {};
 
       it("serves /health publicly and 401s everything else without a session", async () => {
@@ -267,7 +252,6 @@ for (const [backendName, backend] of Object.entries(backends)) {
         for (const [method, path] of [
           ["GET", "/channels"],
           ["GET", "/subscriptions"],
-          ["POST", "/digests/run-now"],
         ] as const) {
           assert.deepEqual(
             await as(null)(method, path),
@@ -317,9 +301,6 @@ for (const [backendName, backend] of Object.entries(backends)) {
         const k = await as(alice)("POST", "/subscriptions", { query: "@kitchen", cadence: "daily" });
         assert.equal(k.status, 201);
         kitchenSub = k.body.id;
-        // The uploads below are published hours ago; digests skip anything
-        // published before a subscription, so these must predate them.
-        await b.backdateSubscriptions(alice.userId, 48);
 
         const subs = (await as(alice)("GET", "/subscriptions")).body;
         assert.deepEqual(
@@ -710,81 +691,7 @@ for (const [backendName, backend] of Object.entries(backends)) {
         await as(other)("DELETE", `/subscriptions/${sub.body.id}`);
       });
 
-      it("run-now digests matching uploads and links them by YouTube id", async () => {
-        const res = await as(alice)("POST", "/digests/run-now");
-        // science is notify=all (s1, s2); kitchen is notify=rules, where the
-        // global "physics" rule matches k1 and nothing matches k2.
-        assert.deepEqual(res, { status: 200, body: { sent: true, itemCount: 3 } });
-
-        assert.equal(outbox.length, 1);
-        const [mail] = outbox;
-        assert.equal(mail.to, alice.email);
-        assert.match(mail.subject, /3 new videos/);
-        for (const key of ["s1", "s2", "k1"]) {
-          assert.ok(
-            mail.html.includes(`watch?v=${videos[key]}`),
-            `${key} is linked by its YouTube id`,
-          );
-        }
-        assert.ok(!mail.html.includes(videos.k2));
-        assert.match(mail.text!, /12,345 views/, "view counts are numbers, formatted");
-
-        const runs = (await as(alice)("GET", "/digests")).body;
-        assert.equal(runs.length, 1);
-        assert.deepEqual(Object.keys(runs[0]).sort(), [
-          "cadence",
-          "id",
-          "item_count",
-          "run_date",
-          "sent_at",
-        ]);
-        assert.equal(runs[0].item_count, 3);
-        digestId = runs[0].id;
-
-        const detail = (await as(alice)("GET", `/digests/${digestId}`)).body;
-        assert.deepEqual(
-          detail.items.map((i: any) => [i.channel_title, i.youtube_video_id]).sort(),
-          [
-            ["Kitchen Channel", videos.k1],
-            ["Science Channel", videos.s1],
-            ["Science Channel", videos.s2],
-          ].sort(),
-        );
-        assert.equal(detail.items[0].channel_title, "Kitchen Channel", "ORDER BY channel title");
-        const k1 = detail.items.find((i: any) => i.youtube_video_id === videos.k1);
-        assert.equal(k1.matched_rule_id, globalRule);
-        assert.ok(k1.reason_json[0].includes("physics"));
-        assert.deepEqual(Object.keys(k1).sort(), [
-          "channel_title",
-          "matched_rule_id",
-          "reason_json",
-          "thumbnail_url",
-          "title",
-          "video_id",
-          "youtube_video_id",
-        ]);
-
-        assert.deepEqual(await as(bob)("GET", `/digests/${digestId}`), {
-          status: 404,
-          body: { error: "not found" },
-        });
-      });
-
-      it("never sends the same video twice", async () => {
-        assert.deepEqual(await as(alice)("POST", "/digests/run-now"), {
-          status: 200,
-          body: { sent: false, itemCount: 0 },
-        });
-        videos.s3 = yt.upload(science, "s3", "Astronomy", 1);
-        await poll();
-        assert.deepEqual(await as(alice)("POST", "/digests/run-now"), {
-          status: 200,
-          body: { sent: true, itemCount: 1 },
-        });
-        assert.ok(outbox.at(-1)!.html.includes(videos.s3));
-      });
-
-      it("deleting a subscription removes its rules and its lines in past digests", async () => {
+      it("deleting a subscription removes its rules and its videos from the feed", async () => {
         assert.deepEqual(await as(alice)("DELETE", `/subscriptions/${scienceSub}`), {
           status: 200,
           body: { ok: true },
@@ -794,55 +701,15 @@ for (const [backendName, backend] of Object.entries(backends)) {
         const rules = (await as(alice)("GET", "/rules")).body.map((r: any) => r.name);
         assert.deepEqual(rules.sort(), ["Breakout", "Physics"]);
 
-        const detail = (await as(alice)("GET", `/digests/${digestId}`)).body;
-        assert.deepEqual(
-          detail.items.map((i: any) => i.youtube_video_id),
-          [videos.k1],
-        );
-        const [latestRun] = (await as(alice)("GET", "/digests")).body;
-        assert.equal(latestRun.item_count, 0, "the s3-only digest is now empty");
+        const feed = (await as(alice)("GET", "/feed")).body;
+        assert.ok(feed.items.every((i: any) => i.channel_title !== "Science Channel"));
       });
 
-      it("the daily job mails everyone due, and weekly days follow the configured zone", async () => {
-        // Bob: weekly on Sundays.
-        const sub = await as(bob)("POST", "/subscriptions", {
-          query: "@science",
-          cadence: "weekly",
-          digestDayOfWeek: 0,
-          notifyMode: "all",
-        });
+      it("defaults a subscription's cadence, which only the old email used", async () => {
+        const sub = await as(bob)("POST", "/subscriptions", { query: "@science", notifyMode: "all" });
         assert.equal(sub.status, 201);
-
-        // s1–s3 were published before Bob subscribed: a new subscription
-        // starts from now, so his first digest has nothing to send.
-        assert.deepEqual(await as(bob)("POST", "/digests/run-now"), {
-          status: 200,
-          body: { sent: false, itemCount: 0 },
-        });
-        videos.s4 = yt.upload(science, "s4", "Comets", -0.01);
-        await poll();
-        const before = outbox.length;
-
-        // 02:00 UTC on Monday 2026-09-28 is 22:00 on Sunday in New York.
-        const runDate = new Date("2026-09-28T02:00:00Z");
-
-        await runDailyDigest(b.repo, mailer, runDate, { timeZone: "UTC" }, silent);
-        assert.equal(
-          outbox.slice(before).filter((m) => m.to === bob.email).length,
-          0,
-          "Monday in UTC: Bob's Sunday digest isn't due",
-        );
-
-        await runDailyDigest(b.repo, mailer, runDate, { timeZone: "America/New_York" }, silent);
-        const bobs = outbox.slice(before).filter((m) => m.to === bob.email);
-        assert.equal(bobs.length, 1, "Sunday in New York: it is");
-        assert.match(bobs[0].subject, /Sunday, September 27/, "the email is dated in that zone too");
-
-        const [run] = (await as(bob)("GET", "/digests")).body;
-        assert.equal(String(run.run_date).slice(0, 10), "2026-09-27", "run_date is the local date");
-        assert.equal(run.cadence, "weekly");
-        assert.ok(bobs[0].html.includes(videos.s4), "only the upload since he subscribed");
-        assert.ok(!bobs[0].html.includes(videos.s1));
+        const [row] = (await as(bob)("GET", "/subscriptions")).body;
+        assert.equal(row.cadence, "daily");
       });
     });
   }

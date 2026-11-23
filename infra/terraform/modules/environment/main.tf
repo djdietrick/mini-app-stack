@@ -162,6 +162,9 @@ module "secrets" {
 
   names = [
     "YOUTUBE_API_KEY",
+    # Nothing reads SMTP_PASSWORD since ytdigest dropped its email digest. It
+    # stays listed until it is removed on purpose: taking it out of this list
+    # destroys the secret on the next apply.
     "SMTP_PASSWORD",
   ]
 

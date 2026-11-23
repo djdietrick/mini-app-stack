@@ -4,22 +4,21 @@ import fastifyHttpProxy from "@fastify/http-proxy";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPostgresClient, createRedisClient } from "@stack/db-clients";
-import { createMailer } from "@stack/mailer";
 import { AuthClient } from "@stack/auth-client";
 import { stackVerifier } from "@stack/auth-client/verifier";
 import { redisLease, runMigrations } from "@stack/service-kit";
 import { toFastifyPlugin } from "@stack/service-kit/fastify";
 import { config } from "./config.js";
-import type { DigestOptions } from "./domain/digest.js";
+import type { BaselineOptions } from "./domain/rules/evaluate.js";
 import { ytdigestRoutes } from "./domain/routes.js";
 import { createYouTubeClient } from "./domain/youtube.js";
 import { createPostgresYtdigestRepo } from "./repo/postgres.js";
 import { startSchedulers } from "./scheduler.js";
 
 /**
- * Self-hosted entrypoint. Routing, polling and digest logic live in
- * src/domain; this file only wires the Postgres/Redis/SMTP/apps/auth
- * implementations into it, serves the SPA and starts the schedulers. The
+ * Self-hosted entrypoint. Routing, polling and the feed live in src/domain;
+ * this file only wires the Postgres/Redis/apps/auth implementations into it,
+ * serves the SPA and starts the poll timer. The
  * cloud entrypoint (functions/src/index.ts) wires Firestore and Firebase into
  * the same code.
  */
@@ -32,16 +31,9 @@ await runMigrations(pg, join(here, "..", "migrations"));
 const repo = createPostgresYtdigestRepo(pg);
 const redis = createRedisClient({ url: config.redisUrl, keyPrefix: "ytdigest:" });
 const youtube = createYouTubeClient(config.youtubeApiKey);
-const mailer = createMailer({
-  host: config.smtp.host,
-  port: config.smtp.port,
-  user: config.smtp.user,
-  password: config.smtp.password,
-  from: config.mailFrom,
-});
-const digest: DigestOptions = {
-  timeZone: config.digestTimeZone,
-  baseline: { sampleSize: config.baselineSampleSize, minHistory: config.baselineMinHistory },
+const baseline: BaselineOptions = {
+  sampleSize: config.baselineSampleSize,
+  minHistory: config.baselineMinHistory,
 };
 
 const auth = new AuthClient({
@@ -53,7 +45,7 @@ const auth = new AuthClient({
 const app = Fastify({ logger: true });
 
 await app.register(
-  toFastifyPlugin(ytdigestRoutes({ youtube, mailer, digest }), {
+  toFastifyPlugin(ytdigestRoutes({ youtube, baseline }), {
     repo,
     verify: stackVerifier(auth).verify,
     logger: app.log,
@@ -81,16 +73,12 @@ app.setNotFoundHandler((req, reply) => {
 startSchedulers({
   repo,
   youtube,
-  mailer,
   lease: redisLease(redis),
   pollIntervalMinutes: config.pollIntervalMinutes,
-  digestSendCron: config.digestSendCron,
-  digest,
 });
 
 const shutdown = async () => {
   await app.close();
-  await mailer.close();
   redis.disconnect();
   await repo.close();
 };

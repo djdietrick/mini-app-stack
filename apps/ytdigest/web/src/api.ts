@@ -52,29 +52,6 @@ export type RuleCondition =
   | { type: "engagement"; metric: "like_ratio"; comparedTo: "channel_baseline"; threshold: number }
   | { type: "duration"; min?: number; max?: number };
 
-export interface DigestRun {
-  id: string;
-  cadence: Cadence;
-  run_date: string;
-  sent_at: string | null;
-  item_count: number;
-}
-
-export interface DigestItem {
-  video_id: string;
-  /** Link with this; video_id is an internal id on the self-hosted backend. */
-  youtube_video_id: string;
-  title: string;
-  thumbnail_url: string | null;
-  channel_title: string;
-  matched_rule_id: string | null;
-  reason_json: string[] | null;
-}
-
-export interface DigestDetail extends DigestRun {
-  items: DigestItem[];
-}
-
 /** One video in the feed. Link, embed and route with youtube_video_id. */
 export interface FeedItem {
   video_id: string;
@@ -148,13 +125,11 @@ export const api = {
   subscriptions: () => request<Subscription[]>(`/subscriptions`),
   createSubscription: (body: {
     query: string;
-    cadence: Cadence;
-    digestDayOfWeek?: number;
     notifyMode: NotifyMode;
   }) => request<{ id: string; channelId: string }>(`/subscriptions`, { method: "POST", body: JSON.stringify(body) }),
   updateSubscription: (
     id: string,
-    body: Partial<{ cadence: Cadence; digestDayOfWeek: number | null; notifyMode: NotifyMode }>,
+    body: Partial<{ notifyMode: NotifyMode }>,
   ) => request<{ ok: true }>(`/subscriptions/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteSubscription: (id: string) => request<{ ok: true }>(`/subscriptions/${id}`, { method: "DELETE" }),
 
@@ -191,7 +166,4 @@ export const api = {
       keepalive: true,
     }),
 
-  digests: () => request<DigestRun[]>(`/digests`),
-  digest: (id: string) => request<DigestDetail>(`/digests/${id}`),
-  runDigestNow: () => request<{ sent: boolean; itemCount: number }>(`/digests/run-now`, { method: "POST" }),
 };
