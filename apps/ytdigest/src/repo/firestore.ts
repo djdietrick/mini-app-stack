@@ -4,7 +4,6 @@ import type { DocumentReference, Firestore, WriteBatch } from "@google-cloud/fir
 import type { RuleGroup } from "../domain/rules/types.js";
 import type {
   Cadence,
-  DigestItemRow,
   FeedCandidate,
   NotifyMode,
   RuleScope,
@@ -22,26 +21,19 @@ import type { YtdigestRepo } from "./types.js";
  *   snapshots/{uuid}                   one per poll per tracked video
  *   subscriptions/{uuid}
  *   rules/{uuid}                       ruleJson stored as a map
- *   digest_runs/{uuid}                 lines[] embedded, with the video and
- *                                      channel titles copied onto each line
- *   notified/{userId}_{videoId}        deterministic id = the old composite PK
- *   progress/{userId}_{videoId}        likewise; read with getAll, so no index
- * plus the unprefixed `users/{uid}` mirror the auth function maintains, which
- * stands in for shared.users.
+ *   progress/{userId}_{videoId}        deterministic id; read with getAll, so no index
  *
  * Why the YouTube ids are document ids: channels and videos are unique by them
  * already (the SQL's UNIQUE constraints), so a deterministic id gets
  * uniqueness without a transaction. It also means video_id and
- * youtube_video_id coincide on this backend. Subscription, rule and digest ids
- * stay UUIDs, because routes validate those with z.string().uuid().
+ * youtube_video_id coincide on this backend. Subscription and rule ids stay
+ * UUIDs, because routes validate those with z.string().uuid().
  *
- * Digest lines are denormalised because GET /digests/:id joined videos and
- * channels for display; copying the titles at send time is the Firestore
- * equivalent, and a digest is a record of what was sent anyway.
+ * Collections left by the old email digest (digest_runs, notified) are no
+ * longer read or written.
  */
 export interface FirestoreYtdigestOptions {
   prefix?: string;
-  usersCollection?: string;
 }
 
 interface ChannelDoc {
@@ -99,30 +91,6 @@ interface RuleDoc {
   createdAt: Timestamp;
 }
 
-interface DigestLineDoc {
-  videoId: string;
-  youtubeVideoId: string;
-  title: string;
-  thumbnailUrl: string | null;
-  channelTitle: string;
-  subscriptionId: string;
-  matchedRuleId: string | null;
-  reasons: string[];
-}
-
-interface DigestRunDoc {
-  userId: string;
-  cadence: Cadence;
-  runDate: string;
-  sentAt: Timestamp;
-  createdAt: Timestamp;
-  lines: DigestLineDoc[];
-}
-
-interface UserDoc {
-  email?: string | null;
-}
-
 const iso = (t: Timestamp) => t.toDate().toISOString();
 const isoOrNull = (t: Timestamp | null) => (t ? iso(t) : null);
 
@@ -135,17 +103,14 @@ const IN_LIMIT = 30;
 
 export function createFirestoreYtdigestRepo(
   db: Firestore,
-  { prefix = "ytdigest_", usersCollection = "users" }: FirestoreYtdigestOptions = {},
+  { prefix = "ytdigest_" }: FirestoreYtdigestOptions = {},
 ): YtdigestRepo {
   const channels = db.collection(`${prefix}channels`);
   const videos = db.collection(`${prefix}videos`);
   const snapshots = db.collection(`${prefix}snapshots`);
   const subscriptions = db.collection(`${prefix}subscriptions`);
   const rules = db.collection(`${prefix}rules`);
-  const runs = db.collection(`${prefix}digest_runs`);
-  const notified = db.collection(`${prefix}notified`);
   const progress = db.collection(`${prefix}progress`);
-  const users = db.collection(usersCollection);
 
   async function commitInChunks(writes: ((b: WriteBatch) => void)[]): Promise<void> {
     for (let i = 0; i < writes.length; i += BATCH_LIMIT) {
@@ -314,23 +279,11 @@ export function createFirestoreYtdigestRepo(
     async deleteSubscription(userId, id) {
       if (!(await mutateOwned<SubscriptionDoc>(subscriptions.doc(id), userId, null))) return false;
 
-      // ON DELETE CASCADE: the subscription's rules, and its lines in past
-      // digests. Neither needs to be atomic with the delete; a rule for a
-      // subscription that no longer exists never matches anything.
-      const [ownRules, pastRuns] = await Promise.all([
-        rules.where("subscriptionId", "==", id).get(),
-        runs.where("userId", "==", userId).get(),
-      ]);
-      await commitInChunks([
-        ...ownRules.docs.map((d) => (b: WriteBatch) => b.delete(d.ref)),
-        ...pastRuns.docs
-          .filter((d) => (d.data() as DigestRunDoc).lines.some((l) => l.subscriptionId === id))
-          .map((d) => (b: WriteBatch) =>
-            b.update(d.ref, {
-              lines: (d.data() as DigestRunDoc).lines.filter((l) => l.subscriptionId !== id),
-            }),
-          ),
-      ]);
+      // ON DELETE CASCADE: the subscription's rules. Not atomic with the
+      // delete; a rule for a subscription that no longer exists never
+      // matches anything.
+      const ownRules = await rules.where("subscriptionId", "==", id).get();
+      await commitInChunks(ownRules.docs.map((d) => (b: WriteBatch) => b.delete(d.ref)));
       return true;
     },
 
@@ -379,46 +332,6 @@ export function createFirestoreYtdigestRepo(
     },
 
     deleteRule: (userId, id) => mutateOwned<RuleDoc>(rules.doc(id), userId, null),
-
-    // ---------- digests (HTTP) ----------
-
-    async listDigests(userId) {
-      const snap = await runs
-        .where("userId", "==", userId)
-        .orderBy("runDate", "desc")
-        .orderBy("createdAt", "desc")
-        .limit(50)
-        .get();
-      return snap.docs.map((d) => {
-        const r = d.data() as DigestRunDoc;
-        return {
-          id: d.id,
-          cadence: r.cadence,
-          run_date: r.runDate,
-          sent_at: iso(r.sentAt),
-          item_count: r.lines.length,
-        };
-      });
-    },
-
-    async getDigest(userId, id) {
-      const snap = await runs.doc(id).get();
-      if (!snap.exists) return null;
-      const r = snap.data() as DigestRunDoc;
-      if (r.userId !== userId) return null;
-      const items: DigestItemRow[] = [...r.lines]
-        .sort((a, b) => a.channelTitle.localeCompare(b.channelTitle))
-        .map((l) => ({
-          video_id: l.videoId,
-          youtube_video_id: l.youtubeVideoId,
-          title: l.title,
-          thumbnail_url: l.thumbnailUrl,
-          channel_title: l.channelTitle,
-          matched_rule_id: l.matchedRuleId,
-          reason_json: l.reasons,
-        }));
-      return { id: snap.id, cadence: r.cadence, run_date: r.runDate, sent_at: iso(r.sentAt), items };
-    },
 
     // ---------- feed ----------
 
@@ -578,72 +491,7 @@ export function createFirestoreYtdigestRepo(
       await channels.doc(channelId).update({ lastPolledAt: Timestamp.now() });
     },
 
-    // ---------- digest job ----------
-
-    async digestRecipients() {
-      const subs = await subscriptions.get();
-      const userIds = [...new Set(subs.docs.map((d) => (d.data() as SubscriptionDoc).userId))];
-      if (userIds.length === 0) return [];
-      const snaps = await db.getAll(...userIds.map((id) => users.doc(id)));
-      // The JOIN on shared.users: no mirror doc, or no address, means no mail.
-      return snaps.flatMap((s) => {
-        const email = s.exists ? (s.data() as UserDoc).email : null;
-        return email ? [{ userId: s.id, email }] : [];
-      });
-    },
-
-    async dueSubscriptions(userId, dayOfWeek, force) {
-      const subs = await userSubscriptions(userId);
-      const due = subs.filter(
-        ({ doc }) =>
-          force ||
-          doc.cadence === "daily" ||
-          (doc.cadence === "weekly" && doc.digestDayOfWeek === dayOfWeek),
-      );
-      const byId = await channelsById(due.map((s) => s.doc.channelId));
-      return due
-        .filter((s) => byId.has(s.doc.channelId))
-        .map(({ id, doc }) => ({
-          id,
-          channelId: doc.channelId,
-          channelTitle: byId.get(doc.channelId)!.title,
-          cadence: doc.cadence,
-          notifyMode: doc.notifyMode,
-          lastDigestedAt: doc.lastDigestedAt?.toDate() ?? null,
-          createdAt: doc.createdAt.toDate(),
-        }));
-    },
-
-    async candidateVideos(userId, sub) {
-      const since = Timestamp.fromDate(sub.lastDigestedAt ?? new Date(0));
-      const snap = await videos
-        .where("channelId", "==", sub.channelId)
-        .where("firstSeenAt", ">", since)
-        .get();
-      if (snap.empty) return [];
-
-      // NOT EXISTS (notified_videos): one batched read of the would-be ids.
-      const sent = await db.getAll(...snap.docs.map((d) => notified.doc(`${userId}_${d.id}`)));
-      const alreadySent = new Set(sent.filter((s) => s.exists).map((s) => s.id));
-
-      // published_at >= the subscription's start, in memory: a second
-      // inequality would need its own composite index.
-      const from = sub.createdAt.getTime();
-      return snap.docs
-        .filter((d) => !alreadySent.has(`${userId}_${d.id}`))
-        .map((d) => ({ id: d.id, v: d.data() as VideoDoc }))
-        .filter(({ v }) => v.publishedAt.toMillis() >= from)
-        .sort((a, b) => a.v.publishedAt.toMillis() - b.v.publishedAt.toMillis())
-        .map(({ id, v }) => ({
-          id,
-          youtubeVideoId: id,
-          title: v.title,
-          description: v.description,
-          publishedAt: v.publishedAt.toDate(),
-          durationSeconds: v.durationSeconds,
-          thumbnailUrl: v.thumbnailUrl,
-        }));
-    },
+    // ---------- rule evaluation ----------
 
     async enabledRules(userId, subscriptionId) {
       const snap = await rules.where("userId", "==", userId).get();
@@ -688,40 +536,6 @@ export function createFirestoreYtdigestRepo(
         .limit(1)
         .get();
       return snap.empty ? null : toSnapshot(snap.docs[0].data() as SnapshotDoc);
-    },
-
-    async markDigested(subscriptionIds, runDate) {
-      const at = Timestamp.fromDate(runDate);
-      await commitInChunks(
-        subscriptionIds.map((id) => (b: WriteBatch) =>
-          b.update(subscriptions.doc(id), { lastDigestedAt: at }),
-        ),
-      );
-    },
-
-    async recordDigest(userId, cadence, runDate, lines) {
-      // ON CONFLICT (digest_run_id, video_id) DO NOTHING: one line per video.
-      const seen = new Set<string>();
-      const unique = lines.filter((l) => !seen.has(l.videoId) && seen.add(l.videoId));
-
-      const now = Timestamp.now();
-      // The run plus one notified doc per video in a single batch, so a
-      // recorded digest and "don't send these again" can't come apart. A
-      // batch caps at 500 writes; a digest of 499 videos is far past what
-      // anyone reads in one email.
-      const batch = db.batch();
-      batch.set(runs.doc(randomUUID()), {
-        userId,
-        cadence,
-        runDate,
-        sentAt: now,
-        createdAt: now,
-        lines: unique,
-      } satisfies DigestRunDoc);
-      for (const l of unique) {
-        batch.set(notified.doc(`${userId}_${l.videoId}`), { userId, videoId: l.videoId, notifiedAt: now });
-      }
-      await batch.commit();
     },
 
     async close() {

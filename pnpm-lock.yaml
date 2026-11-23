@@ -23,9 +23,6 @@ importers:
       '@stack/highroller':
         specifier: workspace:*
         version: link:apps/highroller
-      '@stack/mailer':
-        specifier: workspace:*
-        version: link:packages/mailer
       '@stack/pantry':
         specifier: workspace:*
         version: link:apps/pantry
@@ -473,18 +470,12 @@ importers:
       '@stack/db-clients':
         specifier: workspace:*
         version: link:../../packages/db-clients
-      '@stack/mailer':
-        specifier: workspace:*
-        version: link:../../packages/mailer
       '@stack/service-kit':
         specifier: workspace:*
         version: link:../../packages/service-kit
       fastify:
         specifier: ^5.0.0
         version: 5.8.5
-      node-cron:
-        specifier: ^3.0.3
-        version: 3.0.3
       tsx:
         specifier: ^4.19.0
         version: 4.22.1
@@ -498,9 +489,6 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.19
-      '@types/node-cron':
-        specifier: ^3.0.11
-        version: 3.0.11
       '@types/react':
         specifier: ^18.3.0
         version: 18.3.28
@@ -549,9 +537,6 @@ importers:
       firebase-functions:
         specifier: ^6.1.0
         version: 6.6.0(firebase-admin@13.10.0(@firebase/app-compat@0.4.2)(@firebase/app@0.13.2))
-      nodemailer:
-        specifier: ^6.9.14
-        version: 6.10.1
     devDependencies:
       '@types/express':
         specifier: ^4.17.21
@@ -623,22 +608,6 @@ importers:
       drizzle-kit:
         specifier: ^0.28.0
         version: 0.28.1
-      typescript:
-        specifier: ^5.6.0
-        version: 5.9.3
-
-  packages/mailer:
-    dependencies:
-      nodemailer:
-        specifier: ^6.9.14
-        version: 6.10.1
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.19
-      '@types/nodemailer':
-        specifier: ^6.4.15
-        version: 6.4.24
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -2345,14 +2314,8 @@ packages:
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
-  '@types/node-cron@3.0.11':
-    resolution: {integrity: sha512-0ikrnug3/IyneSHqCBeslAhlK2aBfYek1fGo4bP4QnZPmiqSGRK+Oy7ZMisLWkesffJvQ1cqAcBnJC+8+nxIAg==}
-
   '@types/node@22.19.19':
     resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==}
-
-  '@types/nodemailer@6.4.24':
-    resolution: {integrity: sha512-Ww4u0rT9wQNXh4JiQaIwx3QWdcOFXzOjQA2zc+jtFYNmQiT4mIUqcDin51bDFdkzKubFnQCZNK7FIHlPKQ/q9w==}
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
@@ -4134,10 +4097,6 @@ packages:
     resolution: {integrity: sha512-9MdFxmkKaOYVTV+XVRG8ArDwwQ77XIgIPyKASB1k3JPq3M8fGQQQE3YpMOrKm6g//Ktx8ivZr8xo1Qmtqub+GA==}
     engines: {node: ^18 || ^20 || >= 21}
 
-  node-cron@3.0.3:
-    resolution: {integrity: sha512-dOal67//nohNgYWb+nWmg5dkFdIwDm8EpeGYMekPMrngV3637lqnX0lbUcCtgibHTz6SEz7DAIjKvKDFYCnO1A==}
-    engines: {node: '>=6.0.0'}
-
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
     engines: {node: '>=10.5.0'}
@@ -4171,10 +4130,6 @@ packages:
 
   node-releases@2.0.44:
     resolution: {integrity: sha512-5WUyunoPMsvvEhS8AxHtRzP+oA8UCkJ7YRxatWKjngndhDGLiqEVAQKWjFAiAiuL8zMRGzGSJxFnLetoa43qGQ==}
-
-  nodemailer@6.10.1:
-    resolution: {integrity: sha512-Z+iLaBGVaSjbIzQ4pX6XV41HrooLsQ10ZWPUehGmuantvzWoDVBnmsdUcOIDM1t+yPor5pDhVlDESgOMEGxhHA==}
-    engines: {node: '>=6.0.0'}
 
   nopt@10.0.1:
     resolution: {integrity: sha512-df3sBr/6ax9hSGuC3CspvLlbnX8cP5L5nZwXF8cGN8l0zSWR6BvzmQ6jPUKjvo6+/xdpkNvEcucBNUdBeeV13g==}
@@ -5034,11 +4989,6 @@ packages:
 
   uuid@14.0.1:
     resolution: {integrity: sha512-6ZxzVpzDXDa3bJWaHilVayA+BH/1zmxCJoVgvmqJnid/gPoKHxUrS/aC/T6LGQtNHT+XHG9fXPJB4d+IrU30Ew==}
-    hasBin: true
-
-  uuid@8.3.2:
-    resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@9.0.1:
@@ -6721,15 +6671,9 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
-  '@types/node-cron@3.0.11': {}
-
   '@types/node@22.19.19':
     dependencies:
       undici-types: 6.21.0
-
-  '@types/nodemailer@6.4.24':
-    dependencies:
-      '@types/node': 22.19.19
 
   '@types/prop-types@15.7.15': {}
 
@@ -8795,10 +8739,6 @@ snapshots:
 
   node-addon-api@8.7.0: {}
 
-  node-cron@3.0.3:
-    dependencies:
-      uuid: 8.3.2
-
   node-domexception@1.0.0: {}
 
   node-emoji@2.2.0:
@@ -8835,8 +8775,6 @@ snapshots:
     optional: true
 
   node-releases@2.0.44: {}
-
-  nodemailer@6.10.1: {}
 
   nopt@10.0.1:
     dependencies:
@@ -9857,8 +9795,6 @@ snapshots:
   utils-merge@1.0.1: {}
 
   uuid@14.0.1: {}
-
-  uuid@8.3.2: {}
 
   uuid@9.0.1: {}
 

@@ -7,7 +7,6 @@ import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { firebaseVerifier } from "@stack/auth-client/firebase";
-import { createMailer } from "@stack/mailer";
 import { firestoreCache, firestoreLease } from "@stack/service-kit";
 import { toExpressApp } from "@stack/service-kit/express";
 import { crateRoutes } from "@stack/crate/domain";
@@ -25,7 +24,6 @@ import { createFirestoreFretworkRepo } from "@stack/fretwork/repo/firestore";
 import { pantryRoutes, resolvePantryScope } from "@stack/pantry/domain";
 import { createFirestorePantryRepo } from "@stack/pantry/repo/firestore";
 import { ytdigestRoutes } from "@stack/ytdigest/domain";
-import { type DigestMailer, type DigestOptions, runDailyDigest } from "@stack/ytdigest/domain/digest";
 import { pollChannels } from "@stack/ytdigest/domain/poll";
 import { createYouTubeClient, type YouTubeGateway } from "@stack/ytdigest/domain/youtube";
 import { createFirestoreYtdigestRepo } from "@stack/ytdigest/repo/firestore";
@@ -151,20 +149,11 @@ export const fretworkApi = onRequest(
  * list a secret can read it.
  */
 const YOUTUBE_API_KEY = defineSecret("YOUTUBE_API_KEY");
-const SMTP_PASSWORD = defineSecret("SMTP_PASSWORD");
-
-/**
- * The daily send and the weekly-digest weekday follow this zone. Cloud
- * Functions run in UTC; self-hosted, the server's own zone applies unless
- * DIGEST_TIME_ZONE is set.
- */
-const DIGEST_TIME_ZONE = "America/New_York";
-const digestOptions: DigestOptions = { timeZone: DIGEST_TIME_ZONE };
 
 /**
  * Secret values exist only while a function is handling a call, not at
  * module load (which is also when the CLI inspects this file during deploy).
- * So the YouTube client and the SMTP transport are built on first use.
+ * So the YouTube client is built on first use.
  */
 let youtubeClient: YouTubeGateway | undefined;
 const youtube: YouTubeGateway = {
@@ -175,34 +164,14 @@ const youtube: YouTubeGateway = {
     (youtubeClient ??= createYouTubeClient(YOUTUBE_API_KEY.value())).batchGetVideoStats(ids),
 };
 
-let smtp: ReturnType<typeof createMailer> | undefined;
-const mailer: DigestMailer = {
-  send: (mail) =>
-    (smtp ??= createMailer({
-      // Non-secret settings, written to functions/.env by the deploy workflow
-      // from repository variables.
-      host: requiredEnv("SMTP_HOST"),
-      port: Number(process.env.SMTP_PORT || 587),
-      user: requiredEnv("SMTP_USER"),
-      password: SMTP_PASSWORD.value(),
-      from: requiredEnv("MAIL_FROM"),
-    })).send(mail),
-};
-
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set; see docs/firebase-setup.md`);
-  return value;
-}
-
 const ytdigestRepo = createFirestoreYtdigestRepo(db);
 
 export const ytdigestApi = onRequest(
-  // run-now sends mail, and subscribing resolves the channel on YouTube.
-  { serviceAccount: ytdigestServiceAccount, secrets: [YOUTUBE_API_KEY, SMTP_PASSWORD] },
+  // Subscribing resolves the channel on YouTube.
+  { serviceAccount: ytdigestServiceAccount, secrets: [YOUTUBE_API_KEY] },
   mount(
     "/api",
-    toExpressApp(ytdigestRoutes({ youtube, mailer, digest: digestOptions }), {
+    toExpressApp(ytdigestRoutes({ youtube }), {
       repo: ytdigestRepo,
       verify: verifier.verify,
     }),
@@ -216,28 +185,13 @@ export const ytdigestApi = onRequest(
  */
 export const ytdigestPoll = onSchedule(
   {
-    schedule: "every 180 minutes",
-    timeZone: DIGEST_TIME_ZONE,
+    schedule: "every 60 minutes",
     serviceAccount: ytdigestServiceAccount,
     secrets: [YOUTUBE_API_KEY],
     timeoutSeconds: 540,
   },
   async () => {
     await pollChannels({ repo: ytdigestRepo, youtube, lease: firestoreLease(db) });
-  },
-);
-
-/** The self-hosted `DIGEST_SEND_CRON`, at 08:00 New York time. */
-export const ytdigestDigest = onSchedule(
-  {
-    schedule: "0 8 * * *",
-    timeZone: DIGEST_TIME_ZONE,
-    serviceAccount: ytdigestServiceAccount,
-    secrets: [SMTP_PASSWORD],
-    timeoutSeconds: 540,
-  },
-  async () => {
-    await runDailyDigest(ytdigestRepo, mailer, new Date(), digestOptions);
   },
 );
 

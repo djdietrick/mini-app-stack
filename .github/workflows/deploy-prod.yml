@@ -93,11 +93,7 @@ jobs:
           FRETWORK_FUNCTION_SA: ${{ vars.PROD_FRETWORK_FUNCTION_SA }}
           CRUMB_FUNCTION_SA: ${{ vars.PROD_CRUMB_FUNCTION_SA }}
           HIGHROLLER_FUNCTION_SA: ${{ vars.PROD_HIGHROLLER_FUNCTION_SA }}
-          # ytdigest's non-secret mail settings. SMTP_PASSWORD is in Secret
-          # Manager, bound in functions/src/index.ts.
-          SMTP_HOST: ${{ vars.PROD_SMTP_HOST }}
-          SMTP_PORT: ${{ vars.PROD_SMTP_PORT }}
-          SMTP_USER: ${{ vars.PROD_SMTP_USER }}
+          # crumb's Web Push contact address (vapidSubject in apps/crumb).
           MAIL_FROM: ${{ vars.PROD_MAIL_FROM }}
           AUTH_FUNCTION_SA: ${{ vars.PROD_AUTH_FUNCTION_SA }}
         run: |
@@ -110,15 +106,10 @@ jobs:
           : "${FRETWORK_FUNCTION_SA:?set the PROD_FRETWORK_FUNCTION_SA repository variable}"
           : "${CRUMB_FUNCTION_SA:?set the PROD_CRUMB_FUNCTION_SA repository variable}"
           : "${HIGHROLLER_FUNCTION_SA:?set the PROD_HIGHROLLER_FUNCTION_SA repository variable}"
-          : "${SMTP_HOST:?set the PROD_SMTP_HOST repository variable}"
-          : "${SMTP_USER:?set the PROD_SMTP_USER repository variable}"
           : "${MAIL_FROM:?set the PROD_MAIL_FROM repository variable}"
           # The Firebase CLI deploys functions/.env as the functions' runtime
           # environment. Git-ignored; it only ever exists on the runner.
           {
-            printf 'SMTP_HOST=%s\n' "$SMTP_HOST"
-            printf 'SMTP_PORT=%s\n' "${SMTP_PORT:-587}"
-            printf 'SMTP_USER=%s\n' "$SMTP_USER"
             printf 'MAIL_FROM="%s"\n' "$MAIL_FROM"
           } > functions/.env
           pnpm exec firebase deploy --only functions,hosting \

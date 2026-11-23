@@ -151,15 +151,7 @@ services:
       AUTH_VERIFY_SECRET: ${AUTH_VERIFY_SECRET:?set AUTH_VERIFY_SECRET in .env}
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-stack_session}
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:?set YOUTUBE_API_KEY in .env}
-      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:?set SMTP_USER in .env}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:?set SMTP_PASSWORD in .env}
-      MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM in .env}
-      POLL_INTERVAL_MINUTES: ${POLL_INTERVAL_MINUTES:-180}
-      DIGEST_SEND_CRON: ${DIGEST_SEND_CRON:-0 8 * * *}
-      # Optional IANA zone for the send time and weekly day; unset = server time.
-      DIGEST_TIME_ZONE: ${DIGEST_TIME_ZONE:-}
+      POLL_INTERVAL_MINUTES: ${POLL_INTERVAL_MINUTES:-60}
     ports:
       - "${YTDIGEST_PORT:-3103}:3103"
     depends_on:

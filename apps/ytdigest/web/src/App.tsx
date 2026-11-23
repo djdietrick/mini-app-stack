@@ -4,14 +4,12 @@ import { Feed } from "./screens/Feed";
 import { Watch } from "./screens/Watch";
 import { Subscriptions } from "./screens/Subscriptions";
 import { Rules } from "./screens/Rules";
-import { Digests } from "./screens/Digests";
 import { ThemePicker } from "./components/ThemePicker";
 
 const TABS: { route: Route; label: string }[] = [
   { route: { name: "feed" }, label: "Feed" },
   { route: { name: "channels" }, label: "Channels" },
   { route: { name: "rules" }, label: "Rules" },
-  { route: { name: "digests" }, label: "Digests" },
 ];
 
 export function App() {
@@ -77,7 +75,6 @@ export function App() {
         {watching && <Watch id={route.id} onBack={backToFeed} />}
         {route.name === "channels" && <Subscriptions />}
         {route.name === "rules" && <Rules />}
-        {route.name === "digests" && <Digests />}
       </div>
     </div>
   );

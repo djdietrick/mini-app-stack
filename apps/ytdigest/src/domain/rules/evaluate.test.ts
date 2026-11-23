@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { PastVideo, Snapshot } from "../types.js";
-import { dayOfWeek, runDateString } from "../digest.js";
 import { type BaselineSource, evaluateRule, type VideoForEvaluation } from "./evaluate.js";
 
 /**
@@ -106,20 +105,5 @@ describe("rule evaluation", () => {
       ],
     };
     assert.equal((await evaluateRule(history(), rule, candidate(1, 0))).matched, true);
-  });
-});
-
-describe("digest calendar", () => {
-  const lateSundayInNewYork = new Date("2026-09-28T02:00:00Z");
-
-  it("takes the weekday and date in the configured zone", () => {
-    assert.equal(dayOfWeek(lateSundayInNewYork, "America/New_York"), 0);
-    assert.equal(dayOfWeek(lateSundayInNewYork, "UTC"), 1);
-    assert.equal(runDateString(lateSundayInNewYork, "America/New_York"), "2026-09-27");
-  });
-
-  it("keeps the old behaviour when no zone is set", () => {
-    assert.equal(dayOfWeek(lateSundayInNewYork), lateSundayInNewYork.getDay());
-    assert.equal(runDateString(lateSundayInNewYork), "2026-09-28", "the UTC date, as before");
   });
 });

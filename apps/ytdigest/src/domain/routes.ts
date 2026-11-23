@@ -1,7 +1,6 @@
 import { type AnyRoute, badRequest, conflict, createRouteBuilder, notFound } from "@stack/service-kit";
 import { z } from "zod";
 import type { YtdigestRepo } from "../repo/types.js";
-import { type DigestMailer, type DigestOptions, sendDigest } from "./digest.js";
 import {
   buildFeed,
   decodeCursor,
@@ -17,21 +16,22 @@ import {
   patchSubscriptionBody,
   watchProgressBody,
 } from "./types.js";
+import type { BaselineOptions } from "./rules/evaluate.js";
 import type { YouTubeGateway } from "./youtube.js";
 
 /**
  * Every ytdigest endpoint, transport-free. Fastify serves this table
  * self-hosted; an Express-backed Firebase Function serves it in the cloud.
- * The background work (polling, the daily send) is in poll.ts and digest.ts,
- * driven by each target's own scheduler.
+ * The background work (polling) is in poll.ts, driven by each target's own
+ * scheduler.
  *
  * Status codes and error bodies match what apps/ytdigest/web/src/api.ts has
  * always received, with one deliberate exception, marked below.
  */
 export interface YtdigestDeps {
   youtube: YouTubeGateway;
-  mailer: DigestMailer;
-  digest?: DigestOptions;
+  /** How the performance and engagement rules compute a channel's baseline. */
+  baseline?: BaselineOptions;
 }
 
 const route = createRouteBuilder<YtdigestRepo>();
@@ -196,7 +196,7 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
       handler: async ({ repo, user }, { query }) => {
         const before = query.before === undefined ? null : decodeCursor(query.before);
         if (query.before !== undefined && !before) throw badRequest("invalid cursor");
-        return buildFeed(repo, user.userId, { before, limit: query.limit }, deps.digest?.baseline);
+        return buildFeed(repo, user.userId, { before, limit: query.limit }, deps.baseline);
       },
     }),
 
@@ -205,7 +205,7 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
       path: "/videos/:youtubeVideoId",
       input: { params: youtubeVideoParam },
       handler: async ({ repo, user }, { params }) => {
-        const video = await videoDetail(repo, user.userId, params.youtubeVideoId, deps.digest?.baseline);
+        const video = await videoDetail(repo, user.userId, params.youtubeVideoId, deps.baseline);
         if (!video) throw notFound();
         return video;
       },
@@ -219,32 +219,6 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
         if (!(await saveWatchProgress(repo, user.userId, params.youtubeVideoId, body))) throw notFound();
         return ok;
       },
-    }),
-
-    // ---------- digests ----------
-
-    route({
-      method: "GET",
-      path: "/digests",
-      handler: async ({ repo, user }) => repo.listDigests(user.userId),
-    }),
-
-    route({
-      method: "GET",
-      path: "/digests/:id",
-      input: { params: idParam },
-      handler: async ({ repo, user }, { params }) => {
-        const digest = await repo.getDigest(user.userId, params.id);
-        if (!digest) throw notFound();
-        return digest;
-      },
-    }),
-
-    route({
-      method: "POST",
-      path: "/digests/run-now",
-      handler: async ({ repo, user }) =>
-        sendDigest(repo, deps.mailer, user.userId, user.email, new Date(), true, deps.digest),
     }),
   ];
 }

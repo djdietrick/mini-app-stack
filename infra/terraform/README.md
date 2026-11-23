@@ -101,6 +101,7 @@ secret values live in this repo or in state. Add them once per environment:
 ```bash
 printf '%s' "$YOUTUBE_API_KEY" | \
   gcloud secrets versions add YOUTUBE_API_KEY --project PROJECT_ID --data-file=-
-printf '%s' "$SMTP_PASSWORD" | \
-  gcloud secrets versions add SMTP_PASSWORD --project PROJECT_ID --data-file=-
 ```
+
+`SMTP_PASSWORD` is still created but no longer read by anything; it needs no
+value.
