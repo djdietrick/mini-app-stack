@@ -6,6 +6,11 @@ export function formatViews(n: number): string {
   return `${compact.format(n)} view${n === 1 ? "" : "s"}`;
 }
 
+/** "1.2M subscribers". */
+export function formatCount(n: number, noun: string): string {
+  return `${compact.format(n)} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 /** 4:13, 1:02:07. */
 export function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);

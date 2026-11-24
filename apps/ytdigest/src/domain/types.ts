@@ -107,6 +107,35 @@ export interface ResolvedChannel {
   uploadsPlaylistId: string;
 }
 
+/** One channel found by name; GET /channels/search adds the user's subscription id. */
+export interface ChannelSearchResult {
+  youtubeChannelId: string;
+  title: string;
+  /** "@name", when the channel has one. */
+  handle: string | null;
+  description: string | null;
+  thumbnailUrl: string | null;
+  /** Null when the channel hides it. */
+  subscriberCount: number | null;
+  videoCount: number | null;
+}
+
+export interface ChannelSearchRow extends ChannelSearchResult {
+  /** This user's subscription to it, or null. */
+  subscriptionId: string | null;
+}
+
+/** One of a channel's videos, whether or not it passes the filters; `matched` says. */
+export interface ChannelVideoRow extends FeedItemRow {
+  matched: boolean;
+}
+
+export interface ChannelVideosPage {
+  items: ChannelVideoRow[];
+  /** Pass back as `?before=` for the next page; null at the end. */
+  next: string | null;
+}
+
 export interface UploadListItem {
   youtubeVideoId: string;
   title: string;

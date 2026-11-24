@@ -17,6 +17,20 @@ export interface ResolvedChannel {
   uploadsPlaylistId: string;
 }
 
+/** One channel found by GET /channels/search. */
+export interface ChannelSearchResult {
+  youtubeChannelId: string;
+  title: string;
+  handle: string | null;
+  description: string | null;
+  thumbnailUrl: string | null;
+  /** Null when the channel hides it. */
+  subscriberCount: number | null;
+  videoCount: number | null;
+  /** Yours, when you already follow it. */
+  subscriptionId: string | null;
+}
+
 export interface Subscription {
   id: string;
   channel_id: string;
@@ -88,6 +102,16 @@ export interface VideoDetail extends FeedItem {
   matched: boolean;
 }
 
+/** A channel's own page: every video, with whether it passes your filters. */
+export interface ChannelVideo extends FeedItem {
+  matched: boolean;
+}
+
+export interface ChannelVideosPage {
+  items: ChannelVideo[];
+  next: string | null;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -121,6 +145,7 @@ export const api = {
   channels: () => request<Channel[]>(`/channels`),
   resolveChannel: (query: string) =>
     request<ResolvedChannel>(`/channels/resolve`, { method: "POST", body: JSON.stringify({ query }) }),
+  searchChannels: (q: string) => request<ChannelSearchResult[]>(`/channels/search?q=${encodeURIComponent(q)}`),
 
   subscriptions: () => request<Subscription[]>(`/subscriptions`),
   createSubscription: (body: {
@@ -131,6 +156,11 @@ export const api = {
     id: string,
     body: Partial<{ notifyMode: NotifyMode }>,
   ) => request<{ ok: true }>(`/subscriptions/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  channelVideos: (subscriptionId: string, before?: string | null) =>
+    request<ChannelVideosPage>(
+      `/subscriptions/${encodeURIComponent(subscriptionId)}/videos${before ? `?before=${encodeURIComponent(before)}` : ""}`,
+      { cache: "no-store" },
+    ),
   deleteSubscription: (id: string) => request<{ ok: true }>(`/subscriptions/${id}`, { method: "DELETE" }),
 
   rules: () => request<Rule[]>(`/rules`),

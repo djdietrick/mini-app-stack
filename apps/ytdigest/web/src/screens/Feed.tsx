@@ -149,7 +149,19 @@ export function Feed() {
   );
 }
 
-function VideoCard({ item, ruleName }: { item: FeedItem; ruleName?: string }) {
+export function VideoCard({
+  item,
+  ruleName,
+  hideChannel = false,
+  outOfFeed = false,
+}: {
+  item: FeedItem;
+  ruleName?: string;
+  /** On a channel's own page, where every card is the same channel. */
+  hideChannel?: boolean;
+  /** Says the filters leave it out of the feed. */
+  outOfFeed?: boolean;
+}) {
   const progress = latest(item.watch_progress, useLocalProgress(item.youtube_video_id));
   const watched = progress && progress.position_seconds > 0
     ? Math.min(1, progress.position_seconds / progress.duration_seconds)
@@ -188,10 +200,10 @@ function VideoCard({ item, ruleName }: { item: FeedItem; ruleName?: string }) {
         )}
       </div>
       <div className="mt-3 flex gap-3">
-        <ChannelAvatar src={item.channel_thumbnail_url} title={item.channel_title} />
+        {!hideChannel && <ChannelAvatar src={item.channel_thumbnail_url} title={item.channel_title} />}
         <div className="min-w-0">
           <h3 className="line-clamp-2 font-medium leading-snug text-ink">{item.title}</h3>
-          <p className="mt-1 text-sm text-ink-muted">{item.channel_title}</p>
+          {!hideChannel && <p className="mt-1 text-sm text-ink-muted">{item.channel_title}</p>}
           <p className="text-sm text-ink-muted">
             {formatViews(item.view_count)} · {timeAgo(item.published_at)}
           </p>
@@ -200,6 +212,7 @@ function VideoCard({ item, ruleName }: { item: FeedItem; ruleName?: string }) {
               {ruleName}
             </span>
           )}
+          {outOfFeed && <p className="mt-1 text-xs text-ink-soft">Not in your feed</p>}
         </div>
       </div>
     </a>
@@ -216,7 +229,7 @@ export function ChannelAvatar({ src, title }: { src: string | null; title: strin
   );
 }
 
-function SkeletonGrid() {
+export function SkeletonGrid() {
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
       {Array.from({ length: 6 }, (_, i) => (
@@ -241,8 +254,7 @@ function Empty() {
       <p className="font-medium">Nothing here yet.</p>
       <p className="mx-auto mt-1 max-w-md text-sm text-ink-muted">
         The feed shows uploads from your <a className="text-brand-600 underline" href={hrefFor({ name: "channels" })}>channels</a>{" "}
-        that pass your <a className="text-brand-600 underline" href={hrefFor({ name: "rules" })}>rules</a>. New channels
-        fill in after the next poll.
+        that pass your <a className="text-brand-600 underline" href={hrefFor({ name: "rules" })}>rules</a>.
       </p>
     </div>
   );

@@ -4,23 +4,33 @@ import { useEffect, useState } from "react";
  * Hash routes, so every screen is linkable and Back works without the
  * servers needing to know about client paths.
  *
- *   #/feed (default)   #/watch/<youtube id>   #/channels   #/rules
+ *   #/feed (default)   #/watch/<youtube id>   #/channels   #/channels/<subscription id>   #/rules
  */
 export type Route =
   | { name: "feed" }
   | { name: "watch"; id: string }
   | { name: "channels" }
+  | { name: "channel"; id: string }
   | { name: "rules" };
 
 export function parseRoute(hash: string): Route {
   const [first, second] = hash.replace(/^#\/?/, "").split("/");
   if (first === "watch" && second) return { name: "watch", id: decodeURIComponent(second) };
+  if (first === "channels" && second) return { name: "channel", id: decodeURIComponent(second) };
   if (first === "channels" || first === "rules") return { name: first };
   return { name: "feed" };
 }
 
-export const hrefFor = (route: Route) =>
-  route.name === "watch" ? `#/watch/${encodeURIComponent(route.id)}` : `#/${route.name}`;
+export function hrefFor(route: Route): string {
+  switch (route.name) {
+    case "watch":
+      return `#/watch/${encodeURIComponent(route.id)}`;
+    case "channel":
+      return `#/channels/${encodeURIComponent(route.id)}`;
+    default:
+      return `#/${route.name}`;
+  }
+}
 
 export function useRoute(): Route {
   const [route, setRoute] = useState(() => parseRoute(window.location.hash));

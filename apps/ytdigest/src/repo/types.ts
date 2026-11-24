@@ -73,9 +73,15 @@ export interface YtdigestRepo extends Closable {
   /**
    * Videos from channels this user subscribes to, newest published first
    * (ties by id, descending), strictly after `after` in that order. The
-   * feed is a view, not a queue.
+   * feed is a view, not a queue. With `subscriptionId`, only that one of the
+   * user's subscriptions (a channel's own page).
    */
-  feedCandidates(userId: string, after: FeedCursor | null, limit: number): Promise<FeedCandidate[]>;
+  feedCandidates(
+    userId: string,
+    after: FeedCursor | null,
+    limit: number,
+    subscriptionId?: string,
+  ): Promise<FeedCandidate[]>;
   /** One video by its YouTube id, only if this user subscribes to its channel. */
   feedVideo(userId: string, youtubeVideoId: string): Promise<FeedCandidate | null>;
 

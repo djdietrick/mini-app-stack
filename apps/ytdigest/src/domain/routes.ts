@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { YtdigestRepo } from "../repo/types.js";
 import {
   buildFeed,
+  channelVideos,
   decodeCursor,
   FEED_DEFAULT_LIMIT,
   FEED_MAX_LIMIT,
@@ -10,12 +11,14 @@ import {
   videoDetail,
 } from "./feed.js";
 import {
+  type ChannelSearchRow,
   createRuleBody,
   createSubscriptionBody,
   patchRuleBody,
   patchSubscriptionBody,
   watchProgressBody,
 } from "./types.js";
+import { pollChannel } from "./poll.js";
 import type { BaselineOptions } from "./rules/evaluate.js";
 import type { YouTubeGateway } from "./youtube.js";
 
@@ -40,6 +43,10 @@ const idParam = z.object({ id: z.string().uuid() });
 // A YouTube id, not a UUID: that is the only video id both backends share.
 const youtubeVideoParam = z.object({ youtubeVideoId: z.string().regex(/^[\w-]{1,64}$/) });
 const ok = { ok: true } as const;
+const pageQuery = z.object({
+  before: z.string().min(1).max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(FEED_MAX_LIMIT).default(FEED_DEFAULT_LIMIT),
+});
 const created = () => 201;
 
 export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
@@ -70,6 +77,20 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
       },
     }),
 
+    route({
+      method: "GET",
+      path: "/channels/search",
+      input: { query: z.object({ q: z.string().trim().min(1).max(200) }) },
+      handler: async ({ repo, user }, { query }): Promise<ChannelSearchRow[]> => {
+        const [results, known] = await Promise.all([
+          deps.youtube.searchChannels(query.q),
+          repo.listChannels(user.userId),
+        ]);
+        const subscribed = new Map(known.map((c) => [c.youtube_channel_id, c.subscription_id]));
+        return results.map((r) => ({ ...r, subscriptionId: subscribed.get(r.youtubeChannelId) ?? null }));
+      },
+    }),
+
     // ---------- subscriptions ----------
 
     route({
@@ -83,7 +104,7 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
       path: "/subscriptions",
       input: { body: createSubscriptionBody },
       status: created,
-      handler: async ({ repo, user }, { body }) => {
+      handler: async ({ repo, user, log }, { body }) => {
         const resolved = await deps.youtube.resolveChannel(body.query);
         if (!resolved) throw notFound("channel not found");
 
@@ -96,6 +117,15 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
           body.notifyMode,
         );
         if (!id) throw conflict("already subscribed");
+
+        // A channel nobody followed before has no videos yet. Fetch them now
+        // rather than at the next poll, so its page isn't empty; a failure
+        // just leaves that to the poll.
+        if (!(await repo.latestVideoId(channelId))) {
+          await pollChannel(repo, deps.youtube, { id: channelId, uploadsPlaylistId: resolved.uploadsPlaylistId }).catch(
+            (err) => log.warn(`[subscribe] first fetch failed for channel ${channelId}:`, err),
+          );
+        }
         return { id, channelId };
       },
     }),
@@ -114,6 +144,18 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
         }
         if (!(await repo.updateSubscription(user.userId, params.id, body))) throw notFound();
         return ok;
+      },
+    }),
+
+    route({
+      method: "GET",
+      path: "/subscriptions/:id/videos",
+      input: { params: idParam, query: pageQuery },
+      handler: async ({ repo, user }, { params, query }) => {
+        const before = query.before === undefined ? null : decodeCursor(query.before);
+        if (query.before !== undefined && !before) throw badRequest("invalid cursor");
+        if (!(await repo.subscriptionExists(user.userId, params.id))) throw notFound();
+        return channelVideos(repo, user.userId, params.id, { before, limit: query.limit }, deps.baseline);
       },
     }),
 
@@ -187,12 +229,7 @@ export function ytdigestRoutes(deps: YtdigestDeps): AnyRoute<YtdigestRepo>[] {
     route({
       method: "GET",
       path: "/feed",
-      input: {
-        query: z.object({
-          before: z.string().min(1).max(200).optional(),
-          limit: z.coerce.number().int().min(1).max(FEED_MAX_LIMIT).default(FEED_DEFAULT_LIMIT),
-        }),
-      },
+      input: { query: pageQuery },
       handler: async ({ repo, user }, { query }) => {
         const before = query.before === undefined ? null : decodeCursor(query.before);
         if (query.before !== undefined && !before) throw badRequest("invalid cursor");

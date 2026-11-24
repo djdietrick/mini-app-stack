@@ -13,7 +13,7 @@ import { ChannelAvatar } from "./Feed";
  * for the video's details, which carry the position. The IFrame API script
  * loads meanwhile, so that costs nothing noticeable.
  */
-export function Watch({ id, onBack }: { id: string; onBack: () => void }) {
+export function Watch({ id, onBack, backLabel = "Feed" }: { id: string; onBack: () => void; backLabel?: string }) {
   const [video, setVideo] = useState<VideoDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDescription, setShowDescription] = useState(false);
@@ -71,7 +71,7 @@ export function Watch({ id, onBack }: { id: string; onBack: () => void }) {
   return (
     <div>
       <button onClick={onBack} className="mb-3 flex items-center gap-1 text-sm font-medium text-ink-muted hover:text-ink">
-        <span aria-hidden>←</span> Feed
+        <span aria-hidden>←</span> {backLabel}
       </button>
 
       {error ? (
