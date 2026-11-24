@@ -14,7 +14,7 @@ import { createPostgresYtdigestRepo } from "../repo/postgres.js";
 import type { YtdigestRepo } from "../repo/types.js";
 import { pollChannels } from "./poll.js";
 import { ytdigestRoutes } from "./routes.js";
-import type { ResolvedChannel, UploadListItem, VideoStats } from "./types.js";
+import type { ChannelSearchResult, ResolvedChannel, UploadListItem, VideoStats } from "./types.js";
 import type { YouTubeGateway } from "./youtube.js";
 
 /**
@@ -130,7 +130,23 @@ function fakeYouTube(run: string) {
 
   const gateway: YouTubeGateway = {
     async resolveChannel(q) {
-      return channels.get(q.trim()) ?? null;
+      return channels.get(q.trim()) ?? [...channels.values()].find((c) => c.youtubeChannelId === q.trim()) ?? null;
+    },
+    async searchChannels(q) {
+      const term = q.trim().toLowerCase();
+      return [...channels.entries()]
+        .filter(([handle, c]) => handle === term || c.title.toLowerCase().includes(term))
+        .map(
+          ([handle, c]): ChannelSearchResult => ({
+            youtubeChannelId: c.youtubeChannelId,
+            title: c.title,
+            handle,
+            description: null,
+            thumbnailUrl: c.thumbnailUrl,
+            subscriberCount: 1000,
+            videoCount: uploads.get(c.uploadsPlaylistId)!.length,
+          }),
+        );
     },
     async listNewUploads(playlistId, sinceVideoId) {
       const out: UploadListItem[] = [];
@@ -271,6 +287,27 @@ for (const [backendName, backend] of Object.entries(backends)) {
         assert.equal((await as(alice)("POST", "/channels/resolve", {})).status, 400);
       });
 
+      it("searches channels by name", async () => {
+        const res = await as(alice)("GET", `/channels/search?q=${encodeURIComponent("kitchen chan")}`);
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body, [
+          {
+            youtubeChannelId: kitchen.youtubeChannelId,
+            title: "Kitchen Channel",
+            handle: "@kitchen",
+            description: null,
+            thumbnailUrl: kitchen.thumbnailUrl,
+            subscriberCount: 1000,
+            videoCount: 0,
+            subscriptionId: null,
+          },
+        ]);
+        assert.deepEqual(await as(alice)("GET", "/channels/search?q=nothing%20like%20it"), { status: 200, body: [] });
+        assert.equal((await as(alice)("GET", "/channels/search?q=%20")).status, 400);
+        assert.equal((await as(alice)("GET", "/channels/search")).status, 400);
+        assert.equal((await as(null)("GET", "/channels/search?q=kitchen")).status, 401);
+      });
+
       it("subscribes once per channel and validates weekly cadence", async () => {
         const weeklyNoDay = await as(alice)("POST", "/subscriptions", {
           query: "@science",
@@ -301,6 +338,23 @@ for (const [backendName, backend] of Object.entries(backends)) {
         const k = await as(alice)("POST", "/subscriptions", { query: "@kitchen", cadence: "daily" });
         assert.equal(k.status, 201);
         kitchenSub = k.body.id;
+
+        const found = (await as(alice)("GET", "/channels/search?q=channel")).body;
+        assert.deepEqual(
+          found.map((c: any) => [c.title, c.subscriptionId]).sort(),
+          [
+            ["Kitchen Channel", kitchenSub],
+            ["Science Channel", scienceSub],
+          ],
+          "a search says which channels you already follow",
+        );
+        assert.equal((await as(bob)("GET", "/channels/search?q=channel")).body[0].subscriptionId, null);
+
+        // Subscribing to a search result sends its channel id.
+        const byId = await as(bob)("POST", "/subscriptions", { query: kitchen.youtubeChannelId });
+        assert.equal(byId.status, 201);
+        assert.equal(byId.body.channelId, k.body.channelId, "the same channel as @kitchen");
+        await as(bob)("DELETE", `/subscriptions/${byId.body.id}`);
 
         const subs = (await as(alice)("GET", "/subscriptions")).body;
         assert.deepEqual(
@@ -631,6 +685,68 @@ for (const [backendName, backend] of Object.entries(backends)) {
         assert.deepEqual(await ids(), [videos.k1, videos.s2, videos.s1]);
 
         await as(alice)("DELETE", `/rules/${own.body.id}`);
+      });
+
+      it("lists a channel's videos, in the feed or not, newest first", async () => {
+        // kitchen is notify=rules: the global "physics" rule lets k1 through, nothing lets k2.
+        const res = await as(alice)("GET", `/subscriptions/${kitchenSub}/videos`);
+        assert.equal(res.status, 200);
+        assert.equal(res.body.next, null);
+        assert.deepEqual(
+          res.body.items.map((i: any) => [i.youtube_video_id, i.matched]),
+          [
+            [videos.k2, false],
+            [videos.k1, true],
+          ],
+        );
+        const [k2, k1] = res.body.items;
+        assert.equal(k1.matched_rule_id, globalRule);
+        assert.deepEqual([k2.matched_rule_id, k2.reasons, k2.view_count], [null, [], 12_345]);
+        assert.equal(k1.channel_title, "Kitchen Channel");
+        assert.ok(res.body.items.every((i: any) => i.watch_progress === null));
+
+        const first = await as(alice)("GET", `/subscriptions/${kitchenSub}/videos?limit=1`);
+        assert.deepEqual(first.body.items.map((i: any) => i.youtube_video_id), [videos.k2]);
+        assert.ok(first.body.next);
+        const second = await as(alice)(
+          "GET",
+          `/subscriptions/${kitchenSub}/videos?limit=1&before=${encodeURIComponent(first.body.next)}`,
+        );
+        assert.deepEqual(second.body.items.map((i: any) => i.youtube_video_id), [videos.k1]);
+        const third = await as(alice)(
+          "GET",
+          `/subscriptions/${kitchenSub}/videos?limit=1&before=${encodeURIComponent(second.body.next)}`,
+        );
+        assert.deepEqual(third.body, { items: [], next: null });
+
+        assert.deepEqual(
+          (await as(alice)("GET", `/subscriptions/${scienceSub}/videos`)).body.items.map((i: any) => i.youtube_video_id),
+          [videos.s2, videos.s1],
+          "only that channel's videos",
+        );
+
+        assert.deepEqual(await as(bob)("GET", `/subscriptions/${kitchenSub}/videos`), {
+          status: 404,
+          body: { error: "not found" },
+        });
+        assert.equal((await as(alice)("GET", `/subscriptions/${randomUUID()}/videos`)).status, 404);
+        assert.equal((await as(alice)("GET", `/subscriptions/${kitchenSub}/videos?before=nonsense`)).status, 400);
+        assert.equal((await as(alice)("GET", "/subscriptions/not-a-uuid/videos")).status, 400);
+      });
+
+      it("fetches a new channel's videos as soon as someone subscribes", async () => {
+        const garden = yt.addChannel("garden", "Garden Channel");
+        const g1 = yt.upload(garden, "g1", "Tomatoes", 3);
+
+        const sub = await as(bob)("POST", "/subscriptions", { query: "@garden", notifyMode: "all" });
+        assert.equal(sub.status, 201);
+        const page = (await as(bob)("GET", `/subscriptions/${sub.body.id}/videos`)).body;
+        assert.deepEqual(
+          page.items.map((i: any) => [i.youtube_video_id, i.view_count, i.duration_seconds]),
+          [[g1, 12_345, 600]],
+          "uploads and stats, without waiting for the poll",
+        );
+        await as(bob)("DELETE", `/subscriptions/${sub.body.id}`);
       });
 
       it("serves one video for the player, only from the user's own channels", async () => {

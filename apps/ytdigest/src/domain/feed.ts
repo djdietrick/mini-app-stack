@@ -2,6 +2,7 @@ import type { YtdigestRepo } from "../repo/types.js";
 import { applicableRules, type MatchResult, matchVideo, type ScopedRule } from "./match.js";
 import { type BaselineOptions, DEFAULT_BASELINE } from "./rules/evaluate.js";
 import type {
+  ChannelVideosPage,
   FeedCandidate,
   FeedCursor,
   FeedItemRow,
@@ -143,6 +144,31 @@ export async function buildFeed(
   }
 
   return page(cursor ? encodeCursor(cursor) : null);
+}
+
+/**
+ * One channel's page: every video of one of the user's subscriptions, newest
+ * first, each marked with whether it passes the filters (so the page can say
+ * which are in the feed). Unlike the feed it keeps the ones that don't, so a
+ * page is simply the next `limit` candidates.
+ */
+export async function channelVideos(
+  repo: YtdigestRepo,
+  userId: string,
+  subscriptionId: string,
+  { before, limit }: { before: FeedCursor | null; limit: number },
+  baseline: BaselineOptions = DEFAULT_BASELINE,
+): Promise<ChannelVideosPage> {
+  const rulesFor = rulesLoader(repo, userId);
+  const batch = await repo.feedCandidates(userId, before, limit, subscriptionId);
+  const [matches, progress] = await Promise.all([
+    mapConcurrent(batch, CONCURRENCY, async (c) => matchVideo(repo, c.subscription, await rulesFor(c), c, baseline)),
+    repo.watchProgress(userId, batch.map((c) => c.id)),
+  ]);
+  return {
+    items: batch.map((c, i) => ({ ...toRow(c, matches[i], progress.get(c.id)), matched: matches[i].matched })),
+    next: batch.length === limit ? encodeCursor(cursorOf(batch[batch.length - 1])) : null,
+  };
 }
 
 /**

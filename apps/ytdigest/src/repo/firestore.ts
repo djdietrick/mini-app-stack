@@ -335,8 +335,8 @@ export function createFirestoreYtdigestRepo(
 
     // ---------- feed ----------
 
-    async feedCandidates(userId, after, limit) {
-      const subs = await userSubscriptions(userId);
+    async feedCandidates(userId, after, limit, subscriptionId) {
+      const subs = (await userSubscriptions(userId)).filter((s) => !subscriptionId || s.id === subscriptionId);
       const byId = await channelsById(subs.map((s) => s.doc.channelId));
       const subByChannel = new Map(
         subs.filter((s) => byId.has(s.doc.channelId)).map((s) => [s.doc.channelId, s] as const),

@@ -205,7 +205,7 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
 
     // ---------- feed ----------
 
-    async feedCandidates(userId, after, limit) {
+    async feedCandidates(userId, after, limit, subscriptionId) {
       // id compared as text: the cursor comes from the client, and a bad one
       // should match nothing rather than fail a uuid cast.
       const rows = await sql<FeedCandidateRow[]>`
@@ -214,6 +214,7 @@ export function createPostgresYtdigestRepo(pg: PostgresClient): YtdigestRepo {
         JOIN channels c ON c.id = s.channel_id
         JOIN videos v ON v.channel_id = s.channel_id
         WHERE s.user_id = ${userId}
+          ${subscriptionId ? sql`AND s.id::text = ${subscriptionId}` : sql``}
           ${after ? sql`AND (v.published_at, v.id::text) < (${after.publishedAt.toISOString()}::timestamptz, ${after.videoId})` : sql``}
         ORDER BY v.published_at DESC, v.id::text DESC
         LIMIT ${limit}

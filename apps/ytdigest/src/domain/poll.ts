@@ -42,7 +42,12 @@ export async function pollChannels({ repo, youtube, lease, log = console }: Poll
   }
 }
 
-async function pollChannel(
+/**
+ * One channel's uploads and stats. Also run straight after the first
+ * subscription to a channel, so its videos show without waiting for the next
+ * poll; uploads already known are skipped, so overlapping a poll is harmless.
+ */
+export async function pollChannel(
   repo: YtdigestRepo,
   youtube: YouTubeGateway,
   channel: PollTarget,

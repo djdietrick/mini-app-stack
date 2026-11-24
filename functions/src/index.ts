@@ -156,18 +156,18 @@ const YOUTUBE_API_KEY = defineSecret("YOUTUBE_API_KEY");
  * So the YouTube client is built on first use.
  */
 let youtubeClient: YouTubeGateway | undefined;
+const youtubeNow = () => (youtubeClient ??= createYouTubeClient(YOUTUBE_API_KEY.value()));
 const youtube: YouTubeGateway = {
-  resolveChannel: (q) => (youtubeClient ??= createYouTubeClient(YOUTUBE_API_KEY.value())).resolveChannel(q),
-  listNewUploads: (...a) =>
-    (youtubeClient ??= createYouTubeClient(YOUTUBE_API_KEY.value())).listNewUploads(...a),
-  batchGetVideoStats: (ids) =>
-    (youtubeClient ??= createYouTubeClient(YOUTUBE_API_KEY.value())).batchGetVideoStats(ids),
+  resolveChannel: (q) => youtubeNow().resolveChannel(q),
+  searchChannels: (q) => youtubeNow().searchChannels(q),
+  listNewUploads: (...a) => youtubeNow().listNewUploads(...a),
+  batchGetVideoStats: (ids) => youtubeNow().batchGetVideoStats(ids),
 };
 
 const ytdigestRepo = createFirestoreYtdigestRepo(db);
 
 export const ytdigestApi = onRequest(
-  // Subscribing resolves the channel on YouTube.
+  // Searching and subscribing call YouTube.
   { serviceAccount: ytdigestServiceAccount, secrets: [YOUTUBE_API_KEY] },
   mount(
     "/api",
